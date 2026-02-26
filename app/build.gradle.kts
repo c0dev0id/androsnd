@@ -16,13 +16,21 @@ android {
     }
 
     val keystorePath = System.getenv("SIGNING_KEYSTORE_PATH")
-    if (keystorePath != null) {
+    val keystorePassword = System.getenv("SIGNING_KEYSTORE_PASSWORD")
+    val signingKeyAlias = System.getenv("SIGNING_KEY_ALIAS")
+    val signingKeyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+    val hasSigningConfig = !keystorePath.isNullOrEmpty() &&
+        !keystorePassword.isNullOrEmpty() &&
+        !signingKeyAlias.isNullOrEmpty() &&
+        !signingKeyPassword.isNullOrEmpty()
+
+    if (hasSigningConfig) {
         signingConfigs {
             create("release") {
-                storeFile = file(keystorePath)
-                storePassword = System.getenv("SIGNING_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
-                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+                storeFile = file(keystorePath!!)
+                storePassword = keystorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
             }
         }
     }
@@ -30,7 +38,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            if (keystorePath != null) {
+            if (hasSigningConfig) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
