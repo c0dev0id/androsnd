@@ -3,6 +3,7 @@ package com.androsnd
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import android.support.v4.media.session.PlaybackStateCompat
 import androidx.documentfile.provider.DocumentFile
 import com.androsnd.model.PlaylistFolder
 import com.androsnd.model.Song
@@ -27,6 +28,15 @@ class PlaylistManager(private val context: Context) {
         private set
     var isShuffleOn: Boolean = false
         private set
+    var repeatMode: Int = PlaybackStateCompat.REPEAT_MODE_NONE
+        private set
+
+    fun setRepeatMode(mode: Int) {
+        if (mode in listOf(PlaybackStateCompat.REPEAT_MODE_NONE, PlaybackStateCompat.REPEAT_MODE_ONE,
+                           PlaybackStateCompat.REPEAT_MODE_ALL, PlaybackStateCompat.REPEAT_MODE_GROUP)) {
+            repeatMode = mode
+        }
+    }
 
     fun loadSavedFolder(): Uri? {
         val uriString = prefs.getString(KEY_FOLDER_URI, null) ?: return null

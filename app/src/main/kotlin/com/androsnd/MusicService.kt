@@ -16,10 +16,12 @@ import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.os.Binder
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -50,6 +52,7 @@ class MusicService : Service() {
         const val BROADCAST_SCAN_COMPLETED = "com.androsnd.SCAN_COMPLETED"
 
         private const val DOUBLE_TAP_THRESHOLD = 500L
+        private const val SKIP_DURATION_MS = 10000
     }
 
     inner class MusicBinder : Binder() {
@@ -119,6 +122,56 @@ class MusicService : Service() {
                 override fun onStop() { handleStop() }
                 override fun onSkipToNext() { handleNext() }
                 override fun onSkipToPrevious() { handlePrevious() }
+                override fun onSeekTo(pos: Long) { seekTo(pos.toInt()) }
+                override fun onFastForward() { seekTo(getPosition() + SKIP_DURATION_MS) }
+                override fun onRewind() { seekTo(maxOf(0, getPosition() - SKIP_DURATION_MS)) }
+                override fun onSetShuffleMode(shuffleMode: Int) {
+                    val shouldShuffle = shuffleMode != PlaybackStateCompat.SHUFFLE_MODE_NONE
+                    if (playlistManager.isShuffleOn != shouldShuffle) {
+                        playlistManager.toggleShuffle()
+                    }
+                    this@MusicService.mediaSession.setShuffleMode(shuffleMode)
+                    updatePlaybackState(if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED)
+                    broadcastState()
+                }
+                override fun onSetRepeatMode(repeatMode: Int) {
+                    playlistManager.setRepeatMode(repeatMode)
+                    this@MusicService.mediaSession.setRepeatMode(repeatMode)
+                    broadcastState()
+                }
+                override fun onSkipToQueueItem(id: Long) { playSongAtIndex(id.toInt()) }
+                override fun onPlayFromUri(uri: Uri?, extras: Bundle?) {
+                    uri ?: return
+                    val song = Song(uri = uri, displayName = uri.lastPathSegment ?: "Unknown", folderPath = "", folderName = "")
+                    playSong(song)
+                }
+                override fun onPrepare() {
+                    if (playlistManager.songs.isEmpty()) return
+                    val song = playlistManager.getCurrentSong() ?: return
+                    if (mediaPlayer == null) {
+                        try {
+                            mediaPlayer = MediaPlayer().apply {
+                                setAudioAttributes(
+                                    AudioAttributes.Builder()
+                                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                                        .build()
+                                )
+                                setDataSource(applicationContext, song.uri)
+                                prepare()
+                                setOnCompletionListener { onTrackComplete() }
+                                setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+                            }
+                            val metadata = extractMetadata(song)
+                            currentMetadata = metadata
+                            updateMediaSessionMetadata(metadata)
+                            updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+                            broadcastState()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to prepare ${song.displayName}", e)
+                        }
+                    }
+                }
             })
             isActive = true
         }
@@ -192,6 +245,7 @@ class MusicService : Service() {
         if (now - lastPlayPauseTime < DOUBLE_TAP_THRESHOLD) {
             lastPlayPauseTime = 0L
             playlistManager.toggleShuffle()
+            mediaSession.setShuffleMode(if (playlistManager.isShuffleOn) PlaybackStateCompat.SHUFFLE_MODE_ALL else PlaybackStateCompat.SHUFFLE_MODE_NONE)
             broadcastState()
         } else {
             lastPlayPauseTime = now
@@ -267,6 +321,15 @@ class MusicService : Service() {
 
     fun handleShuffleButton() {
         playlistManager.toggleShuffle()
+        mediaSession.setShuffleMode(if (playlistManager.isShuffleOn) PlaybackStateCompat.SHUFFLE_MODE_ALL else PlaybackStateCompat.SHUFFLE_MODE_NONE)
+        broadcastState()
+    }
+
+    fun seekTo(positionMs: Int) {
+        val duration = mediaPlayer?.duration ?: 0
+        val clamped = positionMs.coerceIn(0, if (duration > 0) duration else 0)
+        mediaPlayer?.seekTo(clamped)
+        updatePlaybackState(if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED)
         broadcastState()
     }
 
@@ -318,9 +381,31 @@ class MusicService : Service() {
     }
 
     private fun onTrackComplete() {
-        val song = if (playlistManager.isShuffleOn) playlistManager.shuffleSong()
-                   else playlistManager.nextSong()
-        if (song != null) playSong(song)
+        when (playlistManager.repeatMode) {
+            PlaybackStateCompat.REPEAT_MODE_ONE -> {
+                val song = playlistManager.getCurrentSong()
+                if (song != null) playSong(song)
+            }
+            PlaybackStateCompat.REPEAT_MODE_NONE -> {
+                if (playlistManager.isShuffleOn) {
+                    val song = playlistManager.shuffleSong()
+                    if (song != null) playSong(song)
+                } else {
+                    val isLast = playlistManager.currentIndex >= playlistManager.songs.size - 1
+                    if (!isLast) {
+                        val song = playlistManager.nextSong()
+                        if (song != null) playSong(song)
+                    } else {
+                        stopPlayback()
+                    }
+                }
+            }
+            else -> {
+                val song = if (playlistManager.isShuffleOn) playlistManager.shuffleSong()
+                           else playlistManager.nextSong()
+                if (song != null) playSong(song)
+            }
+        }
     }
 
     private fun requestAudioFocus() {
@@ -377,17 +462,38 @@ class MusicService : Service() {
 
     private fun updatePlaybackState(state: Int) {
         val position = mediaPlayer?.currentPosition?.toLong() ?: 0L
+        val speed = if (isPlaying) 1f else 0f
         val playbackState = PlaybackStateCompat.Builder()
-            .setState(state, position, 1f)
+            .setState(state, position, speed)
             .setActions(
                 PlaybackStateCompat.ACTION_PLAY or
                 PlaybackStateCompat.ACTION_PAUSE or
+                PlaybackStateCompat.ACTION_PLAY_PAUSE or
                 PlaybackStateCompat.ACTION_STOP or
                 PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                PlaybackStateCompat.ACTION_SEEK_TO or
+                PlaybackStateCompat.ACTION_FAST_FORWARD or
+                PlaybackStateCompat.ACTION_REWIND or
+                PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or
+                PlaybackStateCompat.ACTION_PREPARE or
+                PlaybackStateCompat.ACTION_SET_REPEAT_MODE or
+                PlaybackStateCompat.ACTION_SKIP_TO_QUEUE_ITEM or
+                PlaybackStateCompat.ACTION_PLAY_FROM_URI
             )
             .build()
         mediaSession.setPlaybackState(playbackState)
+    }
+
+    private fun updateMediaSessionQueue() {
+        val queue = playlistManager.songs.mapIndexed { index, song ->
+            val description = MediaDescriptionCompat.Builder()
+                .setTitle(song.displayName)
+                .setMediaUri(song.uri)
+                .build()
+            MediaSessionCompat.QueueItem(description, index.toLong())
+        }
+        mediaSession.setQueue(queue)
     }
 
     private fun buildNotification(): Notification {
@@ -486,6 +592,7 @@ class MusicService : Service() {
             } finally {
                 handler.post {
                     isScanning = false
+                    updateMediaSessionQueue()
                     broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
                     broadcastState()
                 }
