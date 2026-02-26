@@ -226,14 +226,13 @@ class MainActivity : AppCompatActivity() {
         btnPlay.setIconResource(if (svc.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
 
         if (song != null) {
-            val (title, artist, album) = svc.getSongMetadata(song)
-            songTitle.text = title
-            songArtist.text = artist
-            songAlbum.text = album
+            val metadata = svc.extractMetadata(song)
+            songTitle.text = metadata.title
+            songArtist.text = metadata.artist
+            songAlbum.text = metadata.album
 
-            val cover = svc.getCoverArt(song)
-            if (cover != null) {
-                coverArt.setImageBitmap(cover)
+            if (metadata.coverArt != null) {
+                coverArt.setImageBitmap(metadata.coverArt)
             } else {
                 coverArt.setImageResource(android.R.drawable.ic_media_play)
             }
@@ -278,7 +277,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    inner class PlaylistAdapter(
+    class PlaylistAdapter(
         private val onFolderClick: (Int) -> Unit,
         private val onSongClick: (Int) -> Unit
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
@@ -339,11 +338,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        inner class FolderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        class FolderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val name: TextView = view.findViewById(R.id.folder_name)
         }
 
-        inner class SongViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        class SongViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val name: TextView = view.findViewById(R.id.song_name)
         }
     }
