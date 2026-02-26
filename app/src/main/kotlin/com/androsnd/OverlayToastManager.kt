@@ -14,6 +14,8 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
@@ -53,10 +55,6 @@ class OverlayToastManager(private val context: Context) {
 
     fun showSong(metadata: SongMetadata) {
         showOverlay(metadata.title, metadata.artist, metadata.album, metadata.coverArt)
-    }
-
-    fun showMessage(message: String) {
-        showOverlay(message, "", "", null)
     }
 
     private fun showOverlay(title: String, artist: String, album: String, cover: Bitmap?) {
@@ -104,7 +102,8 @@ class OverlayToastManager(private val context: Context) {
                 scaledH,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT
             ).apply {
                 if (hasCustomPosition) {
@@ -127,6 +126,7 @@ class OverlayToastManager(private val context: Context) {
             container.animate()
                 .alpha(1f)
                 .setDuration(ANIMATION_DURATION_MS)
+                .setInterpolator(DecelerateInterpolator())
                 .withEndAction {
                     scheduleDismiss(container)
                 }
@@ -234,6 +234,7 @@ class OverlayToastManager(private val context: Context) {
             view.animate()
                 .alpha(0f)
                 .setDuration(ANIMATION_DURATION_MS)
+                .setInterpolator(AccelerateInterpolator())
                 .withEndAction { removeView(view) }
                 .start()
         }
@@ -265,6 +266,7 @@ class OverlayToastManager(private val context: Context) {
         cancelDismissTimer()
         currentView?.let {
             it.animate().cancel()
+            it.alpha = 0f
             removeView(it)
         }
     }

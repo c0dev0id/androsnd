@@ -29,6 +29,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.androsnd.model.Song
 import com.androsnd.model.SongMetadata
+import java.util.concurrent.Executors
 
 class MusicService : Service() {
 
@@ -50,6 +51,11 @@ class MusicService : Service() {
         const val BROADCAST_SCAN_COMPLETED = "com.androsnd.SCAN_COMPLETED"
 
         private const val DOUBLE_TAP_THRESHOLD = 500L
+
+        private val MUSIC_AUDIO_ATTRIBUTES = AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .build()
     }
 
     inner class MusicBinder : Binder() {
@@ -67,6 +73,8 @@ class MusicService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var progressRunnable: Runnable? = null
+    private val scanExecutor = Executors.newSingleThreadExecutor()
+    private var isPlayerPrepared = false
 
     var isPlaying: Boolean = false
         private set
@@ -119,6 +127,7 @@ class MusicService : Service() {
                 override fun onStop() { handleStop() }
                 override fun onSkipToNext() { handleNext() }
                 override fun onSkipToPrevious() { handlePrevious() }
+                override fun onSeekTo(pos: Long) { seekTo(pos.toInt()) }
             })
             isActive = true
         }
@@ -183,6 +192,7 @@ class MusicService : Service() {
         }
     }
 
+    // Wrapper kept for API consistency with handleNext()/handlePrevious().
     fun handleStop() {
         stopPlayback()
     }
@@ -200,12 +210,10 @@ class MusicService : Service() {
     }
 
     private fun stopPlayback() {
-        mediaPlayer?.let {
-            it.stop()
-            it.release()
-        }
+        mediaPlayer?.release()
         mediaPlayer = null
         isPlaying = false
+        isPlayerPrepared = false
         currentMetadata = null
         stopProgressUpdates()
         updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
@@ -271,12 +279,10 @@ class MusicService : Service() {
     }
 
     fun playSong(song: Song) {
-        mediaPlayer?.let {
-            it.stop()
-            it.release()
-        }
+        mediaPlayer?.release()
         mediaPlayer = null
         isPlaying = false
+        isPlayerPrepared = false
         stopProgressUpdates()
         startPlayingSong(song)
     }
@@ -290,26 +296,28 @@ class MusicService : Service() {
     private fun startPlayingSong(song: Song) {
         try {
             requestAudioFocus()
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .build()
-                )
-                setDataSource(applicationContext, song.uri)
-                prepare()
-                start()
-                setOnCompletionListener { onTrackComplete() }
-                setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
-            }
-            isPlaying = true
-            startProgressUpdates()
             val metadata = extractMetadata(song)
             currentMetadata = metadata
+            isPlayerPrepared = false
+            val mp = MediaPlayer()
+            mp.setAudioAttributes(MUSIC_AUDIO_ATTRIBUTES)
+            mp.setDataSource(applicationContext, song.uri)
+            mp.setOnPreparedListener { player ->
+                if (mediaPlayer == player) {
+                    isPlayerPrepared = true
+                    player.start()
+                    isPlaying = true
+                    startProgressUpdates()
+                    updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                    startForegroundCompat(buildNotification())
+                    broadcastState()
+                }
+            }
+            mp.setOnCompletionListener { onTrackComplete() }
+            mp.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+            mp.prepareAsync()
+            mediaPlayer = mp
             updateMediaSessionMetadata(metadata)
-            updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-            startForegroundCompat(buildNotification())
             broadcastState()
             overlayToastManager.showSong(metadata)
         } catch (e: Exception) {
@@ -326,17 +334,17 @@ class MusicService : Service() {
     private fun requestAudioFocus() {
         audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-            )
+            .setAudioAttributes(MUSIC_AUDIO_ATTRIBUTES)
             .setOnAudioFocusChangeListener { focusChange ->
                 when (focusChange) {
                     AudioManager.AUDIOFOCUS_LOSS -> pause()
                     AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> pause()
-                    AudioManager.AUDIOFOCUS_GAIN -> play()
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK ->
+                        mediaPlayer?.setVolume(0.3f, 0.3f)
+                    AudioManager.AUDIOFOCUS_GAIN -> {
+                        mediaPlayer?.setVolume(1f, 1f)
+                        play()
+                    }
                 }
             }
             .build()
@@ -344,7 +352,7 @@ class MusicService : Service() {
         audioManager.requestAudioFocus(focusRequest)
     }
 
-    fun extractMetadata(song: Song): SongMetadata {
+    private fun extractMetadata(song: Song): SongMetadata {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(applicationContext, song.uri)
@@ -384,7 +392,8 @@ class MusicService : Service() {
                 PlaybackStateCompat.ACTION_PAUSE or
                 PlaybackStateCompat.ACTION_STOP or
                 PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                PlaybackStateCompat.ACTION_SEEK_TO
             )
             .build()
         mediaSession.setPlaybackState(playbackState)
@@ -393,6 +402,8 @@ class MusicService : Service() {
     private fun buildNotification(): Notification {
         val song = playlistManager.getCurrentSong()
         val contentTitle = song?.displayName ?: getString(R.string.app_name)
+        val contentText = currentMetadata?.artist?.takeIf { it.isNotEmpty() }
+            ?: getString(R.string.app_name)
 
         val playPauseAction = if (isPlaying) {
             NotificationCompat.Action(
@@ -420,7 +431,7 @@ class MusicService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(contentTitle)
-            .setContentText(getString(R.string.app_name))
+            .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(mainIntent)
             .addAction(
@@ -470,15 +481,21 @@ class MusicService : Service() {
         broadcastManager.sendBroadcast(Intent(BROADCAST_STATE_CHANGED))
     }
 
+    fun seekTo(positionMs: Int) {
+        if (!isPlayerPrepared) return
+        mediaPlayer?.seekTo(positionMs)
+        broadcastState()
+    }
+
     fun scanFolderAsync(uri: Uri) {
-        mediaPlayer?.let { it.stop(); it.release() }
+        mediaPlayer?.release()
         mediaPlayer = null
         isPlaying = false
         stopProgressUpdates()
 
         isScanning = true
         broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_STARTED))
-        Thread {
+        scanExecutor.execute {
             try {
                 playlistManager.scanFolder(uri)
             } catch (e: Exception) {
@@ -490,7 +507,7 @@ class MusicService : Service() {
                     broadcastState()
                 }
             }
-        }.start()
+        }
     }
 
     fun getPosition(): Int = mediaPlayer?.currentPosition ?: 0
@@ -506,5 +523,6 @@ class MusicService : Service() {
         mediaSession.release()
         overlayToastManager.dismiss()
         audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        scanExecutor.shutdown()
     }
 }

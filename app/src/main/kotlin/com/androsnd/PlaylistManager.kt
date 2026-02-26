@@ -23,6 +23,8 @@ class PlaylistManager(private val context: Context) {
     private val _folders = mutableListOf<PlaylistFolder>()
     val folders: List<PlaylistFolder> get() = _folders
 
+    private val songToFolderIndex = mutableMapOf<Int, Int>()
+
     var currentIndex: Int = 0
         private set
     var isShuffleOn: Boolean = false
@@ -60,6 +62,14 @@ class PlaylistManager(private val context: Context) {
         _songs.clear()
         _songs.addAll(reorderedSongs)
 
+        // Build reverse lookup for O(1) getFolderIndexForSong()
+        songToFolderIndex.clear()
+        for ((fi, folder) in _folders.withIndex()) {
+            for (si in folder.songs) {
+                songToFolderIndex[si] = fi
+            }
+        }
+
         currentIndex = 0
     }
 
@@ -80,9 +90,7 @@ class PlaylistManager(private val context: Context) {
                 _songs.add(
                     Song(
                         uri = file.uri,
-                        displayName = file.name ?: "Unknown",
-                        folderPath = parentPath,
-                        folderName = folderName
+                        displayName = file.name ?: "Unknown"
                     )
                 )
                 folder.songs.add(songIndex)
@@ -102,9 +110,7 @@ class PlaylistManager(private val context: Context) {
 
     fun getCurrentSong(): Song? = songs.getOrNull(currentIndex)
 
-    fun getFolderIndexForSong(songIndex: Int): Int {
-        return folders.indexOfFirst { it.songs.contains(songIndex) }
-    }
+    fun getFolderIndexForSong(songIndex: Int): Int = songToFolderIndex[songIndex] ?: -1
 
     fun nextSong(): Song? {
         if (songs.isEmpty()) return null
@@ -138,7 +144,11 @@ class PlaylistManager(private val context: Context) {
 
     fun shuffleSong(): Song? {
         if (songs.isEmpty()) return null
-        currentIndex = kotlin.random.Random.nextInt(songs.size)
+        if (songs.size > 1) {
+            // Pick a random index from 0..(size-2), then skip over currentIndex
+            val next = kotlin.random.Random.nextInt(songs.size - 1)
+            currentIndex = if (next >= currentIndex) next + 1 else next
+        }
         return getCurrentSong()
     }
 
