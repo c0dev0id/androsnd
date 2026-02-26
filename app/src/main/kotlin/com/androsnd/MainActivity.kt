@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var playlistAdapter: PlaylistAdapter
     private var isUserSeekBarTouch = false
+    private var lastKnownSongIndex = -1
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -168,7 +169,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupRecyclerView() {
         playlistAdapter = PlaylistAdapter(
-            onFolderClick = { /* toggle expand */ },
+            onFolderClick = {},
             onSongClick = { index ->
                 musicService?.playSongAtIndex(index)
             }
@@ -194,8 +195,8 @@ class MainActivity : AppCompatActivity() {
             }
             override fun onStartTrackingTouch(sb: SeekBar?) { isUserSeekBarTouch = true }
             override fun onStopTrackingTouch(sb: SeekBar?) {
-                musicService?.seekTo(sb?.progress ?: 0)
-                isUserSeekBarTouch = false
+                if (sb != null) musicService?.seekTo(sb?.progress ?: 0) {
+                    isUserSeekBarTouch = false
             }
         })
 
@@ -255,30 +256,35 @@ class MainActivity : AppCompatActivity() {
         val svc = musicService ?: return
         if (svc.isScanning) return
         val pm = svc.playlistManager
+        val currentIdx = pm.currentIndex
         val song = pm.getCurrentSong()
 
         btnPlay.isSelected = svc.isPlaying
         btnShuffle.isSelected = pm.isShuffleOn
         btnPlay.setIconResource(if (svc.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
 
-        if (song != null) {
-            val metadata = svc.currentMetadata
-            if (metadata != null) {
-                songTitle.text = metadata.title
-                songArtist.text = metadata.artist
-                songAlbum.text = metadata.album
+        if (currentIdx != lastKnownSongIndex) {
+            lastKnownSongIndex = currentIdx
+            if (song != null) {
+                val metadata = svc.currentMetadata
+                if (metadata != null) {
+                    songTitle.text = metadata.title
+                    songArtist.text = metadata.artist
+                    songAlbum.text = metadata.album
 
-                if (metadata.coverArt != null) {
-                    coverArt.setImageBitmap(metadata.coverArt)
-                } else {
-                    coverArt.setImageResource(android.R.drawable.ic_media_play)
+                    if (metadata.coverArt != null) {
+                        coverArt.setImageBitmap(metadata.coverArt)
+                    } else {
+                        coverArt.setImageResource(android.R.drawable.ic_media_play)
+                    }
                 }
+            } else {
+                songTitle.text = getString(R.string.no_song)
+                songArtist.text = ""
+                songAlbum.text = ""
+                coverArt.setImageResource(android.R.drawable.ic_media_play)
             }
-        } else {
-            songTitle.text = getString(R.string.no_song)
-            songArtist.text = ""
-            songAlbum.text = ""
-            coverArt.setImageResource(android.R.drawable.ic_media_play)
+            updatePlaylist()
         }
 
         if (!isUserSeekBarTouch) {
@@ -289,8 +295,6 @@ class MainActivity : AppCompatActivity() {
             timeCurrentView.text = formatTime(pos)
             timeTotalView.text = formatTime(dur)
         }
-
-        updatePlaylist()
     }
 
     private fun updatePlaylist() {
@@ -305,6 +309,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideLoading() {
+        // Reset so updateUI() re-renders metadata and playlist for the newly scanned library.
+        lastKnownSongIndex = -1
         loadingIndicator.visibility = View.GONE
         playlistRecycler.visibility = View.VISIBLE
     }

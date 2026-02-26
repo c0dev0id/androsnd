@@ -27,10 +27,12 @@
 
             <ImageView
                 android:id="@+id/cover_art"
-                android:layout_width="160dp"
-                android:layout_height="160dp"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:layout_gravity="center_horizontal"
-                android:scaleType="centerCrop"
+                android:scaleType="centerInside"
+                android:adjustViewBounds="true"
                 android:src="@android:drawable/ic_media_play" />
 
             <TextView
