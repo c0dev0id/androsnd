@@ -191,9 +191,7 @@ class MusicService : Service() {
         val now = System.currentTimeMillis()
         if (now - lastPlayPauseTime < DOUBLE_TAP_THRESHOLD) {
             lastPlayPauseTime = 0L
-            val shuffleOn = playlistManager.toggleShuffle()
-            val msg = if (shuffleOn) getString(R.string.shuffle_on) else getString(R.string.shuffle_off)
-            overlayToastManager.showMessage(msg)
+            playlistManager.toggleShuffle()
             broadcastState()
         } else {
             lastPlayPauseTime = now
@@ -228,11 +226,9 @@ class MusicService : Service() {
             nextPendingRunnable = null
             val song = playlistManager.nextFolder()
             if (song != null) {
-                overlayToastManager.showMessage(getString(R.string.next_folder))
                 playSong(song)
             }
         } else {
-            overlayToastManager.showMessage(getString(R.string.next_song))
             val runnable = Runnable {
                 nextPendingRunnable = null
                 val song = playlistManager.nextSong()
@@ -256,11 +252,9 @@ class MusicService : Service() {
             prevPendingRunnable = null
             val song = playlistManager.prevFolder()
             if (song != null) {
-                overlayToastManager.showMessage(getString(R.string.prev_folder))
                 playSong(song)
             }
         } else {
-            overlayToastManager.showMessage(getString(R.string.prev_song))
             val runnable = Runnable {
                 prevPendingRunnable = null
                 val song = playlistManager.prevSong()
@@ -272,9 +266,7 @@ class MusicService : Service() {
     }
 
     fun handleShuffleButton() {
-        val shuffleOn = playlistManager.toggleShuffle()
-        val msg = if (shuffleOn) getString(R.string.shuffle_on) else getString(R.string.shuffle_off)
-        overlayToastManager.showMessage(msg)
+        playlistManager.toggleShuffle()
         broadcastState()
     }
 
