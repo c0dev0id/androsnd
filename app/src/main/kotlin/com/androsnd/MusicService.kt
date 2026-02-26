@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioAttributes
@@ -15,6 +16,7 @@ import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Binder
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -118,7 +120,21 @@ class MusicService : Service() {
         }
     }
 
+    private fun startForegroundCompat(notification: Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Must call startForeground() promptly to avoid ForegroundServiceDidNotStartInTimeException
+        if (intent?.action == null || intent.action !in listOf(
+                ACTION_PLAY, ACTION_PAUSE, ACTION_STOP, ACTION_NEXT, ACTION_PREVIOUS, ACTION_SHUFFLE
+        )) {
+            startForegroundCompat(buildNotification())
+        }
         when (intent?.action) {
             ACTION_PLAY -> play()
             ACTION_PAUSE -> pause()
@@ -144,7 +160,7 @@ class MusicService : Service() {
                 isPlaying = true
                 startProgressUpdates()
                 updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-                startForeground(NOTIFICATION_ID, buildNotification())
+                startForegroundCompat(buildNotification())
                 broadcastState()
             }
         }
@@ -268,7 +284,7 @@ class MusicService : Service() {
             startProgressUpdates()
             updateMediaSessionMetadata(song)
             updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-            startForeground(NOTIFICATION_ID, buildNotification())
+            startForegroundCompat(buildNotification())
             broadcastState()
             overlayToastManager.showSong(song, getCoverArt(song))
         } catch (e: Exception) {
