@@ -487,11 +487,16 @@ class MusicService : Service() {
         isScanning = true
         broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_STARTED))
         Thread {
-            playlistManager.scanFolder(uri)
-            handler.post {
-                isScanning = false
-                broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
-                broadcastState()
+            try {
+                playlistManager.scanFolder(uri)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to scan folder", e)
+            } finally {
+                handler.post {
+                    isScanning = false
+                    broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
+                    broadcastState()
+                }
             }
         }.start()
     }
