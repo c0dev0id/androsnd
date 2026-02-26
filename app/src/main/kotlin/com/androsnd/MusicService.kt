@@ -338,6 +338,7 @@ class MusicService : Service() {
     }
 
     fun seekTo(positionMs: Int) {
+        if (!isPlayerPrepared) return
         val duration = mediaPlayer?.duration ?: 0
         val clamped = positionMs.coerceIn(0, if (duration > 0) duration else 0)
         mediaPlayer?.seekTo(clamped)
@@ -588,12 +589,6 @@ class MusicService : Service() {
 
     fun broadcastState() {
         broadcastManager.sendBroadcast(Intent(BROADCAST_STATE_CHANGED))
-    }
-
-    fun seekTo(positionMs: Int) {
-        if (!isPlayerPrepared) return
-        mediaPlayer?.seekTo(positionMs)
-        broadcastState()
     }
 
     fun scanFolderAsync(uri: Uri) {
