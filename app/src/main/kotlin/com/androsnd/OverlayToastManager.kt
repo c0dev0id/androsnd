@@ -31,6 +31,8 @@ class OverlayToastManager(private val context: Context) {
         private const val KEY_OVERLAY_Y = "overlay_y"
         private const val KEY_OVERLAY_SCALE = "overlay_scale"
         private const val KEY_OVERLAY_CUSTOM_POS = "overlay_custom_pos"
+        private const val MIN_OVERLAY_SCALE = 0.5f
+        private const val MAX_OVERLAY_SCALE = 3.0f
     }
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -142,7 +144,7 @@ class OverlayToastManager(private val context: Context) {
             context,
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
                 override fun onScale(detector: ScaleGestureDetector): Boolean {
-                    savedScale = (savedScale * detector.scaleFactor).coerceIn(0.5f, 3.0f)
+                    savedScale = (savedScale * detector.scaleFactor).coerceIn(MIN_OVERLAY_SCALE, MAX_OVERLAY_SCALE)
                     content.scaleX = savedScale
                     content.scaleY = savedScale
                     val scaledW = (naturalWidth * savedScale).toInt().coerceAtLeast(1)
