@@ -46,6 +46,20 @@ class PlaylistManager(private val context: Context) {
             folder.songs.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { _songs[it].displayName })
         }
 
+        // Rebuild _songs in display order so index-based navigation follows display order
+        val reorderedSongs = mutableListOf<Song>()
+        for (folder in _folders) {
+            val newIndices = mutableListOf<Int>()
+            for (oldIndex in folder.songs) {
+                newIndices.add(reorderedSongs.size)
+                reorderedSongs.add(_songs[oldIndex])
+            }
+            folder.songs.clear()
+            folder.songs.addAll(newIndices)
+        }
+        _songs.clear()
+        _songs.addAll(reorderedSongs)
+
         currentIndex = 0
     }
 

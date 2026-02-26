@@ -226,15 +226,17 @@ class MainActivity : AppCompatActivity() {
         btnPlay.setIconResource(if (svc.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
 
         if (song != null) {
-            val metadata = svc.extractMetadata(song)
-            songTitle.text = metadata.title
-            songArtist.text = metadata.artist
-            songAlbum.text = metadata.album
+            val metadata = svc.currentMetadata
+            if (metadata != null) {
+                songTitle.text = metadata.title
+                songArtist.text = metadata.artist
+                songAlbum.text = metadata.album
 
-            if (metadata.coverArt != null) {
-                coverArt.setImageBitmap(metadata.coverArt)
-            } else {
-                coverArt.setImageResource(android.R.drawable.ic_media_play)
+                if (metadata.coverArt != null) {
+                    coverArt.setImageBitmap(metadata.coverArt)
+                } else {
+                    coverArt.setImageResource(android.R.drawable.ic_media_play)
+                }
             }
         } else {
             songTitle.text = getString(R.string.no_song)

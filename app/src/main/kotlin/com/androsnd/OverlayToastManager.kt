@@ -11,8 +11,6 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
-import android.view.animation.AlphaAnimation
-import android.view.animation.Animation
 import android.widget.ImageView
 import android.widget.TextView
 import com.androsnd.model.SongMetadata
@@ -73,21 +71,21 @@ class OverlayToastManager(private val context: Context) {
             windowManager.addView(view, params)
             currentView = view
 
-            val fadeIn = AlphaAnimation(0f, 1f).apply { duration = ANIMATION_DURATION_MS }
-            view.startAnimation(fadeIn)
-
-            dismissRunnable = Runnable {
-                val fadeOut = AlphaAnimation(1f, 0f).apply {
-                    duration = ANIMATION_DURATION_MS
-                    setAnimationListener(object : Animation.AnimationListener {
-                        override fun onAnimationStart(a: Animation?) {}
-                        override fun onAnimationRepeat(a: Animation?) {}
-                        override fun onAnimationEnd(a: Animation?) { removeView(view) }
-                    })
+            view.alpha = 0f
+            view.animate()
+                .alpha(1f)
+                .setDuration(ANIMATION_DURATION_MS)
+                .withEndAction {
+                    dismissRunnable = Runnable {
+                        view.animate()
+                            .alpha(0f)
+                            .setDuration(ANIMATION_DURATION_MS)
+                            .withEndAction { removeView(view) }
+                            .start()
+                    }
+                    handler.postDelayed(dismissRunnable!!, DISPLAY_DURATION_MS)
                 }
-                view.startAnimation(fadeOut)
-            }
-            handler.postDelayed(dismissRunnable!!, DISPLAY_DURATION_MS)
+                .start()
         }
     }
 
@@ -103,6 +101,9 @@ class OverlayToastManager(private val context: Context) {
     fun dismiss() {
         dismissRunnable?.let { handler.removeCallbacks(it) }
         dismissRunnable = null
-        currentView?.let { removeView(it) }
+        currentView?.let {
+            it.animate().cancel()
+            removeView(it)
+        }
     }
 }
