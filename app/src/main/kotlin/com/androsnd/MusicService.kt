@@ -213,8 +213,9 @@ class MusicService : Service() {
             return
         }
 
-        if (nextPendingRunnable != null) {
-            handler.removeCallbacks(nextPendingRunnable!!)
+        val pending = nextPendingRunnable
+        if (pending != null) {
+            handler.removeCallbacks(pending)
             nextPendingRunnable = null
             val song = playlistManager.nextFolder()
             if (song != null) {
@@ -222,12 +223,13 @@ class MusicService : Service() {
                 playSong(song)
             }
         } else {
-            nextPendingRunnable = Runnable {
+            val runnable = Runnable {
                 nextPendingRunnable = null
                 val song = playlistManager.nextSong()
                 if (song != null) playSong(song)
             }
-            handler.postDelayed(nextPendingRunnable!!, DOUBLE_TAP_THRESHOLD)
+            nextPendingRunnable = runnable
+            handler.postDelayed(runnable, DOUBLE_TAP_THRESHOLD)
         }
     }
 
@@ -238,8 +240,9 @@ class MusicService : Service() {
             return
         }
 
-        if (prevPendingRunnable != null) {
-            handler.removeCallbacks(prevPendingRunnable!!)
+        val pending = prevPendingRunnable
+        if (pending != null) {
+            handler.removeCallbacks(pending)
             prevPendingRunnable = null
             val song = playlistManager.prevFolder()
             if (song != null) {
@@ -247,12 +250,13 @@ class MusicService : Service() {
                 playSong(song)
             }
         } else {
-            prevPendingRunnable = Runnable {
+            val runnable = Runnable {
                 prevPendingRunnable = null
                 val song = playlistManager.prevSong()
                 if (song != null) playSong(song)
             }
-            handler.postDelayed(prevPendingRunnable!!, DOUBLE_TAP_THRESHOLD)
+            prevPendingRunnable = runnable
+            handler.postDelayed(runnable, DOUBLE_TAP_THRESHOLD)
         }
     }
 
