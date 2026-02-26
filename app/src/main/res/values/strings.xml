@@ -4,7 +4,9 @@
     <string name="no_song">No song selected</string>
     <string name="shuffle_on">Shuffle ON</string>
     <string name="shuffle_off">Shuffle OFF</string>
+    <string name="next_song">Next Song</string>
     <string name="next_folder">Next Folder</string>
+    <string name="prev_song">Previous Song</string>
     <string name="prev_folder">Previous Folder</string>
     <string name="select_folder">Select Folder</string>
     <string name="notification_channel_name">Music Playback</string>

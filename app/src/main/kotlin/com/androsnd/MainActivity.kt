@@ -144,8 +144,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupButtons() {
         btnPlay.setOnClickListener {
-            val svc = musicService ?: return@setOnClickListener
-            if (svc.isPlaying) svc.pause() else svc.play()
+            musicService?.handlePlayPause()
         }
         btnPrev.setOnClickListener { musicService?.handlePrevious() }
         btnNext.setOnClickListener { musicService?.handleNext() }

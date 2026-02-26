@@ -70,7 +70,7 @@ class MusicService : Service() {
     var currentMetadata: SongMetadata? = null
         private set
 
-    private var lastStopTime = 0L
+    private var lastPlayPauseTime = 0L
     private var nextPendingRunnable: Runnable? = null
     private var prevPendingRunnable: Runnable? = null
 
@@ -179,16 +179,20 @@ class MusicService : Service() {
     }
 
     fun handleStop() {
+        stopPlayback()
+    }
+
+    fun handlePlayPause() {
         val now = System.currentTimeMillis()
-        if (now - lastStopTime < DOUBLE_TAP_THRESHOLD) {
-            lastStopTime = 0L
+        if (now - lastPlayPauseTime < DOUBLE_TAP_THRESHOLD) {
+            lastPlayPauseTime = 0L
             val shuffleOn = playlistManager.toggleShuffle()
             val msg = if (shuffleOn) getString(R.string.shuffle_on) else getString(R.string.shuffle_off)
             overlayToastManager.showMessage(msg)
             broadcastState()
         } else {
-            lastStopTime = now
-            stopPlayback()
+            lastPlayPauseTime = now
+            if (isPlaying) pause() else play()
         }
     }
 
@@ -223,6 +227,7 @@ class MusicService : Service() {
                 playSong(song)
             }
         } else {
+            overlayToastManager.showMessage(getString(R.string.next_song))
             val runnable = Runnable {
                 nextPendingRunnable = null
                 val song = playlistManager.nextSong()
@@ -250,6 +255,7 @@ class MusicService : Service() {
                 playSong(song)
             }
         } else {
+            overlayToastManager.showMessage(getString(R.string.prev_song))
             val runnable = Runnable {
                 prevPendingRunnable = null
                 val song = playlistManager.prevSong()
