@@ -7,4 +7,10 @@
     <string name="next_folder">Next Folder</string>
     <string name="prev_folder">Previous Folder</string>
     <string name="select_folder">Select Folder</string>
+    <string name="notification_channel_name">Music Playback</string>
+    <string name="notification_channel_description">Music playback controls</string>
+    <string name="notification_action_pause">Pause</string>
+    <string name="notification_action_play">Play</string>
+    <string name="notification_action_previous">Previous</string>
+    <string name="notification_action_next">Next</string>
 </resources>

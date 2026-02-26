@@ -7,14 +7,12 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
-import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
@@ -24,14 +22,18 @@ import android.os.PowerManager
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.androsnd.model.Song
+import com.androsnd.model.SongMetadata
 
 class MusicService : Service() {
 
     companion object {
+        private const val TAG = "MusicService"
+
         const val CHANNEL_ID = "androsnd_channel"
         const val NOTIFICATION_ID = 1
 
@@ -43,11 +45,6 @@ class MusicService : Service() {
         const val ACTION_SHUFFLE = "com.androsnd.SHUFFLE"
 
         const val BROADCAST_STATE_CHANGED = "com.androsnd.STATE_CHANGED"
-        const val EXTRA_IS_PLAYING = "is_playing"
-        const val EXTRA_SONG_INDEX = "song_index"
-        const val EXTRA_IS_SHUFFLE = "is_shuffle"
-        const val EXTRA_POSITION = "position"
-        const val EXTRA_DURATION = "duration"
 
         private const val DOUBLE_TAP_THRESHOLD = 1000L
     }
@@ -97,10 +94,10 @@ class MusicService : Service() {
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Music Playback",
+            getString(R.string.notification_channel_name),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Music playback controls"
+            description = getString(R.string.notification_channel_description)
             setShowBadge(false)
         }
         val nm = getSystemService(NotificationManager::class.java)
@@ -282,13 +279,14 @@ class MusicService : Service() {
             }
             isPlaying = true
             startProgressUpdates()
-            updateMediaSessionMetadata(song)
+            val metadata = extractMetadata(song)
+            updateMediaSessionMetadata(metadata)
             updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
             startForegroundCompat(buildNotification())
             broadcastState()
-            overlayToastManager.showSong(song, getCoverArt(song))
+            overlayToastManager.showSong(metadata)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Failed to start playing ${song.displayName}", e)
         }
     }
 
@@ -318,59 +316,35 @@ class MusicService : Service() {
         audioManager.requestAudioFocus(focusRequest)
     }
 
-    private fun updateMediaSessionMetadata(song: Song) {
+    fun extractMetadata(song: Song): SongMetadata {
         val retriever = MediaMetadataRetriever()
-        try {
+        return try {
             retriever.setDataSource(applicationContext, song.uri)
             val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: song.displayName
             val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
             val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
             val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-
             val artBytes = retriever.embeddedPicture
-            val artBitmap = if (artBytes != null) BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size) else null
-
-            val metadata = MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
-                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, album)
-                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                .apply { if (artBitmap != null) putBitmap(MediaMetadataCompat.METADATA_KEY_ART, artBitmap) }
-                .build()
-            mediaSession.setMetadata(metadata)
+            val coverArt = if (artBytes != null) BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size) else null
+            SongMetadata(title, artist, album, duration, coverArt)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w(TAG, "Failed to extract metadata for ${song.displayName}", e)
+            SongMetadata(song.displayName, "", "", 0L, null)
         } finally {
             retriever.release()
         }
     }
 
-    fun getCoverArt(song: Song): Bitmap? {
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(applicationContext, song.uri)
-            val artBytes = retriever.embeddedPicture
-            if (artBytes != null) BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size) else null
-        } catch (e: Exception) {
-            null
-        } finally {
-            retriever.release()
+    private fun updateMediaSessionMetadata(metadata: SongMetadata) {
+        val builder = MediaMetadataCompat.Builder()
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, metadata.title)
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, metadata.artist)
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, metadata.album)
+            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, metadata.duration)
+        if (metadata.coverArt != null) {
+            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, metadata.coverArt)
         }
-    }
-
-    fun getSongMetadata(song: Song): Triple<String, String, String> {
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(applicationContext, song.uri)
-            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: song.displayName
-            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
-            val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
-            Triple(title, artist, album)
-        } catch (e: Exception) {
-            Triple(song.displayName, "", "")
-        } finally {
-            retriever.release()
-        }
+        mediaSession.setMetadata(builder.build())
     }
 
     private fun updatePlaybackState(state: Int) {
@@ -395,13 +369,13 @@ class MusicService : Service() {
         val playPauseAction = if (isPlaying) {
             NotificationCompat.Action(
                 android.R.drawable.ic_media_pause,
-                "Pause",
+                getString(R.string.notification_action_pause),
                 createServicePendingIntent(ACTION_PAUSE)
             )
         } else {
             NotificationCompat.Action(
                 android.R.drawable.ic_media_play,
-                "Play",
+                getString(R.string.notification_action_play),
                 createServicePendingIntent(ACTION_PLAY)
             )
         }
@@ -422,12 +396,12 @@ class MusicService : Service() {
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(mainIntent)
             .addAction(
-                android.R.drawable.ic_media_previous, "Previous",
+                android.R.drawable.ic_media_previous, getString(R.string.notification_action_previous),
                 createServicePendingIntent(ACTION_PREVIOUS)
             )
             .addAction(playPauseAction)
             .addAction(
-                android.R.drawable.ic_media_next, "Next",
+                android.R.drawable.ic_media_next, getString(R.string.notification_action_next),
                 createServicePendingIntent(ACTION_NEXT)
             )
             .setStyle(mediaStyle)
@@ -465,14 +439,7 @@ class MusicService : Service() {
     }
 
     fun broadcastState() {
-        val intent = Intent(BROADCAST_STATE_CHANGED).apply {
-            putExtra(EXTRA_IS_PLAYING, isPlaying)
-            putExtra(EXTRA_SONG_INDEX, playlistManager.currentIndex)
-            putExtra(EXTRA_IS_SHUFFLE, playlistManager.isShuffleOn)
-            putExtra(EXTRA_POSITION, mediaPlayer?.currentPosition ?: 0)
-            putExtra(EXTRA_DURATION, mediaPlayer?.duration ?: 0)
-        }
-        broadcastManager.sendBroadcast(intent)
+        broadcastManager.sendBroadcast(Intent(BROADCAST_STATE_CHANGED))
     }
 
     fun getPosition(): Int = mediaPlayer?.currentPosition ?: 0

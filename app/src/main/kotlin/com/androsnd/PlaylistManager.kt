@@ -17,11 +17,16 @@ class PlaylistManager(private val context: Context) {
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    val songs = mutableListOf<Song>()
-    val folders = mutableListOf<PlaylistFolder>()
+    private val _songs = mutableListOf<Song>()
+    val songs: List<Song> get() = _songs
+
+    private val _folders = mutableListOf<PlaylistFolder>()
+    val folders: List<PlaylistFolder> get() = _folders
+
     var currentIndex: Int = 0
         private set
     var isShuffleOn: Boolean = false
+        private set
 
     fun loadSavedFolder(): Uri? {
         val uriString = prefs.getString(KEY_FOLDER_URI, null) ?: return null
@@ -30,17 +35,15 @@ class PlaylistManager(private val context: Context) {
 
     fun scanFolder(treeUri: Uri) {
         prefs.edit().putString(KEY_FOLDER_URI, treeUri.toString()).apply()
-        songs.clear()
-        folders.clear()
+        _songs.clear()
+        _folders.clear()
 
         val rootDoc = DocumentFile.fromTreeUri(context, treeUri) ?: return
         scanDocumentFile(rootDoc, rootDoc.name ?: "Music")
 
-        folders.sortBy { it.name }
-        folders.forEach { folder ->
-            folder.songs.sortWith(Comparator { a, b ->
-                songs[a].displayName.compareTo(songs[b].displayName, ignoreCase = true)
-            })
+        _folders.sortBy { it.name }
+        _folders.forEach { folder ->
+            folder.songs.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { _songs[it].displayName })
         }
 
         currentIndex = 0
@@ -56,11 +59,11 @@ class PlaylistManager(private val context: Context) {
         if (audioFiles.isNotEmpty()) {
             val folderName = doc.name ?: parentPath
             val folder = PlaylistFolder(name = folderName, path = parentPath)
-            folders.add(folder)
+            _folders.add(folder)
 
             for (file in audioFiles) {
-                val songIndex = songs.size
-                songs.add(
+                val songIndex = _songs.size
+                _songs.add(
                     Song(
                         uri = file.uri,
                         displayName = file.name ?: "Unknown",
