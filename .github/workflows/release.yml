@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >
+          Release version (e.g., v1.2.3). Leave empty to auto-increment
+          the patch version from the latest git tag.
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+
+          if [ -n "$INPUT_VERSION" ]; then
+            if [[ "$INPUT_VERSION" != v* ]]; then
+              INPUT_VERSION="v${INPUT_VERSION}"
+            fi
+            VERSION="$INPUT_VERSION"
+          else
+            LATEST_TAG=$(git tag -l 'v*' | sort -V | tail -n 1)
+
+            if [ -z "$LATEST_TAG" ]; then
+              VERSION="v0.0.1"
+            else
+              VERSION_BODY="${LATEST_TAG#v}"
+              IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_BODY"
+              PATCH=$((PATCH + 1))
+              VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+            fi
+          fi
+
+          echo "Resolved version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode signing keystore
+        run: |
+          echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > "${{ runner.temp }}/release.keystore"
+
+      - name: Build signed release APK
+        env:
+          SIGNING_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+
+      - name: Rename APK
+        id: rename
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mv app/build/outputs/apk/release/app-release.apk \
+             "app/build/outputs/apk/release/andosnd-${VERSION}.apk"
+          echo "apk_path=app/build/outputs/apk/release/andosnd-${VERSION}.apk" >> "$GITHUB_OUTPUT"
+          mv keytester/build/outputs/apk/release/keytester-release-unsigned.apk \
+             "keytester/build/outputs/apk/release/keytester-${VERSION}.apk"
+          echo "keytester_apk_path=keytester/build/outputs/apk/release/keytester-${VERSION}.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git tag "$VERSION"
+          git push origin "$VERSION"
+
+      - name: Create GitHub release draft
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          draft: true
+          generate_release_notes: true
+          files: |
+            ${{ steps.rename.outputs.apk_path }}
+            ${{ steps.rename.outputs.keytester_apk_path }}
