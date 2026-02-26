@@ -347,6 +347,8 @@ class MusicService : Service() {
     }
 
     fun playSong(song: Song) {
+        mediaPlayer?.setOnCompletionListener(null)
+        mediaPlayer?.setOnErrorListener(null)
         mediaPlayer?.release()
         mediaPlayer = null
         isPlaying = false
@@ -381,7 +383,15 @@ class MusicService : Service() {
                     broadcastState()
                 }
             }
-            mp.setOnCompletionListener { onTrackComplete() }
+            mp.setOnCompletionListener { player ->
+                if (player == mediaPlayer) {
+                    onTrackComplete()
+                }
+            }
+            mp.setOnErrorListener { _, what, extra ->
+                Log.e(TAG, "MediaPlayer error: what=$what extra=$extra for ${song.displayName}; skipping track")
+                true // Return true to mark error as handled and prevent onCompletion from also firing
+            }
             mp.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
             mp.prepareAsync()
             mediaPlayer = mp
