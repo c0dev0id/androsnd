@@ -46,7 +46,7 @@ class MusicService : Service() {
 
         const val BROADCAST_STATE_CHANGED = "com.androsnd.STATE_CHANGED"
 
-        private const val DOUBLE_TAP_THRESHOLD = 1000L
+        private const val DOUBLE_TAP_THRESHOLD = 500L
     }
 
     inner class MusicBinder : Binder() {
@@ -67,10 +67,12 @@ class MusicService : Service() {
 
     var isPlaying: Boolean = false
         private set
+    var currentMetadata: SongMetadata? = null
+        private set
 
-    private var lastNextTime = 0L
-    private var lastPrevTime = 0L
     private var lastStopTime = 0L
+    private var nextPendingRunnable: Runnable? = null
+    private var prevPendingRunnable: Runnable? = null
 
     private lateinit var overlayToastManager: OverlayToastManager
     private lateinit var broadcastManager: LocalBroadcastManager
@@ -197,6 +199,7 @@ class MusicService : Service() {
         }
         mediaPlayer = null
         isPlaying = false
+        currentMetadata = null
         stopProgressUpdates()
         updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
         broadcastState()
@@ -204,36 +207,56 @@ class MusicService : Service() {
     }
 
     fun handleNext() {
-        val now = System.currentTimeMillis()
-        if (!playlistManager.isShuffleOn && now - lastNextTime < DOUBLE_TAP_THRESHOLD) {
-            lastNextTime = 0L
+        if (playlistManager.isShuffleOn) {
+            val song = playlistManager.shuffleSong()
+            if (song != null) playSong(song)
+            return
+        }
+
+        val pending = nextPendingRunnable
+        if (pending != null) {
+            handler.removeCallbacks(pending)
+            nextPendingRunnable = null
             val song = playlistManager.nextFolder()
             if (song != null) {
                 overlayToastManager.showMessage(getString(R.string.next_folder))
                 playSong(song)
             }
         } else {
-            lastNextTime = now
-            val song = if (playlistManager.isShuffleOn) playlistManager.shuffleSong()
-                       else playlistManager.nextSong()
-            if (song != null) playSong(song)
+            val runnable = Runnable {
+                nextPendingRunnable = null
+                val song = playlistManager.nextSong()
+                if (song != null) playSong(song)
+            }
+            nextPendingRunnable = runnable
+            handler.postDelayed(runnable, DOUBLE_TAP_THRESHOLD)
         }
     }
 
     fun handlePrevious() {
-        val now = System.currentTimeMillis()
-        if (!playlistManager.isShuffleOn && now - lastPrevTime < DOUBLE_TAP_THRESHOLD) {
-            lastPrevTime = 0L
+        if (playlistManager.isShuffleOn) {
+            val song = playlistManager.shuffleSong()
+            if (song != null) playSong(song)
+            return
+        }
+
+        val pending = prevPendingRunnable
+        if (pending != null) {
+            handler.removeCallbacks(pending)
+            prevPendingRunnable = null
             val song = playlistManager.prevFolder()
             if (song != null) {
                 overlayToastManager.showMessage(getString(R.string.prev_folder))
                 playSong(song)
             }
         } else {
-            lastPrevTime = now
-            val song = if (playlistManager.isShuffleOn) playlistManager.shuffleSong()
-                       else playlistManager.prevSong()
-            if (song != null) playSong(song)
+            val runnable = Runnable {
+                prevPendingRunnable = null
+                val song = playlistManager.prevSong()
+                if (song != null) playSong(song)
+            }
+            prevPendingRunnable = runnable
+            handler.postDelayed(runnable, DOUBLE_TAP_THRESHOLD)
         }
     }
 
@@ -280,6 +303,7 @@ class MusicService : Service() {
             isPlaying = true
             startProgressUpdates()
             val metadata = extractMetadata(song)
+            currentMetadata = metadata
             updateMediaSessionMetadata(metadata)
             updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
             startForegroundCompat(buildNotification())
@@ -297,6 +321,7 @@ class MusicService : Service() {
     }
 
     private fun requestAudioFocus() {
+        audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -447,6 +472,8 @@ class MusicService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        nextPendingRunnable?.let { handler.removeCallbacks(it) }
+        prevPendingRunnable?.let { handler.removeCallbacks(it) }
         stopProgressUpdates()
         mediaPlayer?.release()
         mediaPlayer = null
