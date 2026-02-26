@@ -22,6 +22,8 @@ import android.widget.ImageView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -112,6 +114,17 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        val buttonBar = findViewById<View>(R.id.button_bar)
+        ViewCompat.setOnApplyWindowInsetsListener(buttonBar) { view, insets ->
+            val navBarInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val extraPaddingPx = (8 * view.resources.displayMetrics.density).toInt()
+            view.setPadding(
+                view.paddingLeft, view.paddingTop,
+                view.paddingRight, navBarInsets.bottom + extraPaddingPx
+            )
+            insets
+        }
 
         bindViews()
         setupRecyclerView()
