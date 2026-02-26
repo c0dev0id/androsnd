@@ -1,6 +1,7 @@
 package com.androsnd
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
@@ -38,7 +39,7 @@ class OverlayToastManager(private val context: Context) {
         showOverlay(message, "", "", null)
     }
 
-    private fun showOverlay(title: String, artist: String, album: String, cover: android.graphics.Bitmap?) {
+    private fun showOverlay(title: String, artist: String, album: String, cover: Bitmap?) {
         if (!Settings.canDrawOverlays(context)) return
 
         handler.post {

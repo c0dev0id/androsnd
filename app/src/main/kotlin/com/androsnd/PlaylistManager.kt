@@ -43,7 +43,7 @@ class PlaylistManager(private val context: Context) {
 
         _folders.sortBy { it.name }
         _folders.forEach { folder ->
-            folder.songs.sortBy { _songs[it].displayName.lowercase() }
+            folder.songs.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { _songs[it].displayName })
         }
 
         currentIndex = 0
