@@ -194,6 +194,7 @@ class MainActivity : AppCompatActivity() {
             }
             override fun onStartTrackingTouch(sb: SeekBar?) { isUserSeekBarTouch = true }
             override fun onStopTrackingTouch(sb: SeekBar?) {
+                musicService?.seekTo(sb?.progress ?: 0)
                 isUserSeekBarTouch = false
             }
         })
