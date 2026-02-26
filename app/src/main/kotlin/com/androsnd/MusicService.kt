@@ -105,7 +105,12 @@ class MusicService : Service() {
 
         val savedUri = playlistManager.loadSavedFolder()
         if (savedUri != null) {
-            scanFolderAsync(savedUri)
+            if (playlistManager.loadScanCache()) {
+                broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
+                broadcastState()
+            } else {
+                scanFolderAsync(savedUri)
+            }
         }
     }
 
@@ -150,7 +155,7 @@ class MusicService : Service() {
                 override fun onSkipToQueueItem(id: Long) { playSongAtIndex(id.toInt()) }
                 override fun onPlayFromUri(uri: Uri?, extras: Bundle?) {
                     uri ?: return
-                    val song = Song(uri = uri, displayName = uri.lastPathSegment ?: "Unknown", folderPath = "", folderName = "")
+                    val song = Song(uri = uri, displayName = uri.lastPathSegment ?: "Unknown")
                     playSong(song)
                 }
                 override fun onPrepare() {
@@ -597,6 +602,7 @@ class MusicService : Service() {
         isPlaying = false
         stopProgressUpdates()
 
+        playlistManager.clearScanCache()
         isScanning = true
         broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_STARTED))
         scanExecutor.execute {

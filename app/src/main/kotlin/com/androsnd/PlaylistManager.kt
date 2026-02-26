@@ -3,16 +3,20 @@ package com.androsnd
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.support.v4.media.session.PlaybackStateCompat
-import androidx.documentfile.provider.DocumentFile
+import android.util.Log
 import com.androsnd.model.PlaylistFolder
 import com.androsnd.model.Song
+import org.json.JSONArray
+import org.json.JSONObject
 
 class PlaylistManager(private val context: Context) {
 
     companion object {
         private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_FOLDER_URI = "folder_uri"
+        private const val KEY_SCAN_CACHE = "scan_cache"
         private val AUDIO_EXTENSIONS = setOf("mp3", "ogg", "flac", "aac", "m4a", "opus")
     }
 
@@ -46,12 +50,14 @@ class PlaylistManager(private val context: Context) {
     }
 
     fun scanFolder(treeUri: Uri) {
+        val startTime = System.currentTimeMillis()
         prefs.edit().putString(KEY_FOLDER_URI, treeUri.toString()).apply()
         _songs.clear()
         _folders.clear()
 
-        val rootDoc = DocumentFile.fromTreeUri(context, treeUri) ?: return
-        scanDocumentFile(rootDoc, rootDoc.name ?: "Music")
+        val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
+        val rootName = rootDocId.substringAfterLast(':').substringAfterLast('/').ifEmpty { "Music" }
+        scanDocumentTree(treeUri, rootDocId, rootName)
 
         _folders.sortBy { it.name }
         _folders.forEach { folder ->
@@ -73,43 +79,140 @@ class PlaylistManager(private val context: Context) {
         _songs.addAll(reorderedSongs)
 
         // Build reverse lookup for O(1) getFolderIndexForSong()
+        rebuildSongToFolderIndex()
+
+        currentIndex = 0
+
+        saveScanCache()
+
+        val elapsed = System.currentTimeMillis() - startTime
+        Log.d("PlaylistManager", "Scan completed: ${_songs.size} songs in ${_folders.size} folders in ${elapsed}ms")
+    }
+
+    private fun scanDocumentTree(treeUri: Uri, parentDocId: String, parentPath: String) {
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE
+        )
+
+        val audioFiles = mutableListOf<Pair<String, Uri>>()
+        val subDirs = mutableListOf<Pair<String, String>>()
+
+        context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            val mimeCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+
+            while (cursor.moveToNext()) {
+                val docId = cursor.getString(idCol)
+                val name = cursor.getString(nameCol)
+                val mime = cursor.getString(mimeCol)
+
+                if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                    subDirs.add(docId to name)
+                } else if (isAudioFile(name)) {
+                    val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+                    audioFiles.add(name to fileUri)
+                }
+            }
+        }
+
+        if (audioFiles.isNotEmpty()) {
+            val folderName = parentPath.substringAfterLast('/')
+            val folder = PlaylistFolder(name = folderName, path = parentPath)
+            _folders.add(folder)
+
+            for ((name, uri) in audioFiles) {
+                val songIndex = _songs.size
+                _songs.add(Song(uri = uri, displayName = name))
+                folder.songs.add(songIndex)
+            }
+        }
+
+        for ((docId, dirName) in subDirs) {
+            scanDocumentTree(treeUri, docId, "$parentPath/$dirName")
+        }
+    }
+
+    fun saveScanCache() {
+        val json = JSONObject().apply {
+            val songsArray = JSONArray()
+            for (song in _songs) {
+                songsArray.put(JSONObject().apply {
+                    put("uri", song.uri.toString())
+                    put("displayName", song.displayName)
+                })
+            }
+            put("songs", songsArray)
+
+            val foldersArray = JSONArray()
+            for (folder in _folders) {
+                foldersArray.put(JSONObject().apply {
+                    put("name", folder.name)
+                    put("path", folder.path)
+                    val songIndices = JSONArray()
+                    for (idx in folder.songs) songIndices.put(idx)
+                    put("songs", songIndices)
+                })
+            }
+            put("folders", foldersArray)
+        }
+        prefs.edit().putString(KEY_SCAN_CACHE, json.toString()).apply()
+    }
+
+    fun loadScanCache(): Boolean {
+        val jsonStr = prefs.getString(KEY_SCAN_CACHE, null) ?: return false
+        return try {
+            val json = JSONObject(jsonStr)
+            val songsArray = json.getJSONArray("songs")
+            val foldersArray = json.getJSONArray("folders")
+
+            _songs.clear()
+            for (i in 0 until songsArray.length()) {
+                val obj = songsArray.getJSONObject(i)
+                _songs.add(Song(
+                    uri = Uri.parse(obj.getString("uri")),
+                    displayName = obj.getString("displayName")
+                ))
+            }
+
+            _folders.clear()
+            for (i in 0 until foldersArray.length()) {
+                val obj = foldersArray.getJSONObject(i)
+                val folder = PlaylistFolder(
+                    name = obj.getString("name"),
+                    path = obj.getString("path")
+                )
+                val indices = obj.getJSONArray("songs")
+                for (j in 0 until indices.length()) {
+                    folder.songs.add(indices.getInt(j))
+                }
+                _folders.add(folder)
+            }
+
+            rebuildSongToFolderIndex()
+
+            currentIndex = 0
+            true
+        } catch (e: Exception) {
+            Log.w("PlaylistManager", "Failed to load scan cache", e)
+            clearScanCache()
+            false
+        }
+    }
+
+    fun clearScanCache() {
+        prefs.edit().remove(KEY_SCAN_CACHE).apply()
+    }
+
+    private fun rebuildSongToFolderIndex() {
         songToFolderIndex.clear()
         for ((fi, folder) in _folders.withIndex()) {
             for (si in folder.songs) {
                 songToFolderIndex[si] = fi
             }
-        }
-
-        currentIndex = 0
-    }
-
-    private fun scanDocumentFile(doc: DocumentFile, parentPath: String) {
-        if (!doc.isDirectory) return
-
-        val children = doc.listFiles()
-        val audioFiles = children.filter { it.isFile && isAudioFile(it.name ?: "") }
-        val subDirs = children.filter { it.isDirectory }
-
-        if (audioFiles.isNotEmpty()) {
-            val folderName = doc.name ?: parentPath
-            val folder = PlaylistFolder(name = folderName, path = parentPath)
-            _folders.add(folder)
-
-            for (file in audioFiles) {
-                val songIndex = _songs.size
-                _songs.add(
-                    Song(
-                        uri = file.uri,
-                        displayName = file.name ?: "Unknown"
-                    )
-                )
-                folder.songs.add(songIndex)
-            }
-        }
-
-        for (subDir in subDirs) {
-            val subPath = "$parentPath/${subDir.name}"
-            scanDocumentFile(subDir, subPath)
         }
     }
 
