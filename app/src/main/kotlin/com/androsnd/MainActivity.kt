@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var timeCurrentView: TextView
     private lateinit var timeTotalView: TextView
     private lateinit var playlistRecycler: RecyclerView
+    private lateinit var loadingIndicator: View
     private lateinit var btnPlay: MaterialButton
     private lateinit var btnPrev: MaterialButton
     private lateinit var btnNext: MaterialButton
@@ -56,9 +57,13 @@ class MainActivity : AppCompatActivity() {
             val musicBinder = binder as MusicService.MusicBinder
             musicService = musicBinder.getService()
             isBound = true
-            updateUI()
-            if (musicService?.playlistManager?.songs?.isEmpty() == true) {
-                openFolderPicker()
+            if (musicService?.isScanning == true) {
+                showLoading()
+            } else {
+                updateUI()
+                if (musicService?.playlistManager?.songs?.isEmpty() == true) {
+                    openFolderPicker()
+                }
             }
         }
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -75,6 +80,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val scanReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                MusicService.BROADCAST_SCAN_STARTED -> showLoading()
+                MusicService.BROADCAST_SCAN_COMPLETED -> {
+                    hideLoading()
+                    updateUI()
+                }
+            }
+        }
+    }
+
     private val folderPickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -82,9 +99,7 @@ class MainActivity : AppCompatActivity() {
             contentResolver.takePersistableUriPermission(
                 it, Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
-            musicService?.playlistManager?.scanFolder(it)
-            updatePlaylist()
-            musicService?.broadcastState()
+            musicService?.scanFolderAsync(it)
         }
     }
 
@@ -113,6 +128,12 @@ class MainActivity : AppCompatActivity() {
             stateReceiver,
             IntentFilter(MusicService.BROADCAST_STATE_CHANGED)
         )
+
+        val scanFilter = IntentFilter().apply {
+            addAction(MusicService.BROADCAST_SCAN_STARTED)
+            addAction(MusicService.BROADCAST_SCAN_COMPLETED)
+        }
+        LocalBroadcastManager.getInstance(this).registerReceiver(scanReceiver, scanFilter)
     }
 
     private fun bindViews() {
@@ -124,6 +145,7 @@ class MainActivity : AppCompatActivity() {
         timeCurrentView = findViewById(R.id.time_current)
         timeTotalView = findViewById(R.id.time_total)
         playlistRecycler = findViewById(R.id.playlist_recycler)
+        loadingIndicator = findViewById(R.id.loading_indicator)
         btnPlay = findViewById(R.id.btn_play)
         btnPrev = findViewById(R.id.btn_prev)
         btnNext = findViewById(R.id.btn_next)
@@ -217,6 +239,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateUI() {
         val svc = musicService ?: return
+        if (svc.isScanning) return
         val pm = svc.playlistManager
         val song = pm.getCurrentSong()
 
@@ -262,6 +285,16 @@ class MainActivity : AppCompatActivity() {
         playlistAdapter.submitData(pm.folders, pm.songs, pm.currentIndex)
     }
 
+    private fun showLoading() {
+        loadingIndicator.visibility = View.VISIBLE
+        playlistRecycler.visibility = View.GONE
+    }
+
+    private fun hideLoading() {
+        loadingIndicator.visibility = View.GONE
+        playlistRecycler.visibility = View.VISIBLE
+    }
+
     private fun formatTime(ms: Int): String {
         val totalSeconds = ms / 1000
         val minutes = totalSeconds / 60
@@ -272,6 +305,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(stateReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(scanReceiver)
         if (isBound) {
             unbindService(serviceConnection)
             isBound = false

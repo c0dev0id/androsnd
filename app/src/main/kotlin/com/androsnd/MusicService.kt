@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -45,6 +46,8 @@ class MusicService : Service() {
         const val ACTION_SHUFFLE = "com.androsnd.SHUFFLE"
 
         const val BROADCAST_STATE_CHANGED = "com.androsnd.STATE_CHANGED"
+        const val BROADCAST_SCAN_STARTED = "com.androsnd.SCAN_STARTED"
+        const val BROADCAST_SCAN_COMPLETED = "com.androsnd.SCAN_COMPLETED"
 
         private const val DOUBLE_TAP_THRESHOLD = 500L
     }
@@ -66,6 +69,8 @@ class MusicService : Service() {
     private var progressRunnable: Runnable? = null
 
     var isPlaying: Boolean = false
+        private set
+    var isScanning: Boolean = false
         private set
     var currentMetadata: SongMetadata? = null
         private set
@@ -89,7 +94,7 @@ class MusicService : Service() {
 
         val savedUri = playlistManager.loadSavedFolder()
         if (savedUri != null) {
-            playlistManager.scanFolder(savedUri)
+            scanFolderAsync(savedUri)
         }
     }
 
@@ -471,6 +476,24 @@ class MusicService : Service() {
 
     fun broadcastState() {
         broadcastManager.sendBroadcast(Intent(BROADCAST_STATE_CHANGED))
+    }
+
+    fun scanFolderAsync(uri: Uri) {
+        mediaPlayer?.let { it.stop(); it.release() }
+        mediaPlayer = null
+        isPlaying = false
+        stopProgressUpdates()
+
+        isScanning = true
+        broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_STARTED))
+        Thread {
+            playlistManager.scanFolder(uri)
+            handler.post {
+                isScanning = false
+                broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
+                broadcastState()
+            }
+        }.start()
     }
 
     fun getPosition(): Int = mediaPlayer?.currentPosition ?: 0
