@@ -160,7 +160,8 @@ class OverlayToastManager(private val context: Context) {
         }
         fadeOut.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
-                removeView(view)
+                view.alpha = 0f
+                handler.post { removeView(view) }
             }
         })
         currentAnimator = fadeOut
