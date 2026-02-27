@@ -5,6 +5,7 @@
     android:orientation="horizontal"
     android:padding="8dp"
     android:paddingStart="24dp"
+    android:paddingEnd="24dp"
     android:background="@drawable/selector_song_item"
     android:gravity="center_vertical">
 

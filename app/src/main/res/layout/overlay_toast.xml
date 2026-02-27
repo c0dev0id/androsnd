@@ -11,6 +11,7 @@
         android:id="@+id/overlay_cover"
         android:layout_width="48dp"
         android:layout_height="48dp"
+        android:contentDescription="@string/overlay_cover_description"
         android:scaleType="centerCrop" />
 
     <LinearLayout

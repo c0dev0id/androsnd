@@ -11,6 +11,7 @@
         android:layout_width="24dp"
         android:layout_height="24dp"
         android:src="@android:drawable/ic_menu_agenda"
+        android:contentDescription="@string/folder_icon_description"
         android:layout_marginEnd="8dp" />
 
     <TextView

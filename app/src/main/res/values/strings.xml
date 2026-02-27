@@ -2,12 +2,6 @@
 <resources>
     <string name="app_name">Androsnd</string>
     <string name="no_song">No song selected</string>
-    <string name="shuffle_on">Shuffle ON</string>
-    <string name="shuffle_off">Shuffle OFF</string>
-    <string name="next_song">Next Song</string>
-    <string name="next_folder">Next Folder</string>
-    <string name="prev_song">Previous Song</string>
-    <string name="prev_folder">Previous Folder</string>
     <string name="select_folder">Select Folder</string>
     <string name="notification_channel_name">Music Playback</string>
     <string name="notification_channel_description">Music playback controls</string>
@@ -16,4 +10,13 @@
     <string name="notification_action_previous">Previous</string>
     <string name="notification_action_next">Next</string>
     <string name="loading_files">Loading files…</string>
+    <string name="btn_prev">Prev</string>
+    <string name="btn_play">Play</string>
+    <string name="btn_next">Next</string>
+    <string name="btn_stop">Stop</string>
+    <string name="btn_shuffle">Shuffle</string>
+    <string name="time_zero">0:00</string>
+    <string name="cover_art_description">Cover art</string>
+    <string name="folder_icon_description">Folder</string>
+    <string name="overlay_cover_description">Song cover</string>
 </resources>
