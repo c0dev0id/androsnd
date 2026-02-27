@@ -122,7 +122,7 @@ class PlaylistManager(private val context: Context) {
                         uri = songUri,
                         displayName = name ?: "Unknown",
                         folderPath = parentPath,
-                        folderName = folderName
+                        folderName = folderDisplayName
                     )
                 )
                 folder.songs.add(songIndex)
