@@ -82,12 +82,19 @@ class MusicService : MediaBrowserServiceCompat() {
         @MainThread
         override fun onPrepared() {
             // Called when prepareSong() finishes — player is ready but not started.
-            val song = playlistManager.getCurrentSong() ?: return
-            val metadata = metadataExtractor.extract(song)
-            currentMetadata = metadata
-            updateMediaSessionMetadata(metadata)
+            // Broadcast state immediately so the UI can show the song is prepared,
+            // then extract metadata in the background to avoid blocking the main thread.
             updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
             broadcastState()
+            val song = playlistManager.getCurrentSong() ?: return
+            scanExecutor.execute {
+                val metadata = metadataExtractor.extract(song)
+                handler.post {
+                    currentMetadata = metadata
+                    updateMediaSessionMetadata(metadata)
+                    broadcastState()
+                }
+            }
         }
 
         @MainThread
