@@ -15,6 +15,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.os.PowerManager
 import android.support.v4.media.MediaBrowserCompat
@@ -395,6 +396,9 @@ class PlayerService : MediaBrowserServiceCompat() {
                 Log.e(TAG, "MediaPlayer error: what=$what extra=$extra for ${entity.displayName}")
                 true
             }
+            // All MediaPlayer callbacks fire on the player HandlerThread, matching
+            // the thread where mediaPlayer is written. The identity guard prevents
+            // stale listeners from triggering after the player has been replaced.
             mp.setOnPreparedListener { player ->
                 if (mediaPlayer == player) {
                     isPlayerPrepared = true

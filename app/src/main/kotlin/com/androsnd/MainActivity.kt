@@ -112,7 +112,7 @@ class MainActivity : AppCompatActivity() {
         uri?.let {
             contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             val bundle = Bundle().apply { putString(PlayerService.EXTRA_FOLDER_URI, it.toString()) }
-            mediaController?.sendCustomAction(PlayerService.CUSTOM_ACTION_SCAN_FOLDER, bundle, null)
+            mediaController?.transportControls?.sendCustomAction(PlayerService.CUSTOM_ACTION_SCAN_FOLDER, bundle)
         }
     }
 
