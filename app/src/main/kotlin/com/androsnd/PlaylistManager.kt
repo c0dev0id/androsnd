@@ -52,7 +52,7 @@ class PlaylistManager(private val context: Context) {
 
         val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
         val rootName = queryDisplayName(treeUri, rootDocId) ?: "Music"
-        scanTree(treeUri, rootDocId, rootName)
+        scanTree(treeUri, rootDocId, rootName, rootName)
 
         _folders.sortBy { it.name }
         _folders.forEach { folder ->
@@ -93,7 +93,7 @@ class PlaylistManager(private val context: Context) {
         return null
     }
 
-    private fun scanTree(treeUri: Uri, parentDocId: String, parentPath: String) {
+    private fun scanTree(treeUri: Uri, parentDocId: String, folderDisplayName: String, parentPath: String) {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -101,21 +101,19 @@ class PlaylistManager(private val context: Context) {
             DocumentsContract.Document.COLUMN_MIME_TYPE
         )
 
-        data class ChildDir(val docId: String, val name: String)
-
         val audioFiles = mutableListOf<Pair<String, String>>() // docId to displayName
-        val subDirs = mutableListOf<ChildDir>()
+        val subDirs = mutableListOf<Pair<String, String>>() // docId to displayName
 
         context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
             val idIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
             val nameIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
             val mimeIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
             while (cursor.moveToNext()) {
-                val docId = cursor.getString(idIdx)
+                val docId = cursor.getString(idIdx) ?: continue
                 val name = cursor.getString(nameIdx) ?: continue
                 val mime = cursor.getString(mimeIdx) ?: ""
                 if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
-                    subDirs.add(ChildDir(docId, name))
+                    subDirs.add(docId to name)
                 } else if (isAudioFile(name)) {
                     audioFiles.add(docId to name)
                 }
@@ -123,8 +121,7 @@ class PlaylistManager(private val context: Context) {
         }
 
         if (audioFiles.isNotEmpty()) {
-            val folderName = queryDisplayName(treeUri, parentDocId) ?: parentPath
-            val folder = PlaylistFolder(name = folderName, path = parentPath)
+            val folder = PlaylistFolder(name = folderDisplayName, path = parentPath)
             _folders.add(folder)
 
             for ((docId, name) in audioFiles) {
@@ -135,9 +132,9 @@ class PlaylistManager(private val context: Context) {
             }
         }
 
-        for (subDir in subDirs) {
-            val subPath = "$parentPath/${subDir.name}"
-            scanTree(treeUri, subDir.docId, subPath)
+        for ((docId, name) in subDirs) {
+            val subPath = "$parentPath/$name"
+            scanTree(treeUri, docId, name, subPath)
         }
     }
 
