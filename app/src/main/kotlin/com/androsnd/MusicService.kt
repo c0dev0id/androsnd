@@ -4,7 +4,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
+import android.support.v4.media.MediaBrowserCompat
+import androidx.media.MediaBrowserServiceCompat
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
@@ -33,7 +34,7 @@ import com.androsnd.model.Song
 import com.androsnd.model.SongMetadata
 import java.util.concurrent.Executors
 
-class MusicService : Service() {
+class MusicService : MediaBrowserServiceCompat() {
 
     companion object {
         private const val TAG = "MusicService"
@@ -229,7 +230,27 @@ class MusicService : Service() {
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder = binder
+    override fun onBind(intent: Intent?): IBinder? {
+        if (intent?.action == SERVICE_INTERFACE) {
+            return super.onBind(intent)
+        }
+        return binder
+    }
+
+    override fun onGetRoot(
+        clientPackageName: String,
+        clientUid: Int,
+        rootHints: Bundle?
+    ): BrowserRoot {
+        return BrowserRoot("root", null)
+    }
+
+    override fun onLoadChildren(
+        parentId: String,
+        result: Result<List<MediaBrowserCompat.MediaItem>>
+    ) {
+        result.sendResult(emptyList())
+    }
 
     fun play() {
         if (playlistManager.songs.isEmpty()) return
