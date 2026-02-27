@@ -3,28 +3,28 @@ package com.androsnd
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.support.v4.media.session.PlaybackStateCompat
-import com.androsnd.model.PlaylistFolder
-import com.androsnd.model.Song
+import com.androsnd.db.AppDatabase
+import com.androsnd.db.entity.FolderEntity
+import com.androsnd.db.entity.SongEntity
 
-class PlaylistManager(private val context: Context) {
+class PlaylistManager(private val context: Context, private val db: AppDatabase) {
 
     companion object {
         private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_FOLDER_URI = "folder_uri"
-        private val AUDIO_EXTENSIONS = setOf("mp3", "ogg", "flac", "aac", "m4a", "opus")
     }
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private val _songs = mutableListOf<Song>()
-    val songs: List<Song> get() = _songs
+    private var _songs: List<SongEntity> = emptyList()
+    val songs: List<SongEntity> get() = _songs
 
-    private val _folders = mutableListOf<PlaylistFolder>()
-    val folders: List<PlaylistFolder> get() = _folders
+    private var _folders: List<FolderEntity> = emptyList()
+    val folders: List<FolderEntity> get() = _folders
 
-    private val songToFolderIndex = mutableMapOf<Int, Int>()
+    // Maps song list index → folder list index for O(1) lookup
+    private val songIndexToFolderIndex = mutableMapOf<Int, Int>()
 
     var currentIndex: Int = 0
         private set
@@ -33,166 +33,92 @@ class PlaylistManager(private val context: Context) {
     var repeatMode: Int = PlaybackStateCompat.REPEAT_MODE_NONE
         private set
 
-    fun setRepeatMode(mode: Int) {
-        if (mode in listOf(PlaybackStateCompat.REPEAT_MODE_NONE, PlaybackStateCompat.REPEAT_MODE_ONE,
-                           PlaybackStateCompat.REPEAT_MODE_ALL, PlaybackStateCompat.REPEAT_MODE_GROUP)) {
-            repeatMode = mode
+    fun loadFromDatabase() {
+        _folders = db.folderDao().getAllOrdered()
+        _songs = db.songDao().getAllOrdered()
+        rebuildFolderIndex()
+        if (currentIndex >= _songs.size) currentIndex = 0
+    }
+
+    private fun rebuildFolderIndex() {
+        songIndexToFolderIndex.clear()
+        for ((fi, folder) in _folders.withIndex()) {
+            _songs.forEachIndexed { si, song ->
+                if (song.folderId == folder.id) songIndexToFolderIndex[si] = fi
+            }
         }
     }
 
-    fun loadSavedFolder(): Uri? {
+    fun saveFolderUri(uri: Uri) {
+        prefs.edit().putString(KEY_FOLDER_URI, uri.toString()).apply()
+    }
+
+    fun loadSavedFolderUri(): Uri? {
         val uriString = prefs.getString(KEY_FOLDER_URI, null) ?: return null
         return Uri.parse(uriString)
     }
 
-    fun scanFolder(treeUri: Uri) {
-        prefs.edit().putString(KEY_FOLDER_URI, treeUri.toString()).apply()
-        _songs.clear()
-        _folders.clear()
+    fun getCurrentSong(): SongEntity? = _songs.getOrNull(currentIndex)
 
-        val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
-        val rootName = queryDisplayName(treeUri, rootDocId) ?: "Music"
-        scanTree(treeUri, rootDocId, rootName, rootName)
-
-        _folders.sortBy { it.name }
-        _folders.forEach { folder ->
-            folder.songs.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { _songs[it].displayName })
-        }
-
-        // Rebuild _songs in display order so index-based navigation follows display order
-        val reorderedSongs = mutableListOf<Song>()
-        for (folder in _folders) {
-            val newIndices = mutableListOf<Int>()
-            for (oldIndex in folder.songs) {
-                newIndices.add(reorderedSongs.size)
-                reorderedSongs.add(_songs[oldIndex])
-            }
-            folder.songs.clear()
-            folder.songs.addAll(newIndices)
-        }
-        _songs.clear()
-        _songs.addAll(reorderedSongs)
-
-        // Build reverse lookup for O(1) getFolderIndexForSong()
-        songToFolderIndex.clear()
-        for ((fi, folder) in _folders.withIndex()) {
-            for (si in folder.songs) {
-                songToFolderIndex[si] = fi
-            }
-        }
-
-        currentIndex = 0
+    fun setCurrentIndex(index: Int) {
+        if (index in _songs.indices) currentIndex = index
     }
 
-    private fun queryDisplayName(treeUri: Uri, documentId: String): String? {
-        val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
-        val projection = arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-        context.contentResolver.query(docUri, projection, null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) return cursor.getString(0)
-        }
-        return null
-    }
+    fun getFolderIndexForSong(songIndex: Int): Int = songIndexToFolderIndex[songIndex] ?: -1
 
-    private fun scanTree(treeUri: Uri, parentDocId: String, folderDisplayName: String, parentPath: String) {
-        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
-        val projection = arrayOf(
-            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-            DocumentsContract.Document.COLUMN_MIME_TYPE
-        )
-
-        val audioFiles = mutableListOf<Pair<String, String>>() // docId to displayName
-        val subDirs = mutableListOf<Pair<String, String>>() // docId to displayName
-
-        context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
-            val idIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-            val nameIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-            val mimeIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
-            while (cursor.moveToNext()) {
-                val docId = cursor.getString(idIdx) ?: continue
-                val name = cursor.getString(nameIdx) ?: continue
-                val mime = cursor.getString(mimeIdx) ?: ""
-                if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
-                    subDirs.add(docId to name)
-                } else if (isAudioFile(name)) {
-                    audioFiles.add(docId to name)
-                }
-            }
-        }
-
-        if (audioFiles.isNotEmpty()) {
-            val folder = PlaylistFolder(name = folderDisplayName, path = parentPath)
-            _folders.add(folder)
-
-            for ((docId, name) in audioFiles) {
-                val songIndex = _songs.size
-                val songUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
-                _songs.add(Song(uri = songUri, displayName = name))
-                folder.songs.add(songIndex)
-            }
-        }
-
-        for ((docId, name) in subDirs) {
-            val subPath = "$parentPath/$name"
-            scanTree(treeUri, docId, name, subPath)
-        }
-    }
-
-    private fun isAudioFile(name: String): Boolean {
-        val ext = name.substringAfterLast('.', "").lowercase()
-        return ext in AUDIO_EXTENSIONS
-    }
-
-    fun getCurrentSong(): Song? = songs.getOrNull(currentIndex)
-
-    fun getFolderIndexForSong(songIndex: Int): Int = songToFolderIndex[songIndex] ?: -1
-
-    fun nextSong(): Song? {
-        if (songs.isEmpty()) return null
-        currentIndex = (currentIndex + 1) % songs.size
+    fun nextSong(): SongEntity? {
+        if (_songs.isEmpty()) return null
+        currentIndex = (currentIndex + 1) % _songs.size
         return getCurrentSong()
     }
 
-    fun prevSong(): Song? {
-        if (songs.isEmpty()) return null
-        currentIndex = if (currentIndex <= 0) songs.size - 1 else currentIndex - 1
+    fun prevSong(): SongEntity? {
+        if (_songs.isEmpty()) return null
+        currentIndex = if (currentIndex <= 0) _songs.size - 1 else currentIndex - 1
         return getCurrentSong()
     }
 
-    fun nextFolder(): Song? {
-        if (folders.isEmpty() || songs.isEmpty()) return null
+    fun nextFolder(): SongEntity? {
+        if (_folders.isEmpty() || _songs.isEmpty()) return null
         val currentFolderIndex = getFolderIndexForSong(currentIndex)
-        val nextFolderIndex = (currentFolderIndex + 1) % folders.size
-        val nextFolder = folders[nextFolderIndex]
-        currentIndex = nextFolder.songs.firstOrNull() ?: 0
+        val nextFolderIndex = (currentFolderIndex + 1) % _folders.size
+        val nextFolderId = _folders[nextFolderIndex].id
+        val firstSongIdx = _songs.indexOfFirst { it.folderId == nextFolderId }
+        if (firstSongIdx >= 0) currentIndex = firstSongIdx
         return getCurrentSong()
     }
 
-    fun prevFolder(): Song? {
-        if (folders.isEmpty() || songs.isEmpty()) return null
+    fun prevFolder(): SongEntity? {
+        if (_folders.isEmpty() || _songs.isEmpty()) return null
         val currentFolderIndex = getFolderIndexForSong(currentIndex)
-        val prevFolderIndex = if (currentFolderIndex <= 0) folders.size - 1 else currentFolderIndex - 1
-        val prevFolder = folders[prevFolderIndex]
-        currentIndex = prevFolder.songs.firstOrNull() ?: 0
+        val prevFolderIndex = if (currentFolderIndex <= 0) _folders.size - 1 else currentFolderIndex - 1
+        val prevFolderId = _folders[prevFolderIndex].id
+        val firstSongIdx = _songs.indexOfFirst { it.folderId == prevFolderId }
+        if (firstSongIdx >= 0) currentIndex = firstSongIdx
         return getCurrentSong()
     }
 
-    fun shuffleSong(): Song? {
-        if (songs.isEmpty()) return null
-        if (songs.size > 1) {
-            // Pick a random index from 0..(size-2), then skip over currentIndex
-            val next = kotlin.random.Random.nextInt(songs.size - 1)
+    fun shuffleSong(): SongEntity? {
+        if (_songs.isEmpty()) return null
+        if (_songs.size > 1) {
+            val next = kotlin.random.Random.nextInt(_songs.size - 1)
             currentIndex = if (next >= currentIndex) next + 1 else next
         }
         return getCurrentSong()
     }
 
-    fun setCurrentIndex(index: Int) {
-        if (index in songs.indices) currentIndex = index
-    }
-
     fun toggleShuffle(): Boolean {
         isShuffleOn = !isShuffleOn
         return isShuffleOn
+    }
+
+    fun setRepeatMode(mode: Int) {
+        if (mode in listOf(
+                PlaybackStateCompat.REPEAT_MODE_NONE, PlaybackStateCompat.REPEAT_MODE_ONE,
+                PlaybackStateCompat.REPEAT_MODE_ALL, PlaybackStateCompat.REPEAT_MODE_GROUP
+            )
+        ) {
+            repeatMode = mode
+        }
     }
 }

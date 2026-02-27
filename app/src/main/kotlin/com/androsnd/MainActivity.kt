@@ -1,18 +1,20 @@
 package com.androsnd
 
 import android.Manifest
-import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.IBinder
 import android.provider.Settings
+import android.support.v4.media.MediaBrowserCompat
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaControllerCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -24,17 +26,16 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.androsnd.model.PlaylistFolder
-import com.androsnd.model.Song
+import com.androsnd.db.AppDatabase
+import com.androsnd.db.entity.FolderEntity
+import com.androsnd.db.entity.SongEntity
+import com.androsnd.player.PlayerService
 import com.google.android.material.button.MaterialButton
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
-
-    private var musicService: MusicService? = null
-    private var isBound = false
 
     private lateinit var coverArt: ImageView
     private lateinit var songTitle: TextView
@@ -53,48 +54,55 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var playlistAdapter: PlaylistAdapter
     private var isUserSeekBarTouch = false
-    private var lastKnownSongIndex = -1
+    private var lastPlayPauseTime = 0L
     private var pendingOpenUri: Uri? = null
 
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            val musicBinder = binder as MusicService.MusicBinder
-            musicService = musicBinder.getService()
-            isBound = true
-            if (musicService?.isScanning == true) {
-                showLoading()
-            } else {
-                updateUI()
-                if (pendingOpenUri != null) {
-                    playOpenWithUri()
-                } else if (musicService?.playlistManager?.songs?.isEmpty() == true) {
-                    openFolderPicker()
-                }
-            }
-        }
-        override fun onServiceDisconnected(name: ComponentName?) {
-            musicService = null
-            isBound = false
-        }
-    }
+    private val dbExecutor = Executors.newSingleThreadExecutor()
 
-    private val stateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == MusicService.BROADCAST_STATE_CHANGED) {
-                updateUI()
-            }
-        }
-    }
+    private lateinit var mediaBrowser: MediaBrowserCompat
+    private var mediaController: MediaControllerCompat? = null
 
-    private val scanReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                MusicService.BROADCAST_SCAN_STARTED -> showLoading()
-                MusicService.BROADCAST_SCAN_COMPLETED -> {
+    private val controllerCallback = object : MediaControllerCompat.Callback() {
+        override fun onPlaybackStateChanged(state: PlaybackStateCompat?) {
+            updatePlaybackUI(state)
+        }
+        override fun onMetadataChanged(metadata: MediaMetadataCompat?) {
+            updateMetadataUI(metadata)
+        }
+        override fun onQueueChanged(queue: MutableList<MediaSessionCompat.QueueItem>?) {
+            reloadLibrary()
+        }
+        override fun onSessionEvent(event: String?, extras: Bundle?) {
+            when (event) {
+                PlayerService.EVENT_SCAN_STARTED -> showLoading()
+                PlayerService.EVENT_SCAN_COMPLETED -> {
                     hideLoading()
-                    updateUI()
+                    reloadLibrary()
                 }
             }
+        }
+    }
+
+    private val connectionCallback = object : MediaBrowserCompat.ConnectionCallback() {
+        override fun onConnected() {
+            val token = mediaBrowser.sessionToken
+            val controller = MediaControllerCompat(this@MainActivity, token)
+            MediaControllerCompat.setMediaController(this@MainActivity, controller)
+            mediaController = controller
+            controller.registerCallback(controllerCallback)
+
+            updatePlaybackUI(controller.playbackState)
+            updateMetadataUI(controller.metadata)
+            reloadLibrary()
+
+            if (pendingOpenUri != null) {
+                playOpenWithUri()
+            }
+        }
+        override fun onConnectionFailed() {}
+        override fun onConnectionSuspended() {
+            mediaController?.unregisterCallback(controllerCallback)
+            mediaController = null
         }
     }
 
@@ -102,18 +110,15 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         uri?.let {
-            contentResolver.takePersistableUriPermission(
-                it, Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-            musicService?.scanFolderAsync(it)
+            contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val bundle = Bundle().apply { putString(PlayerService.EXTRA_FOLDER_URI, it.toString()) }
+            mediaController?.sendCustomAction(PlayerService.CUSTOM_ACTION_SCAN_FOLDER, bundle, null)
         }
     }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        updateUI()
-    }
+    ) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -137,22 +142,33 @@ class MainActivity : AppCompatActivity() {
         requestBatteryOptimizationExemption()
         requestOverlayPermission()
 
-        val serviceIntent = Intent(this, MusicService::class.java)
-        startForegroundService(serviceIntent)
-        bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
-
-        LocalBroadcastManager.getInstance(this).registerReceiver(
-            stateReceiver,
-            IntentFilter(MusicService.BROADCAST_STATE_CHANGED)
+        mediaBrowser = MediaBrowserCompat(
+            this,
+            ComponentName(this, PlayerService::class.java),
+            connectionCallback,
+            null
         )
 
-        val scanFilter = IntentFilter().apply {
-            addAction(MusicService.BROADCAST_SCAN_STARTED)
-            addAction(MusicService.BROADCAST_SCAN_COMPLETED)
-        }
-        LocalBroadcastManager.getInstance(this).registerReceiver(scanReceiver, scanFilter)
-
         handleOpenWithIntent(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (!mediaBrowser.isConnected) {
+            mediaBrowser.connect()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        mediaController?.unregisterCallback(controllerCallback)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        mediaController?.unregisterCallback(controllerCallback)
+        mediaBrowser.disconnect()
+        dbExecutor.shutdown()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -164,20 +180,14 @@ class MainActivity : AppCompatActivity() {
         if (intent?.action == Intent.ACTION_VIEW) {
             val uri = intent.data ?: return
             pendingOpenUri = uri
-            if (isBound) {
-                playOpenWithUri()
-            }
+            if (mediaController != null) playOpenWithUri()
         }
     }
 
     private fun playOpenWithUri() {
         val uri = pendingOpenUri ?: return
         pendingOpenUri = null
-        val song = Song(
-            uri = uri,
-            displayName = uri.lastPathSegment ?: "Unknown"
-        )
-        musicService?.playSong(song)
+        mediaController?.transportControls?.playFromUri(uri, null)
     }
 
     private fun bindViews() {
@@ -200,8 +210,8 @@ class MainActivity : AppCompatActivity() {
     private fun setupRecyclerView() {
         playlistAdapter = PlaylistAdapter(
             onFolderClick = {},
-            onSongClick = { index ->
-                musicService?.playSongAtIndex(index)
+            onSongClick = { songId ->
+                mediaController?.transportControls?.skipToQueueItem(songId)
             }
         )
         playlistRecycler.layoutManager = LinearLayoutManager(this)
@@ -210,22 +220,40 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupButtons() {
         btnPlay.setOnClickListener {
-            musicService?.handlePlayPause()
+            val now = System.currentTimeMillis()
+            if (now - lastPlayPauseTime < 500L) {
+                lastPlayPauseTime = 0L
+                val currentMode = mediaController?.shuffleMode ?: PlaybackStateCompat.SHUFFLE_MODE_NONE
+                val newMode = if (currentMode == PlaybackStateCompat.SHUFFLE_MODE_NONE)
+                    PlaybackStateCompat.SHUFFLE_MODE_ALL else PlaybackStateCompat.SHUFFLE_MODE_NONE
+                mediaController?.transportControls?.setShuffleMode(newMode)
+            } else {
+                lastPlayPauseTime = now
+                val state = mediaController?.playbackState?.state
+                if (state == PlaybackStateCompat.STATE_PLAYING) {
+                    mediaController?.transportControls?.pause()
+                } else {
+                    mediaController?.transportControls?.play()
+                }
+            }
         }
-        btnPrev.setOnClickListener { musicService?.handlePrevious() }
-        btnNext.setOnClickListener { musicService?.handleNext() }
-        btnStop.setOnClickListener { musicService?.handleStop() }
-        btnShuffle.setOnClickListener { musicService?.handleShuffleButton() }
+        btnPrev.setOnClickListener { mediaController?.transportControls?.skipToPrevious() }
+        btnNext.setOnClickListener { mediaController?.transportControls?.skipToNext() }
+        btnStop.setOnClickListener { mediaController?.transportControls?.stop() }
+        btnShuffle.setOnClickListener {
+            val currentMode = mediaController?.shuffleMode ?: PlaybackStateCompat.SHUFFLE_MODE_NONE
+            val newMode = if (currentMode == PlaybackStateCompat.SHUFFLE_MODE_NONE)
+                PlaybackStateCompat.SHUFFLE_MODE_ALL else PlaybackStateCompat.SHUFFLE_MODE_NONE
+            mediaController?.transportControls?.setShuffleMode(newMode)
+        }
 
         progressBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) {
-                    timeCurrentView.text = formatTime(progress)
-                }
+                if (fromUser) timeCurrentView.text = formatTime(progress)
             }
             override fun onStartTrackingTouch(sb: SeekBar?) { isUserSeekBarTouch = true }
             override fun onStopTrackingTouch(sb: SeekBar?) {
-                if (sb != null) musicService?.seekTo(sb.progress)
+                if (sb != null) mediaController?.transportControls?.seekTo(sb.progress.toLong())
                 isUserSeekBarTouch = false
             }
         })
@@ -237,89 +265,17 @@ class MainActivity : AppCompatActivity() {
         folderPickerLauncher.launch(null)
     }
 
-    private fun requestPermissionsIfNeeded() {
-        val perms = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= 33) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO)
-                != PackageManager.PERMISSION_GRANTED) {
-                perms.add(Manifest.permission.READ_MEDIA_AUDIO)
-            }
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
-                perms.add(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        } else {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-                perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-            }
-        }
-        if (perms.isNotEmpty()) permissionLauncher.launch(perms.toTypedArray())
-    }
+    private fun updatePlaybackUI(state: PlaybackStateCompat?) {
+        val isPlaying = state?.state == PlaybackStateCompat.STATE_PLAYING
+        val shuffleOn = mediaController?.shuffleMode != PlaybackStateCompat.SHUFFLE_MODE_NONE
 
-    private fun requestBatteryOptimizationExemption() {
-        val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("battery_requested", false)) return
-        prefs.edit().putBoolean("battery_requested", true).apply()
-
-        val pm = getSystemService(android.os.PowerManager::class.java)
-        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-            val intent = Intent(
-                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                Uri.parse("package:$packageName")
-            )
-            startActivity(intent)
-        }
-    }
-
-    private fun requestOverlayPermission() {
-        if (!Settings.canDrawOverlays(this)) {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-            startActivity(intent)
-        }
-    }
-
-    private fun updateUI() {
-        val svc = musicService ?: return
-        if (svc.isScanning) return
-        val pm = svc.playlistManager
-        val currentIdx = pm.currentIndex
-        val song = pm.getCurrentSong()
-
-        btnPlay.isSelected = svc.isPlaying
-        btnShuffle.isSelected = pm.isShuffleOn
-        btnPlay.setIconResource(if (svc.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
-
-        if (currentIdx != lastKnownSongIndex) {
-            lastKnownSongIndex = currentIdx
-            if (song != null) {
-                val metadata = svc.currentMetadata
-                if (metadata != null) {
-                    songTitle.text = metadata.title
-                    songArtist.text = metadata.artist
-                    songAlbum.text = metadata.album
-
-                    if (metadata.coverArt != null) {
-                        coverArt.setImageBitmap(metadata.coverArt)
-                    } else {
-                        coverArt.setImageResource(android.R.drawable.ic_media_play)
-                    }
-                }
-            } else {
-                songTitle.text = getString(R.string.no_song)
-                songArtist.text = ""
-                songAlbum.text = ""
-                coverArt.setImageResource(android.R.drawable.ic_media_play)
-            }
-            updatePlaylist()
-        }
+        btnPlay.isSelected = isPlaying
+        btnShuffle.isSelected = shuffleOn
+        btnPlay.setIconResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
 
         if (!isUserSeekBarTouch) {
-            val pos = svc.getPosition()
-            val dur = svc.getDuration()
+            val pos = state?.position?.toInt() ?: 0
+            val dur = mediaController?.metadata?.getLong(MediaMetadataCompat.METADATA_KEY_DURATION)?.toInt() ?: 0
             progressBar.max = if (dur > 0) dur else 100
             progressBar.progress = pos
             timeCurrentView.text = formatTime(pos)
@@ -327,10 +283,50 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updatePlaylist() {
-        val svc = musicService ?: return
-        val pm = svc.playlistManager
-        playlistAdapter.submitData(pm.folders, pm.songs, pm.currentIndex)
+    private fun updateMetadataUI(metadata: MediaMetadataCompat?) {
+        if (metadata == null) {
+            songTitle.text = getString(R.string.no_song)
+            songArtist.text = ""
+            songAlbum.text = ""
+            coverArt.setImageResource(android.R.drawable.ic_media_play)
+            return
+        }
+        songTitle.text = metadata.getString(MediaMetadataCompat.METADATA_KEY_TITLE) ?: getString(R.string.no_song)
+        songArtist.text = metadata.getString(MediaMetadataCompat.METADATA_KEY_ARTIST) ?: ""
+        songAlbum.text = metadata.getString(MediaMetadataCompat.METADATA_KEY_ALBUM) ?: ""
+
+        val artUri = metadata.getString(MediaMetadataCompat.METADATA_KEY_ART_URI)
+        if (artUri != null) {
+            val filePath = artUri.removePrefix("file://")
+            dbExecutor.execute {
+                val bitmap = try { BitmapFactory.decodeFile(filePath) } catch (e: Exception) { null }
+                runOnUiThread {
+                    if (bitmap != null) coverArt.setImageBitmap(bitmap)
+                    else coverArt.setImageResource(android.R.drawable.ic_media_play)
+                }
+            }
+        } else {
+            coverArt.setImageResource(android.R.drawable.ic_media_play)
+        }
+
+        val dur = metadata.getLong(MediaMetadataCompat.METADATA_KEY_DURATION).toInt()
+        timeTotalView.text = formatTime(dur)
+    }
+
+    private fun reloadLibrary() {
+        dbExecutor.execute {
+            val db = AppDatabase.getInstance(this)
+            val folders = db.folderDao().getAllOrdered()
+            val songs = db.songDao().getAllOrdered()
+            val activeQueueId = mediaController?.playbackState?.activeQueueItemId ?: -1L
+
+            runOnUiThread {
+                playlistAdapter.submitData(folders, songs, activeQueueId)
+                if (folders.isEmpty() && songs.isEmpty()) {
+                    openFolderPicker()
+                }
+            }
+        }
     }
 
     private fun showLoading() {
@@ -339,8 +335,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideLoading() {
-        // Reset so updateUI() re-renders metadata and playlist for the newly scanned library.
-        lastKnownSongIndex = -1
         loadingIndicator.visibility = View.GONE
         playlistRecycler.visibility = View.VISIBLE
     }
@@ -352,19 +346,39 @@ class MainActivity : AppCompatActivity() {
         return "%d:%02d".format(minutes, seconds)
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(stateReceiver)
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(scanReceiver)
-        if (isBound) {
-            unbindService(serviceConnection)
-            isBound = false
+    private fun requestPermissionsIfNeeded() {
+        val perms = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED)
+                perms.add(Manifest.permission.READ_MEDIA_AUDIO)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                perms.add(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
+                perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        if (perms.isNotEmpty()) permissionLauncher.launch(perms.toTypedArray())
+    }
+
+    private fun requestBatteryOptimizationExemption() {
+        val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("battery_requested", false)) return
+        prefs.edit().putBoolean("battery_requested", true).apply()
+        val pm = getSystemService(android.os.PowerManager::class.java)
+        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+        }
+    }
+
+    private fun requestOverlayPermission() {
+        if (!Settings.canDrawOverlays(this)) {
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
         }
     }
 
     class PlaylistAdapter(
-        private val onFolderClick: (Int) -> Unit,
-        private val onSongClick: (Int) -> Unit
+        private val onFolderClick: (Long) -> Unit,
+        private val onSongClick: (Long) -> Unit
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
         companion object {
@@ -374,21 +388,21 @@ class MainActivity : AppCompatActivity() {
 
         private data class ListItem(
             val type: Int,
-            val folderIndex: Int = -1,
-            val songIndex: Int = -1,
+            val id: Long = -1,
             val displayName: String = ""
         )
 
         private val items = mutableListOf<ListItem>()
-        private var currentSongIndex = -1
+        private var activeQueueId: Long = -1L
 
-        fun submitData(folders: List<PlaylistFolder>, songs: List<Song>, currentIdx: Int) {
+        fun submitData(folders: List<FolderEntity>, songs: List<SongEntity>, activeQueueItemId: Long) {
             items.clear()
-            currentSongIndex = currentIdx
-            for ((fi, folder) in folders.withIndex()) {
-                items.add(ListItem(TYPE_FOLDER, folderIndex = fi, displayName = folder.name))
-                for (si in folder.songs) {
-                    items.add(ListItem(TYPE_SONG, songIndex = si, displayName = songs[si].displayName))
+            activeQueueId = activeQueueItemId
+            for (folder in folders) {
+                items.add(ListItem(TYPE_FOLDER, id = folder.id, displayName = folder.name))
+                val folderSongs = songs.filter { it.folderId == folder.id }
+                for (song in folderSongs) {
+                    items.add(ListItem(TYPE_SONG, id = song.id, displayName = song.displayName))
                 }
             }
             notifyDataSetChanged()
@@ -400,11 +414,9 @@ class MainActivity : AppCompatActivity() {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
             val inflater = LayoutInflater.from(parent.context)
             return if (viewType == TYPE_FOLDER) {
-                val view = inflater.inflate(R.layout.item_playlist_folder, parent, false)
-                FolderViewHolder(view)
+                FolderViewHolder(inflater.inflate(R.layout.item_playlist_folder, parent, false))
             } else {
-                val view = inflater.inflate(R.layout.item_playlist_song, parent, false)
-                SongViewHolder(view)
+                SongViewHolder(inflater.inflate(R.layout.item_playlist_song, parent, false))
             }
         }
 
@@ -413,12 +425,12 @@ class MainActivity : AppCompatActivity() {
             when (holder) {
                 is FolderViewHolder -> {
                     holder.name.text = item.displayName
-                    holder.itemView.setOnClickListener { onFolderClick(item.folderIndex) }
+                    holder.itemView.setOnClickListener { onFolderClick(item.id) }
                 }
                 is SongViewHolder -> {
                     holder.name.text = item.displayName
-                    holder.itemView.isSelected = item.songIndex == currentSongIndex
-                    holder.itemView.setOnClickListener { onSongClick(item.songIndex) }
+                    holder.itemView.isSelected = item.id == activeQueueId
+                    holder.itemView.setOnClickListener { onSongClick(item.id) }
                 }
             }
         }

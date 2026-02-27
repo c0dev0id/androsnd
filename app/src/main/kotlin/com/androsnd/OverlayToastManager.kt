@@ -2,7 +2,7 @@ package com.androsnd
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
@@ -19,7 +19,6 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
-import com.androsnd.model.SongMetadata
 
 class OverlayToastManager(private val context: Context) {
 
@@ -53,11 +52,14 @@ class OverlayToastManager(private val context: Context) {
     private var naturalWidth = 0
     private var naturalHeight = 0
 
-    fun showSong(metadata: SongMetadata) {
-        showOverlay(metadata.title, metadata.artist, metadata.album, metadata.coverArt)
+    fun showSong(title: String, artist: String, album: String, coverArtPath: String?) {
+        val cover = coverArtPath?.let { path ->
+            try { BitmapFactory.decodeFile(path) } catch (e: Exception) { null }
+        }
+        showOverlay(title, artist, album, cover)
     }
 
-    private fun showOverlay(title: String, artist: String, album: String, cover: Bitmap?) {
+    private fun showOverlay(title: String, artist: String, album: String, cover: android.graphics.Bitmap?) {
         if (!Settings.canDrawOverlays(context)) return
 
         handler.post {
@@ -98,8 +100,7 @@ class OverlayToastManager(private val context: Context) {
             val scaledH = (naturalHeight * savedScale).toInt().coerceAtLeast(1)
 
             val params = WindowManager.LayoutParams(
-                scaledW,
-                scaledH,
+                scaledW, scaledH,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -127,19 +128,13 @@ class OverlayToastManager(private val context: Context) {
                 .alpha(1f)
                 .setDuration(ANIMATION_DURATION_MS)
                 .setInterpolator(DecelerateInterpolator())
-                .withEndAction {
-                    scheduleDismiss(container)
-                }
+                .withEndAction { scheduleDismiss(container) }
                 .start()
         }
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun setupTouchHandling(
-        container: View,
-        content: View,
-        params: WindowManager.LayoutParams
-    ) {
+    private fun setupTouchHandling(container: View, content: View, params: WindowManager.LayoutParams) {
         val scaleDetector = ScaleGestureDetector(
             context,
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -151,17 +146,11 @@ class OverlayToastManager(private val context: Context) {
                     val scaledH = (naturalHeight * savedScale).toInt().coerceAtLeast(1)
                     params.width = scaledW
                     params.height = scaledH
-                    try {
-                        windowManager.updateViewLayout(container, params)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to update layout during scale", e)
-                    }
+                    try { windowManager.updateViewLayout(container, params) }
+                    catch (e: Exception) { Log.w(TAG, "Failed to update layout during scale", e) }
                     return true
                 }
-
-                override fun onScaleEnd(detector: ScaleGestureDetector) {
-                    savePrefs()
-                }
+                override fun onScaleEnd(detector: ScaleGestureDetector) { savePrefs() }
             }
         )
 
@@ -172,25 +161,19 @@ class OverlayToastManager(private val context: Context) {
 
         container.setOnTouchListener { _, event ->
             scaleDetector.onTouchEvent(event)
-
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     isDragging = true
                     cancelDismissTimer()
-
                     if (params.gravity != (Gravity.TOP or Gravity.START)) {
                         val loc = IntArray(2)
                         container.getLocationOnScreen(loc)
                         params.gravity = Gravity.TOP or Gravity.START
                         params.x = loc[0]
                         params.y = loc[1]
-                        try {
-                            windowManager.updateViewLayout(container, params)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to update layout on drag start", e)
-                        }
+                        try { windowManager.updateViewLayout(container, params) }
+                        catch (e: Exception) { Log.w(TAG, "Failed to update layout on drag start", e) }
                     }
-
                     initialX = params.x
                     initialY = params.y
                     initialTouchX = event.rawX
@@ -201,11 +184,8 @@ class OverlayToastManager(private val context: Context) {
                     if (!scaleDetector.isInProgress) {
                         params.x = initialX + (event.rawX - initialTouchX).toInt()
                         params.y = initialY + (event.rawY - initialTouchY).toInt()
-                        try {
-                            windowManager.updateViewLayout(container, params)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to update layout during drag", e)
-                        }
+                        try { windowManager.updateViewLayout(container, params) }
+                        catch (e: Exception) { Log.w(TAG, "Failed to update layout during drag", e) }
                     }
                     true
                 }
@@ -251,11 +231,8 @@ class OverlayToastManager(private val context: Context) {
     }
 
     private fun removeView(view: View) {
-        try {
-            windowManager.removeView(view)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to remove overlay view", e)
-        }
+        try { windowManager.removeView(view) }
+        catch (e: Exception) { Log.w(TAG, "Failed to remove overlay view", e) }
         if (currentView == view) {
             currentView = null
             currentParams = null
