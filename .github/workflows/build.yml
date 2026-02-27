@@ -22,6 +22,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Run lint
+        run: ./gradlew lintDebug
+
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
