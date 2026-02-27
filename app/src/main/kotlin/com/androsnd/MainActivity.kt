@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity() {
 
     private var musicService: MusicService? = null
     private var isBound = false
+    private var pendingOpenUri: Uri? = null
 
     private lateinit var coverArt: ImageView
     private lateinit var songTitle: TextView
@@ -71,7 +72,14 @@ class MainActivity : AppCompatActivity() {
             musicService = svc
             svc.serviceListener = serviceListener
             isBound = true
-            if (svc.isScanning) {
+
+            val uri = pendingOpenUri
+            pendingOpenUri = null
+            if (uri != null) {
+                val song = songFromUri(uri)
+                svc.playSong(song)
+                updateUI()
+            } else if (svc.isScanning) {
                 showLoading()
             } else {
                 updateUI()
@@ -127,6 +135,7 @@ class MainActivity : AppCompatActivity() {
         requestOverlayPermission()
 
         val serviceIntent = Intent(this, MusicService::class.java)
+        pendingOpenUri = intent?.data
         startForegroundService(serviceIntent)
         bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
@@ -310,6 +319,21 @@ class MainActivity : AppCompatActivity() {
         val minutes = totalSeconds / 60
         val seconds = totalSeconds % 60
         return "%d:%02d".format(minutes, seconds)
+    }
+
+    private fun songFromUri(uri: Uri): com.androsnd.model.Song =
+        com.androsnd.model.Song(uri = uri, displayName = uri.lastPathSegment ?: "Unknown")
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        val uri = intent?.data ?: return
+        val svc = musicService ?: run {
+            pendingOpenUri = uri
+            return
+        }
+        val song = songFromUri(uri)
+        svc.playSong(song)
+        updateUI()
     }
 
     override fun onDestroy() {
