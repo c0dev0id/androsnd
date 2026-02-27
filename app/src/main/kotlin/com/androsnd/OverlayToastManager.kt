@@ -1,5 +1,8 @@
 package com.androsnd
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
@@ -14,6 +17,8 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
@@ -47,6 +52,7 @@ class OverlayToastManager(private val context: Context) {
     private var savedScale: Float = prefs.getFloat(KEY_OVERLAY_SCALE, 1f)
     private var hasCustomPosition: Boolean = prefs.getBoolean(KEY_OVERLAY_CUSTOM_POS, false)
 
+    private var currentAnimator: Animator? = null
     private var isDragging = false
     private var naturalWidth = 0
     private var naturalHeight = 0
@@ -123,16 +129,42 @@ class OverlayToastManager(private val context: Context) {
 
             setupTouchHandling(container, content, params)
 
-            container.alpha = 0f
-            container.animate()
-                .alpha(1f)
-                .setDuration(ANIMATION_DURATION_MS)
-                .withLayer()
-                .withEndAction {
+            fadeInAndScheduleDismiss(container)
+        }
+    }
+
+    private fun fadeInAndScheduleDismiss(container: View) {
+        currentAnimator?.cancel()
+        container.alpha = 0f
+        val fadeIn = ObjectAnimator.ofFloat(container, View.ALPHA, 0f, 1f).apply {
+            duration = ANIMATION_DURATION_MS
+            interpolator = DecelerateInterpolator()
+        }
+        fadeIn.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                if (!isDragging) {
                     scheduleDismiss(container)
                 }
-                .start()
+            }
+        })
+        currentAnimator = fadeIn
+        fadeIn.start()
+    }
+
+    private fun fadeOutAndRemove(view: View) {
+        currentAnimator?.cancel()
+        cancelDismissTimer()
+        val fadeOut = ObjectAnimator.ofFloat(view, View.ALPHA, view.alpha, 0f).apply {
+            duration = ANIMATION_DURATION_MS
+            interpolator = AccelerateInterpolator()
         }
+        fadeOut.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                removeView(view)
+            }
+        })
+        currentAnimator = fadeOut
+        fadeOut.start()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -232,14 +264,7 @@ class OverlayToastManager(private val context: Context) {
     private fun scheduleDismiss(view: View) {
         cancelDismissTimer()
         dismissRunnable = Runnable {
-            view.animate()
-                .alpha(0f)
-                .setDuration(ANIMATION_DURATION_MS)
-                .withLayer()
-                .withEndAction {
-                    removeView(view)
-                }
-                .start()
+            fadeOutAndRemove(view)
         }
         handler.postDelayed(dismissRunnable!!, DISPLAY_DURATION_MS)
     }
@@ -267,8 +292,10 @@ class OverlayToastManager(private val context: Context) {
 
     fun dismiss() {
         cancelDismissTimer()
+        currentAnimator?.cancel()
+        currentAnimator = null
         currentView?.let {
-            it.animate().cancel()
+            it.alpha = 0f
             removeView(it)
         }
     }
