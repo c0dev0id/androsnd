@@ -6,29 +6,31 @@
     android:layout_height="match_parent"
     android:background="?attr/colorSurface">
 
-    <!-- Content area: top (info) + bottom (playlist) -->
+    <!-- Top content area: left (info) + right (playlist) -->
     <LinearLayout
         android:id="@+id/content_area"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:orientation="vertical"
+        android:orientation="horizontal"
         android:baselineAligned="false"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@id/button_bar">
 
-        <!-- Top panel: cover art + song info + progress -->
+        <!-- Left panel: cover art + song info + progress -->
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
             android:orientation="vertical"
             android:padding="16dp">
 
             <ImageView
                 android:id="@+id/cover_art"
                 android:layout_width="match_parent"
-                android:layout_height="128dp"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:layout_gravity="center_horizontal"
                 android:scaleType="centerInside"
                 android:adjustViewBounds="true"
@@ -102,10 +104,10 @@
 
         </LinearLayout>
 
-        <!-- Bottom panel: playlist -->
+        <!-- Right panel: playlist -->
         <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
             android:layout_weight="1">
 
             <androidx.recyclerview.widget.RecyclerView
