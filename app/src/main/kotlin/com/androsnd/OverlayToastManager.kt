@@ -63,7 +63,6 @@ class OverlayToastManager(private val context: Context) {
         if (!Settings.canDrawOverlays(context)) return
 
         handler.post {
-            dismiss()
 
             val inflater = LayoutInflater.from(context)
             val content = inflater.inflate(R.layout.overlay_toast, null)
