@@ -127,6 +127,7 @@ class OverlayToastManager(private val context: Context) {
             container.animate()
                 .alpha(1f)
                 .setDuration(ANIMATION_DURATION_MS)
+                .withLayer()
                 .withEndAction {
                     scheduleDismiss(container)
                 }
@@ -234,6 +235,7 @@ class OverlayToastManager(private val context: Context) {
             view.animate()
                 .alpha(0f)
                 .setDuration(ANIMATION_DURATION_MS)
+                .withLayer()
                 .withEndAction {
                     removeView(view)
                 }
