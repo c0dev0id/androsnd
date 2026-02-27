@@ -59,6 +59,13 @@ class PlaylistManager(private val context: Context) {
         return Uri.parse(uriString)
     }
 
+    fun hasFolderPermission(): Boolean {
+        val savedUri = loadSavedFolder() ?: return false
+        return context.contentResolver.persistedUriPermissions.any {
+            it.uri == savedUri && it.isReadPermission
+        }
+    }
+
     @WorkerThread
     fun scanFolder(treeUri: Uri) {
         val startTime = System.currentTimeMillis()
