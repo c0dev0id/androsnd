@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playlistAdapter: PlaylistAdapter
     private var isUserSeekBarTouch = false
     private var lastKnownSongIndex = -1
+    private var pendingOpenUri: Uri? = null
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -168,8 +169,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-
-    private var pendingOpenUri: Uri? = null
 
     private fun playOpenWithUri() {
         val uri = pendingOpenUri ?: return
