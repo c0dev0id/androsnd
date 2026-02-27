@@ -131,8 +131,14 @@ class MusicService : MediaBrowserServiceCompat() {
 
         @MainThread
         override fun onError() {
+            consecutiveErrors++
             currentMetadata = null
             broadcastState()
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                Log.w(TAG, "Stopping playback after $MAX_CONSECUTIVE_ERRORS consecutive errors")
+                stopPlayback()
+                return
+            }
             onTrackComplete()
         }
 
