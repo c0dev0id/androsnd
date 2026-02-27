@@ -214,7 +214,7 @@ class MusicService : MediaBrowserServiceCompat() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Must call startForeground() promptly to avoid ForegroundServiceDidNotStartInTimeException
-        if (intent?.action == null || intent.action !in listOf(
+        if (intent?.action == null || intent.action !in setOf(
                 ACTION_PLAY, ACTION_PAUSE, ACTION_STOP, ACTION_NEXT, ACTION_PREVIOUS, ACTION_SHUFFLE
         )) {
             startForegroundCompat(buildNotification())
@@ -297,53 +297,53 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     fun handleNext() {
-        if (playlistManager.isShuffleOn) {
-            val song = playlistManager.shuffleSong()
-            if (song != null) playSong(song)
-            return
-        }
-
-        val pending = nextPendingRunnable
-        if (pending != null) {
-            handler.removeCallbacks(pending)
-            nextPendingRunnable = null
-            val song = playlistManager.nextFolder()
-            if (song != null) {
-                playSong(song)
-            }
-        } else {
-            val runnable = Runnable {
-                nextPendingRunnable = null
-                val song = playlistManager.nextSong()
-                if (song != null) playSong(song)
-            }
-            nextPendingRunnable = runnable
-            handler.postDelayed(runnable, DOUBLE_TAP_THRESHOLD)
-        }
+        handleSkip(
+            getPending = { nextPendingRunnable },
+            setPending = { nextPendingRunnable = it },
+            onDoubleTap = { playlistManager.nextFolder() },
+            onSingleTap = { playlistManager.nextSong() }
+        )
     }
 
     fun handlePrevious() {
+        handleSkip(
+            getPending = { prevPendingRunnable },
+            setPending = { prevPendingRunnable = it },
+            onDoubleTap = { playlistManager.prevFolder() },
+            onSingleTap = { playlistManager.prevSong() }
+        )
+    }
+
+    /**
+     * Shared double-tap handler for next/previous skip actions.
+     * A single tap fires [onSingleTap] after a delay; a second tap within
+     * [DOUBLE_TAP_THRESHOLD] cancels the pending single-tap and fires [onDoubleTap] instead.
+     */
+    private inline fun handleSkip(
+        getPending: () -> Runnable?,
+        crossinline setPending: (Runnable?) -> Unit,
+        crossinline onDoubleTap: () -> Song?,
+        crossinline onSingleTap: () -> Song?
+    ) {
         if (playlistManager.isShuffleOn) {
             val song = playlistManager.shuffleSong()
             if (song != null) playSong(song)
             return
         }
 
-        val pending = prevPendingRunnable
+        val pending = getPending()
         if (pending != null) {
             handler.removeCallbacks(pending)
-            prevPendingRunnable = null
-            val song = playlistManager.prevFolder()
-            if (song != null) {
-                playSong(song)
-            }
+            setPending(null)
+            val song = onDoubleTap()
+            if (song != null) playSong(song)
         } else {
             val runnable = Runnable {
-                prevPendingRunnable = null
-                val song = playlistManager.prevSong()
+                setPending(null)
+                val song = onSingleTap()
                 if (song != null) playSong(song)
             }
-            prevPendingRunnable = runnable
+            setPending(runnable)
             handler.postDelayed(runnable, DOUBLE_TAP_THRESHOLD)
         }
     }

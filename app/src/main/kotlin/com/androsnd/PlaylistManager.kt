@@ -16,6 +16,7 @@ import java.io.File
 class PlaylistManager(private val context: Context) {
 
     companion object {
+        private const val TAG = "PlaylistManager"
         private const val KEY_FOLDER_URI = "folder_uri"
         private const val KEY_SCAN_CACHE = "scan_cache"
         private const val SCAN_CACHE_FILENAME = "scan_cache.json"
@@ -99,7 +100,7 @@ class PlaylistManager(private val context: Context) {
         saveScanCache()
 
         val elapsed = System.currentTimeMillis() - startTime
-        Log.d("PlaylistManager", "Scan completed: ${_songs.size} songs in ${_folders.size} folders in ${elapsed}ms")
+        Log.d(TAG, "Scan completed: ${_songs.size} songs in ${_folders.size} folders in ${elapsed}ms")
     }
 
     @WorkerThread
@@ -116,7 +117,7 @@ class PlaylistManager(private val context: Context) {
 
         val cursor = context.contentResolver.query(childrenUri, projection, null, null, null)
         if (cursor == null) {
-            Log.w("PlaylistManager", "Query returned null for $childrenUri")
+            Log.w(TAG, "Query returned null for $childrenUri")
             return
         }
         cursor.use { c ->
@@ -179,7 +180,7 @@ class PlaylistManager(private val context: Context) {
         try {
             scanCacheFile.writeText(json.toString())
         } catch (e: Exception) {
-            Log.w("PlaylistManager", "Failed to save scan cache to file", e)
+            Log.w(TAG, "Failed to save scan cache to file", e)
         }
     }
 
@@ -193,13 +194,13 @@ class PlaylistManager(private val context: Context) {
                 try {
                     scanCacheFile.writeText(old)
                 } catch (e: Exception) {
-                    Log.w("PlaylistManager", "Failed to migrate scan cache to file", e)
+                    Log.w(TAG, "Failed to migrate scan cache to file", e)
                 }
                 prefs.edit().remove(KEY_SCAN_CACHE).apply()
                 old
             }
         } catch (e: Exception) {
-            Log.w("PlaylistManager", "Failed to read scan cache file", e)
+            Log.w(TAG, "Failed to read scan cache file", e)
             return false
         }
         return try {
@@ -233,7 +234,7 @@ class PlaylistManager(private val context: Context) {
             currentIndex = 0
             true
         } catch (e: Exception) {
-            Log.w("PlaylistManager", "Failed to load scan cache", e)
+            Log.w(TAG, "Failed to load scan cache", e)
             clearScanCache()
             false
         }
