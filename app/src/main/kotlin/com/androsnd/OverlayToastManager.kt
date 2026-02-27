@@ -28,7 +28,6 @@ class OverlayToastManager(private val context: Context) {
         private const val ANIMATION_DURATION_MS = 400L
         private const val DISPLAY_DURATION_MS = 2000L
         private const val OVERLAY_TOP_OFFSET = 100
-        private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_OVERLAY_X = "overlay_x"
         private const val KEY_OVERLAY_Y = "overlay_y"
         private const val KEY_OVERLAY_SCALE = "overlay_scale"
@@ -43,7 +42,7 @@ class OverlayToastManager(private val context: Context) {
     private var currentParams: WindowManager.LayoutParams? = null
     private var dismissRunnable: Runnable? = null
 
-    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs = PreferencesManager.getPrefs(context)
     private var savedX: Int = prefs.getInt(KEY_OVERLAY_X, 0)
     private var savedY: Int = prefs.getInt(KEY_OVERLAY_Y, OVERLAY_TOP_OFFSET)
     private var savedScale: Float = prefs.getFloat(KEY_OVERLAY_SCALE, 1f)
