@@ -64,7 +64,9 @@ class MainActivity : AppCompatActivity() {
                 showLoading()
             } else {
                 updateUI()
-                if (musicService?.playlistManager?.songs?.isEmpty() == true) {
+                if (pendingOpenUri != null) {
+                    playOpenWithUri()
+                } else if (musicService?.playlistManager?.songs?.isEmpty() == true) {
                     openFolderPicker()
                 }
             }
@@ -148,6 +150,35 @@ class MainActivity : AppCompatActivity() {
             addAction(MusicService.BROADCAST_SCAN_COMPLETED)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(scanReceiver, scanFilter)
+
+        handleOpenWithIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleOpenWithIntent(intent)
+    }
+
+    private fun handleOpenWithIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_VIEW) {
+            val uri = intent.data ?: return
+            pendingOpenUri = uri
+            if (isBound) {
+                playOpenWithUri()
+            }
+        }
+    }
+
+    private var pendingOpenUri: Uri? = null
+
+    private fun playOpenWithUri() {
+        val uri = pendingOpenUri ?: return
+        pendingOpenUri = null
+        val song = Song(
+            uri = uri,
+            displayName = uri.lastPathSegment ?: "Unknown"
+        )
+        musicService?.playSong(song)
     }
 
     private fun bindViews() {
@@ -195,8 +226,8 @@ class MainActivity : AppCompatActivity() {
             }
             override fun onStartTrackingTouch(sb: SeekBar?) { isUserSeekBarTouch = true }
             override fun onStopTrackingTouch(sb: SeekBar?) {
-                if (sb != null) musicService?.seekTo(sb?.progress ?: 0) {
-                    isUserSeekBarTouch = false
+                if (sb != null) musicService?.seekTo(sb.progress)
+                isUserSeekBarTouch = false
             }
         })
 

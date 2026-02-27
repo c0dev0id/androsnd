@@ -6,28 +6,30 @@
     android:layout_height="match_parent"
     android:background="?attr/colorSurface">
 
-    <!-- Top content area: stacked vertically for portrait -->
+    <!-- Top content area: left (info) + right (playlist) -->
     <LinearLayout
         android:id="@+id/content_area"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:orientation="vertical"
+        android:orientation="horizontal"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@id/button_bar">
 
-        <!-- Top panel: cover art + song info + progress -->
+        <!-- Left panel: cover art + song info + progress -->
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
             android:orientation="vertical"
             android:padding="16dp">
 
             <ImageView
                 android:id="@+id/cover_art"
                 android:layout_width="match_parent"
-                android:layout_height="160dp"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:layout_gravity="center_horizontal"
                 android:scaleType="centerInside"
                 android:adjustViewBounds="true"
@@ -100,10 +102,10 @@
 
         </LinearLayout>
 
-        <!-- Bottom panel: playlist -->
+        <!-- Right panel: playlist -->
         <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
             android:layout_weight="1">
 
             <androidx.recyclerview.widget.RecyclerView
@@ -154,52 +156,57 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_prev"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="72dp"
             android:layout_weight="1"
-            android:layout_margin="2dp"
+            android:layout_margin="4dp"
             app:icon="@drawable/ic_previous"
             app:iconGravity="textStart"
-            style="@style/Widget.Material3.Button.IconButton" />
+            android:text="Prev"
+            style="@style/Widget.Material3.Button" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_play"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="72dp"
             android:layout_weight="1"
-            android:layout_margin="2dp"
+            android:layout_margin="4dp"
             app:icon="@drawable/ic_play"
             app:iconGravity="textStart"
-            style="@style/Widget.Material3.Button.IconButton" />
+            android:text="Play"
+            style="@style/Widget.Material3.Button" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_next"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="72dp"
             android:layout_weight="1"
-            android:layout_margin="2dp"
+            android:layout_margin="4dp"
             app:icon="@drawable/ic_next"
             app:iconGravity="textStart"
-            style="@style/Widget.Material3.Button.IconButton" />
+            android:text="Next"
+            style="@style/Widget.Material3.Button" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_stop"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="72dp"
             android:layout_weight="1"
-            android:layout_margin="2dp"
+            android:layout_margin="4dp"
             app:icon="@drawable/ic_stop"
             app:iconGravity="textStart"
-            style="@style/Widget.Material3.Button.IconButton" />
+            android:text="Stop"
+            style="@style/Widget.Material3.Button.TonalButton" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_shuffle"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="72dp"
             android:layout_weight="1"
-            android:layout_margin="2dp"
+            android:layout_margin="4dp"
             app:icon="@drawable/ic_shuffle"
             app:iconGravity="textStart"
-            style="@style/Widget.Material3.Button.IconButton.Outlined" />
+            android:text="Shuffle"
+            style="@style/Widget.Material3.Button.OutlinedButton" />
 
     </LinearLayout>
 
