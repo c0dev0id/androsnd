@@ -53,10 +53,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var playlistAdapter: PlaylistAdapter
     private var isUserSeekBarTouch = false
+    private var lastKnownPlaylistIndex = -1
+    private var lastKnownSongCount = -1
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            val musicBinder = binder as MusicService.MusicBinder
+            val musicBinder = binder as? MusicService.MusicBinder ?: return
             musicService = musicBinder.getService()
             isBound = true
             if (musicService?.isScanning == true) {
@@ -296,6 +298,9 @@ class MainActivity : AppCompatActivity() {
     private fun updatePlaylist() {
         val svc = musicService ?: return
         val pm = svc.playlistManager
+        if (pm.currentIndex == lastKnownPlaylistIndex && pm.songs.size == lastKnownSongCount) return
+        lastKnownPlaylistIndex = pm.currentIndex
+        lastKnownSongCount = pm.songs.size
         playlistAdapter.submitData(pm.folders, pm.songs, pm.currentIndex)
     }
 
@@ -352,7 +357,8 @@ class MainActivity : AppCompatActivity() {
             for ((fi, folder) in folders.withIndex()) {
                 items.add(ListItem(TYPE_FOLDER, folderIndex = fi, displayName = folder.name))
                 for (si in folder.songs) {
-                    items.add(ListItem(TYPE_SONG, songIndex = si, displayName = songs[si].displayName))
+                    val song = songs.getOrNull(si) ?: continue
+                    items.add(ListItem(TYPE_SONG, songIndex = si, displayName = song.displayName))
                 }
             }
             notifyDataSetChanged()
