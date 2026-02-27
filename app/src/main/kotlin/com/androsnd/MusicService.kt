@@ -21,6 +21,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import java.util.concurrent.Executors
 import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -70,6 +71,7 @@ class MusicService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var progressRunnable: Runnable? = null
+    private val scanExecutor = Executors.newSingleThreadExecutor()
 
     var isPlaying: Boolean = false
         private set
@@ -77,6 +79,7 @@ class MusicService : Service() {
         private set
     var currentMetadata: SongMetadata? = null
         private set
+    private var previousCoverArt: android.graphics.Bitmap? = null
 
     private var lastPlayPauseTime = 0L
     private var nextPendingRunnable: Runnable? = null
@@ -260,7 +263,10 @@ class MusicService : Service() {
         }
         mediaPlayer = null
         isPlaying = false
+        currentMetadata?.coverArt?.recycle()
+        previousCoverArt?.recycle()
         currentMetadata = null
+        previousCoverArt = null
         stopProgressUpdates()
         updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
         broadcastState()
@@ -369,6 +375,8 @@ class MusicService : Service() {
             isPlaying = true
             startProgressUpdates()
             val metadata = extractMetadata(song)
+            previousCoverArt?.recycle()
+            previousCoverArt = currentMetadata?.coverArt
             currentMetadata = metadata
             updateMediaSessionMetadata(metadata)
             updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
@@ -558,13 +566,14 @@ class MusicService : Service() {
 
     private fun startProgressUpdates() {
         stopProgressUpdates()
-        progressRunnable = object : Runnable {
+        val runnable = object : Runnable {
             override fun run() {
                 broadcastState()
                 handler.postDelayed(this, 1000)
             }
         }
-        handler.post(progressRunnable!!)
+        progressRunnable = runnable
+        handler.post(runnable)
     }
 
     private fun stopProgressUpdates() {
@@ -584,7 +593,7 @@ class MusicService : Service() {
 
         isScanning = true
         broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_STARTED))
-        Thread {
+        scanExecutor.execute {
             try {
                 playlistManager.scanFolder(uri)
             } catch (e: Exception) {
@@ -597,7 +606,7 @@ class MusicService : Service() {
                     broadcastState()
                 }
             }
-        }.start()
+        }
     }
 
     fun getPosition(): Int = mediaPlayer?.currentPosition ?: 0
@@ -610,8 +619,13 @@ class MusicService : Service() {
         stopProgressUpdates()
         mediaPlayer?.release()
         mediaPlayer = null
+        currentMetadata?.coverArt?.recycle()
+        previousCoverArt?.recycle()
+        currentMetadata = null
+        previousCoverArt = null
         mediaSession.release()
         overlayToastManager.dismiss()
         audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        scanExecutor.shutdown()
     }
 }

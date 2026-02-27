@@ -264,10 +264,9 @@ class OverlayToastManager(private val context: Context) {
 
     private fun scheduleDismiss(view: View) {
         cancelDismissTimer()
-        dismissRunnable = Runnable {
-            fadeOutAndRemove(view)
-        }
-        handler.postDelayed(dismissRunnable!!, DISPLAY_DURATION_MS)
+        val runnable = Runnable { fadeOutAndRemove(view) }
+        dismissRunnable = runnable
+        handler.postDelayed(runnable, DISPLAY_DURATION_MS)
     }
 
     private fun savePrefs() {
