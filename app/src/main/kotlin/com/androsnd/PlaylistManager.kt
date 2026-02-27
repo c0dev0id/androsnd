@@ -10,6 +10,7 @@ import com.androsnd.model.PlaylistFolder
 import com.androsnd.model.Song
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 class PlaylistManager(private val context: Context) {
 
@@ -17,10 +18,12 @@ class PlaylistManager(private val context: Context) {
         private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_FOLDER_URI = "folder_uri"
         private const val KEY_SCAN_CACHE = "scan_cache"
+        private const val SCAN_CACHE_FILENAME = "scan_cache.json"
         private val AUDIO_EXTENSIONS = setOf("mp3", "ogg", "flac", "aac", "m4a", "opus")
     }
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val scanCacheFile: File get() = File(context.filesDir, SCAN_CACHE_FILENAME)
 
     private val _songs = mutableListOf<Song>()
     val songs: List<Song> get() = _songs
@@ -36,6 +39,12 @@ class PlaylistManager(private val context: Context) {
         private set
     var repeatMode: Int = PlaybackStateCompat.REPEAT_MODE_NONE
         private set
+
+    private val playedIndices = mutableSetOf<Int>()
+
+    fun resetPlayedIndices() {
+        playedIndices.clear()
+    }
 
     fun setRepeatMode(mode: Int) {
         if (mode in listOf(PlaybackStateCompat.REPEAT_MODE_NONE, PlaybackStateCompat.REPEAT_MODE_ONE,
@@ -83,6 +92,7 @@ class PlaylistManager(private val context: Context) {
 
         currentIndex = 0
 
+        resetPlayedIndices()
         saveScanCache()
 
         val elapsed = System.currentTimeMillis() - startTime
@@ -100,7 +110,12 @@ class PlaylistManager(private val context: Context) {
         val audioFiles = mutableListOf<Pair<String, Uri>>()
         val subDirs = mutableListOf<Pair<String, String>>()
 
-        context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+        val cursor = context.contentResolver.query(childrenUri, projection, null, null, null)
+        if (cursor == null) {
+            Log.w("PlaylistManager", "Query returned null for $childrenUri")
+            return
+        }
+        cursor.use { cursor ->
             val idCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
             val nameCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
             val mimeCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
@@ -159,11 +174,32 @@ class PlaylistManager(private val context: Context) {
             }
             put("folders", foldersArray)
         }
-        prefs.edit().putString(KEY_SCAN_CACHE, json.toString()).apply()
+        try {
+            scanCacheFile.writeText(json.toString())
+        } catch (e: Exception) {
+            Log.w("PlaylistManager", "Failed to save scan cache to file", e)
+        }
     }
 
     fun loadScanCache(): Boolean {
-        val jsonStr = prefs.getString(KEY_SCAN_CACHE, null) ?: return false
+        val jsonStr = try {
+            if (scanCacheFile.exists()) {
+                scanCacheFile.readText()
+            } else {
+                // Migrate from SharedPreferences if present
+                val old = prefs.getString(KEY_SCAN_CACHE, null) ?: return false
+                try {
+                    scanCacheFile.writeText(old)
+                } catch (e: Exception) {
+                    Log.w("PlaylistManager", "Failed to migrate scan cache to file", e)
+                }
+                prefs.edit().remove(KEY_SCAN_CACHE).apply()
+                old
+            }
+        } catch (e: Exception) {
+            Log.w("PlaylistManager", "Failed to read scan cache file", e)
+            return false
+        }
         return try {
             val json = JSONObject(jsonStr)
             val songsArray = json.getJSONArray("songs")
@@ -204,6 +240,7 @@ class PlaylistManager(private val context: Context) {
     }
 
     fun clearScanCache() {
+        scanCacheFile.delete()
         prefs.edit().remove(KEY_SCAN_CACHE).apply()
     }
 
@@ -265,12 +302,26 @@ class PlaylistManager(private val context: Context) {
         return getCurrentSong()
     }
 
+    /**
+     * Like shuffleSong() but tracks played songs and returns null when all have been played.
+     * Used for REPEAT_MODE_NONE + shuffle to stop playback after all songs are heard.
+     */
+    fun shuffleSongNoRepeat(): Song? {
+        if (songs.isEmpty()) return null
+        playedIndices.add(currentIndex)
+        val unplayed = songs.indices.filter { it !in playedIndices }
+        if (unplayed.isEmpty()) return null
+        currentIndex = unplayed[kotlin.random.Random.nextInt(unplayed.size)]
+        return getCurrentSong()
+    }
+
     fun setCurrentIndex(index: Int) {
         if (index in songs.indices) currentIndex = index
     }
 
     fun toggleShuffle(): Boolean {
         isShuffleOn = !isShuffleOn
+        resetPlayedIndices()
         return isShuffleOn
     }
 }

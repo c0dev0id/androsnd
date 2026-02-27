@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.media.AudioAttributes
@@ -27,7 +28,6 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.androsnd.model.Song
 import com.androsnd.model.SongMetadata
@@ -48,10 +48,6 @@ class MusicService : Service() {
         const val ACTION_PREVIOUS = "com.androsnd.PREVIOUS"
         const val ACTION_SHUFFLE = "com.androsnd.SHUFFLE"
 
-        const val BROADCAST_STATE_CHANGED = "com.androsnd.STATE_CHANGED"
-        const val BROADCAST_SCAN_STARTED = "com.androsnd.SCAN_STARTED"
-        const val BROADCAST_SCAN_COMPLETED = "com.androsnd.SCAN_COMPLETED"
-
         private const val DOUBLE_TAP_THRESHOLD = 500L
 
         private val MUSIC_AUDIO_ATTRIBUTES = AudioAttributes.Builder()
@@ -59,7 +55,16 @@ class MusicService : Service() {
             .setUsage(AudioAttributes.USAGE_MEDIA)
             .build()
         private const val SKIP_DURATION_MS = 10000
+        private const val MAX_COVER_ART_SIZE = 512
     }
+
+    interface Listener {
+        fun onStateChanged()
+        fun onScanStarted()
+        fun onScanCompleted()
+    }
+
+    var serviceListener: Listener? = null
 
     inner class MusicBinder : Binder() {
         fun getService(): MusicService = this@MusicService
@@ -76,9 +81,12 @@ class MusicService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var progressRunnable: Runnable? = null
-    private val scanExecutor = Executors.newSingleThreadExecutor()
+    private var scanExecutor = Executors.newSingleThreadExecutor()
+
+    @Volatile
     private var isPlayerPrepared = false
 
+    @Volatile
     var isPlaying: Boolean = false
         private set
     var isScanning: Boolean = false
@@ -86,18 +94,17 @@ class MusicService : Service() {
     var currentMetadata: SongMetadata? = null
         private set
 
+    private var wasPlayingBeforeFocusLoss = false
     private var lastPlayPauseTime = 0L
     private var nextPendingRunnable: Runnable? = null
     private var prevPendingRunnable: Runnable? = null
 
     private lateinit var overlayToastManager: OverlayToastManager
-    private lateinit var broadcastManager: LocalBroadcastManager
 
     override fun onCreate() {
         super.onCreate()
         playlistManager = PlaylistManager(this)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-        broadcastManager = LocalBroadcastManager.getInstance(this)
         overlayToastManager = OverlayToastManager(this)
 
         createNotificationChannel()
@@ -106,7 +113,7 @@ class MusicService : Service() {
         val savedUri = playlistManager.loadSavedFolder()
         if (savedUri != null) {
             if (playlistManager.loadScanCache()) {
-                broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
+                serviceListener?.onScanCompleted()
                 broadcastState()
             } else {
                 scanFolderAsync(savedUri)
@@ -163,7 +170,7 @@ class MusicService : Service() {
                     val song = playlistManager.getCurrentSong() ?: return
                     if (mediaPlayer == null) {
                         try {
-                            mediaPlayer = MediaPlayer().apply {
+                            val mp = MediaPlayer().apply {
                                 setAudioAttributes(
                                     AudioAttributes.Builder()
                                         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
@@ -171,15 +178,21 @@ class MusicService : Service() {
                                         .build()
                                 )
                                 setDataSource(applicationContext, song.uri)
-                                prepare()
+                                setOnPreparedListener { player ->
+                                    if (mediaPlayer == player) {
+                                        isPlayerPrepared = true
+                                        val metadata = extractMetadata(song)
+                                        currentMetadata = metadata
+                                        updateMediaSessionMetadata(metadata)
+                                        updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+                                        broadcastState()
+                                    }
+                                }
                                 setOnCompletionListener { onTrackComplete() }
                                 setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
                             }
-                            val metadata = extractMetadata(song)
-                            currentMetadata = metadata
-                            updateMediaSessionMetadata(metadata)
-                            updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
-                            broadcastState()
+                            mediaPlayer = mp
+                            mp.prepareAsync()
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to prepare ${song.displayName}", e)
                         }
@@ -225,7 +238,7 @@ class MusicService : Service() {
             val song = playlistManager.getCurrentSong() ?: return
             startPlayingSong(song)
         } else {
-            if (!isPlaying) {
+            if (!isPlaying && isPlayerPrepared) {
                 mediaPlayer?.start()
                 isPlaying = true
                 startProgressUpdates()
@@ -366,8 +379,9 @@ class MusicService : Service() {
     private fun startPlayingSong(song: Song) {
         try {
             requestAudioFocus()
-            val metadata = extractMetadata(song)
-            currentMetadata = metadata
+            // Use a placeholder immediately so UI shows the song name before metadata is ready
+            val placeholder = SongMetadata(song.displayName, "", "", 0L, null)
+            currentMetadata = placeholder
             isPlayerPrepared = false
             val mp = MediaPlayer()
             mp.setAudioAttributes(MUSIC_AUDIO_ATTRIBUTES)
@@ -388,16 +402,37 @@ class MusicService : Service() {
                     onTrackComplete()
                 }
             }
-            mp.setOnErrorListener { _, what, extra ->
+            mp.setOnErrorListener { player, what, extra ->
                 Log.e(TAG, "MediaPlayer error: what=$what extra=$extra for ${song.displayName}; skipping track")
+                handler.post {
+                    if (mediaPlayer == player) {
+                        mediaPlayer?.release()
+                        mediaPlayer = null
+                        isPlaying = false
+                        isPlayerPrepared = false
+                        onTrackComplete()
+                    }
+                }
                 true // Return true to mark error as handled and prevent onCompletion from also firing
             }
             mp.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
             mp.prepareAsync()
             mediaPlayer = mp
-            updateMediaSessionMetadata(metadata)
+            updateMediaSessionMetadata(placeholder)
             broadcastState()
-            overlayToastManager.showSong(metadata)
+            overlayToastManager.showSong(placeholder)
+            // Extract real metadata in the background to avoid blocking the main thread
+            scanExecutor.execute {
+                val metadata = extractMetadata(song)
+                handler.post {
+                    if (currentMetadata == placeholder) {
+                        currentMetadata = metadata
+                        updateMediaSessionMetadata(metadata)
+                        broadcastState()
+                        overlayToastManager.showSong(metadata)
+                    }
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start playing ${song.displayName}", e)
         }
@@ -411,8 +446,8 @@ class MusicService : Service() {
             }
             PlaybackStateCompat.REPEAT_MODE_NONE -> {
                 if (playlistManager.isShuffleOn) {
-                    val song = playlistManager.shuffleSong()
-                    if (song != null) playSong(song)
+                    val song = playlistManager.shuffleSongNoRepeat()
+                    if (song != null) playSong(song) else stopPlayback()
                 } else {
                     val isLast = playlistManager.currentIndex >= playlistManager.songs.size - 1
                     if (!isLast) {
@@ -437,13 +472,19 @@ class MusicService : Service() {
             .setAudioAttributes(MUSIC_AUDIO_ATTRIBUTES)
             .setOnAudioFocusChangeListener { focusChange ->
                 when (focusChange) {
-                    AudioManager.AUDIOFOCUS_LOSS -> pause()
-                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> pause()
+                    AudioManager.AUDIOFOCUS_LOSS -> {
+                        wasPlayingBeforeFocusLoss = false
+                        pause()
+                    }
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                        wasPlayingBeforeFocusLoss = isPlaying
+                        pause()
+                    }
                     AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK ->
                         mediaPlayer?.setVolume(0.3f, 0.3f)
                     AudioManager.AUDIOFOCUS_GAIN -> {
                         mediaPlayer?.setVolume(1f, 1f)
-                        play()
+                        if (wasPlayingBeforeFocusLoss) play()
                     }
                 }
             }
@@ -461,7 +502,7 @@ class MusicService : Service() {
             val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
             val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
             val artBytes = retriever.embeddedPicture
-            val coverArt = if (artBytes != null) BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size) else null
+            val coverArt = if (artBytes != null) decodeSampledBitmap(artBytes, MAX_COVER_ART_SIZE) else null
             SongMetadata(title, artist, album, duration, coverArt)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to extract metadata for ${song.displayName}", e)
@@ -469,6 +510,26 @@ class MusicService : Service() {
         } finally {
             retriever.release()
         }
+    }
+
+    private fun decodeSampledBitmap(bytes: ByteArray, maxSize: Int): Bitmap? {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        options.inSampleSize = calculateInSampleSize(options.outWidth, options.outHeight, maxSize)
+        options.inJustDecodeBounds = false
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    }
+
+    private fun calculateInSampleSize(width: Int, height: Int, maxSize: Int): Int {
+        var sampleSize = 1
+        if (height > maxSize || width > maxSize) {
+            val halfHeight = height / 2
+            val halfWidth = width / 2
+            while (halfHeight / sampleSize >= maxSize && halfWidth / sampleSize >= maxSize) {
+                sampleSize *= 2
+            }
+        }
+        return sampleSize
     }
 
     private fun updateMediaSessionMetadata(metadata: SongMetadata) {
@@ -598,7 +659,7 @@ class MusicService : Service() {
     }
 
     fun broadcastState() {
-        broadcastManager.sendBroadcast(Intent(BROADCAST_STATE_CHANGED))
+        serviceListener?.onStateChanged()
     }
 
     fun scanFolderAsync(uri: Uri) {
@@ -609,7 +670,10 @@ class MusicService : Service() {
 
         playlistManager.clearScanCache()
         isScanning = true
-        broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_STARTED))
+        serviceListener?.onScanStarted()
+        if (scanExecutor.isShutdown) {
+            scanExecutor = Executors.newSingleThreadExecutor()
+        }
         scanExecutor.execute {
             try {
                 playlistManager.scanFolder(uri)
@@ -619,7 +683,7 @@ class MusicService : Service() {
                 handler.post {
                     isScanning = false
                     updateMediaSessionQueue()
-                    broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
+                    serviceListener?.onScanCompleted()
                     broadcastState()
                 }
             }
@@ -628,6 +692,14 @@ class MusicService : Service() {
 
     fun getPosition(): Int = mediaPlayer?.currentPosition ?: 0
     fun getDuration(): Int = mediaPlayer?.duration ?: 0
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        if (!isPlaying) {
+            stopPlayback()
+            stopSelf()
+        }
+    }
 
     override fun onDestroy() {
         super.onDestroy()
