@@ -231,6 +231,7 @@ class OverlayToastManager(private val context: Context) {
     private fun scheduleDismiss(view: View) {
         cancelDismissTimer()
         dismissRunnable = Runnable {
+            view.alpha = 1f
             view.animate()
                 .alpha(0f)
                 .setDuration(ANIMATION_DURATION_MS)
@@ -264,7 +265,6 @@ class OverlayToastManager(private val context: Context) {
     fun dismiss() {
         cancelDismissTimer()
         currentView?.let {
-            it.animate().cancel()
             removeView(it)
         }
     }
