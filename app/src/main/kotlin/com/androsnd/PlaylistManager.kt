@@ -42,10 +42,9 @@ class PlaylistManager(private val context: Context, private val db: AppDatabase)
 
     private fun rebuildFolderIndex() {
         songIndexToFolderIndex.clear()
-        for ((fi, folder) in _folders.withIndex()) {
-            _songs.forEachIndexed { si, song ->
-                if (song.folderId == folder.id) songIndexToFolderIndex[si] = fi
-            }
+        val folderIdToIndex = _folders.withIndex().associate { (fi, folder) -> folder.id to fi }
+        _songs.forEachIndexed { si, song ->
+            folderIdToIndex[song.folderId]?.let { fi -> songIndexToFolderIndex[si] = fi }
         }
     }
 

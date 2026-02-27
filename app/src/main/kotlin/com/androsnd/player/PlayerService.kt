@@ -15,7 +15,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
-import android.os.HandlerThread
 import android.os.Looper
 import android.os.PowerManager
 import android.support.v4.media.MediaBrowserCompat
@@ -92,7 +91,7 @@ class PlayerService : MediaBrowserServiceCompat() {
     override fun onCreate() {
         super.onCreate()
 
-        playerThread = HandlerThread("AndrosndPlayer")
+        playerThread = PlayerThread()
         playerThread.start()
         playerHandler = Handler(playerThread.looper)
 
