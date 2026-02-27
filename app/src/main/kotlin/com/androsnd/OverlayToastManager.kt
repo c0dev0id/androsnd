@@ -235,7 +235,6 @@ class OverlayToastManager(private val context: Context) {
                 .alpha(0f)
                 .setDuration(ANIMATION_DURATION_MS)
                 .withEndAction {
-                    view.alpha = 0f
                     removeView(view)
                 }
                 .start()
@@ -267,6 +266,7 @@ class OverlayToastManager(private val context: Context) {
     fun dismiss() {
         cancelDismissTimer()
         currentView?.let {
+            it.animate().cancel()
             removeView(it)
         }
     }
