@@ -5,9 +5,8 @@
 # Keep app model classes used in JSON serialization
 -keep class com.androsnd.model.** { *; }
 
-# Keep service and activity entry points
--keep class com.androsnd.MusicService { *; }
--keep class com.androsnd.MainActivity { *; }
+# Keep all app classes
+-keep class com.androsnd.** { *; }
 
 # Strip verbose and debug log calls in release builds
 -assumenosideeffects class android.util.Log {

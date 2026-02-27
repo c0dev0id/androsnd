@@ -240,6 +240,22 @@ class PlaylistManager(private val context: Context) {
         }
     }
 
+    /**
+     * Returns true if at least one cached song URI is still readable.
+     * Used to detect stale caches (e.g. after reinstall or permission expiry).
+     * Checks only the first 5 URIs to avoid blocking the calling thread too long.
+     */
+    fun isCacheValid(): Boolean {
+        if (_songs.isEmpty()) return false
+        return _songs.take(5).any { song ->
+            try {
+                context.contentResolver.openInputStream(song.uri)?.use { true } ?: false
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
     fun clearScanCache() {
         scanCacheFile.delete()
         prefs.edit().remove(KEY_SCAN_CACHE).apply()
