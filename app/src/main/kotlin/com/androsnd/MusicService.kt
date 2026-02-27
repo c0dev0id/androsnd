@@ -4,7 +4,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.BitmapFactory
@@ -21,6 +20,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -28,12 +28,13 @@ import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.media.MediaBrowserServiceCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.androsnd.model.Song
 import com.androsnd.model.SongMetadata
 import java.util.concurrent.Executors
 
-class MusicService : Service() {
+class MusicService : MediaBrowserServiceCompat() {
 
     companion object {
         private const val TAG = "MusicService"
@@ -150,7 +151,7 @@ class MusicService : Service() {
                 override fun onSkipToQueueItem(id: Long) { playSongAtIndex(id.toInt()) }
                 override fun onPlayFromUri(uri: Uri?, extras: Bundle?) {
                     uri ?: return
-                    val song = Song(uri = uri, displayName = uri.lastPathSegment ?: "Unknown", folderPath = "", folderName = "")
+                    val song = Song(uri = uri, displayName = uri.lastPathSegment ?: "Unknown")
                     playSong(song)
                 }
                 override fun onPrepare() {
@@ -183,6 +184,7 @@ class MusicService : Service() {
             })
             isActive = true
         }
+        sessionToken = mediaSession.sessionToken
     }
 
     private fun startForegroundCompat(notification: Notification) {
@@ -211,7 +213,43 @@ class MusicService : Service() {
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder = binder
+    override fun onBind(intent: Intent?): IBinder? {
+        if (intent?.action == SERVICE_INTERFACE) {
+            return super.onBind(intent)
+        }
+        return binder
+    }
+
+    override fun onGetRoot(
+        clientPackageName: String,
+        clientUid: Int,
+        rootHints: Bundle?
+    ): BrowserRoot {
+        return BrowserRoot(getString(R.string.app_name), null)
+    }
+
+    override fun onLoadChildren(
+        parentId: String,
+        result: Result<MutableList<MediaBrowserCompat.MediaItem>>
+    ) {
+        val items = mutableListOf<MediaBrowserCompat.MediaItem>()
+        if (::playlistManager.isInitialized) {
+            for ((index, song) in playlistManager.songs.withIndex()) {
+                val desc = MediaDescriptionCompat.Builder()
+                    .setMediaId(index.toString())
+                    .setTitle(song.displayName)
+                    .setMediaUri(song.uri)
+                    .build()
+                items.add(
+                    MediaBrowserCompat.MediaItem(
+                        desc,
+                        MediaBrowserCompat.MediaItem.FLAG_PLAYABLE
+                    )
+                )
+            }
+        }
+        result.sendResult(items)
+    }
 
     fun play() {
         if (playlistManager.songs.isEmpty()) return

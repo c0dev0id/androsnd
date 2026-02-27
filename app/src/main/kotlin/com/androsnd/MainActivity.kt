@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playlistAdapter: PlaylistAdapter
     private var isUserSeekBarTouch = false
     private var lastKnownSongIndex = -1
+    private var pendingOpenUri: Uri? = null
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -64,7 +65,9 @@ class MainActivity : AppCompatActivity() {
                 showLoading()
             } else {
                 updateUI()
-                if (musicService?.playlistManager?.songs?.isEmpty() == true) {
+                if (pendingOpenUri != null) {
+                    playOpenWithUri()
+                } else if (musicService?.playlistManager?.songs?.isEmpty() == true) {
                     openFolderPicker()
                 }
             }
@@ -148,6 +151,33 @@ class MainActivity : AppCompatActivity() {
             addAction(MusicService.BROADCAST_SCAN_COMPLETED)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(scanReceiver, scanFilter)
+
+        handleOpenWithIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleOpenWithIntent(intent)
+    }
+
+    private fun handleOpenWithIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_VIEW) {
+            val uri = intent.data ?: return
+            pendingOpenUri = uri
+            if (isBound) {
+                playOpenWithUri()
+            }
+        }
+    }
+
+    private fun playOpenWithUri() {
+        val uri = pendingOpenUri ?: return
+        pendingOpenUri = null
+        val song = Song(
+            uri = uri,
+            displayName = uri.lastPathSegment ?: "Unknown"
+        )
+        musicService?.playSong(song)
     }
 
     private fun bindViews() {
