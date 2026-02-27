@@ -157,7 +157,10 @@ class MusicService : MediaBrowserServiceCompat() {
 
         val savedUri = playlistManager.loadSavedFolder()
         if (savedUri != null) {
-            if (playlistManager.loadScanCache() && playlistManager.isCacheValid()) {
+            if (!playlistManager.hasFolderPermission()) {
+                Log.w(TAG, "Persisted URI permission lost for $savedUri; skipping load")
+                playlistManager.clearScanCache()
+            } else if (playlistManager.loadScanCache() && playlistManager.isCacheValid()) {
                 serviceListener?.onScanCompleted()
                 broadcastState()
             } else {
