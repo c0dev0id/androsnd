@@ -97,10 +97,11 @@ class PlayerController(
                 }
                 true // Return true to mark error as handled and prevent onCompletion from also firing
             }
-            mp.prepareAsync()
             mediaPlayer = mp
+            mp.prepareAsync()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start playing ${song.displayName}", e)
+            releasePlayer()
             listener?.onError()
         }
     }
@@ -114,10 +115,11 @@ class PlayerController(
                 isPlayerPrepared = true
                 listener?.onPrepared()
             }
-            mp.prepareAsync()
             mediaPlayer = mp
+            mp.prepareAsync()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to prepare ${song.displayName}", e)
+            releasePlayer()
         }
     }
 
