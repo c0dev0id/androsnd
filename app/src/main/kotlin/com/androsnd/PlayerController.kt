@@ -80,22 +80,12 @@ class PlayerController(
         releasePlayer()
         requestAudioFocus()
         try {
-            val mp = MediaPlayer()
-            mp.setAudioAttributes(MUSIC_AUDIO_ATTRIBUTES)
-            mp.setDataSource(context, song.uri)
-            mp.setOnPreparedListener { player ->
-                if (mediaPlayer == player) {
-                    isPlayerPrepared = true
-                    player.start()
-                    isPlaying = true
-                    startProgressUpdates()
-                    listener?.onPreparedAndStarted()
-                }
-            }
-            mp.setOnCompletionListener { player ->
-                if (player == mediaPlayer) {
-                    listener?.onCompleted()
-                }
+            val mp = createMediaPlayer(song) { player ->
+                isPlayerPrepared = true
+                player.start()
+                isPlaying = true
+                startProgressUpdates()
+                listener?.onPreparedAndStarted()
             }
             mp.setOnErrorListener { player, what, extra ->
                 Log.e(TAG, "MediaPlayer error: what=$what extra=$extra for ${song.displayName}; skipping track")
@@ -107,7 +97,6 @@ class PlayerController(
                 }
                 true // Return true to mark error as handled and prevent onCompletion from also firing
             }
-            mp.setWakeMode(context, PowerManager.PARTIAL_WAKE_LOCK)
             mp.prepareAsync()
             mediaPlayer = mp
         } catch (e: Exception) {
@@ -121,26 +110,41 @@ class PlayerController(
     fun prepareSong(song: Song) {
         if (isActive) return
         try {
-            val mp = MediaPlayer()
-            mp.setAudioAttributes(MUSIC_AUDIO_ATTRIBUTES)
-            mp.setDataSource(context, song.uri)
-            mp.setOnPreparedListener { player ->
-                if (mediaPlayer == player) {
-                    isPlayerPrepared = true
-                    listener?.onPrepared()
-                }
+            val mp = createMediaPlayer(song) { _ ->
+                isPlayerPrepared = true
+                listener?.onPrepared()
             }
-            mp.setOnCompletionListener { player ->
-                if (player == mediaPlayer) {
-                    listener?.onCompleted()
-                }
-            }
-            mp.setWakeMode(context, PowerManager.PARTIAL_WAKE_LOCK)
             mp.prepareAsync()
             mediaPlayer = mp
         } catch (e: Exception) {
             Log.e(TAG, "Failed to prepare ${song.displayName}", e)
         }
+    }
+
+    /**
+     * Creates and configures a [MediaPlayer] with common settings (audio attributes, data source,
+     * wake lock, completion listener). The caller-supplied [onPrepared] callback is invoked when
+     * the player finishes preparing — only if the player is still the active instance.
+     */
+    private fun createMediaPlayer(
+        song: Song,
+        onPrepared: (MediaPlayer) -> Unit
+    ): MediaPlayer {
+        val mp = MediaPlayer()
+        mp.setAudioAttributes(MUSIC_AUDIO_ATTRIBUTES)
+        mp.setDataSource(context, song.uri)
+        mp.setOnPreparedListener { player ->
+            if (mediaPlayer == player) {
+                onPrepared(player)
+            }
+        }
+        mp.setOnCompletionListener { player ->
+            if (player == mediaPlayer) {
+                listener?.onCompleted()
+            }
+        }
+        mp.setWakeMode(context, PowerManager.PARTIAL_WAKE_LOCK)
+        return mp
     }
 
     /** Resumes playback if player is prepared but not playing. */

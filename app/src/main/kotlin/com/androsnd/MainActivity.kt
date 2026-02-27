@@ -317,8 +317,8 @@ class MainActivity : AppCompatActivity() {
         return "%d:%02d".format(minutes, seconds)
     }
 
-    private fun songFromUri(uri: Uri): com.androsnd.model.Song =
-        com.androsnd.model.Song(uri = uri, displayName = uri.lastPathSegment ?: "Unknown")
+    private fun songFromUri(uri: Uri): Song =
+        Song(uri = uri, displayName = uri.lastPathSegment ?: "Unknown")
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
