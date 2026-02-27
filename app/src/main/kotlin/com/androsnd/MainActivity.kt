@@ -1,11 +1,9 @@
 package com.androsnd
 
 import android.Manifest
-import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -13,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.Settings
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -24,7 +23,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.androsnd.model.PlaylistFolder
@@ -32,6 +31,10 @@ import com.androsnd.model.Song
 import com.google.android.material.button.MaterialButton
 
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        private const val TAG = "MainActivity"
+    }
 
     private var musicService: MusicService? = null
     private var isBound = false
@@ -55,43 +58,32 @@ class MainActivity : AppCompatActivity() {
     private var isUserSeekBarTouch = false
     private var lastKnownSongIndex = -1
 
+    private val serviceListener = object : MusicService.Listener {
+        override fun onStateChanged() { runOnUiThread { updateUI() } }
+        override fun onScanStarted() { runOnUiThread { showLoading() } }
+        override fun onScanCompleted() { runOnUiThread { hideLoading(); updateUI() } }
+    }
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val musicBinder = binder as MusicService.MusicBinder
-            musicService = musicBinder.getService()
+            val svc = musicBinder.getService()
+            musicService = svc
+            svc.serviceListener = serviceListener
             isBound = true
-            if (musicService?.isScanning == true) {
+            if (svc.isScanning) {
                 showLoading()
             } else {
                 updateUI()
-                if (musicService?.playlistManager?.songs?.isEmpty() == true) {
+                if (svc.playlistManager.songs.isEmpty()) {
                     openFolderPicker()
                 }
             }
         }
         override fun onServiceDisconnected(name: ComponentName?) {
+            musicService?.serviceListener = null
             musicService = null
             isBound = false
-        }
-    }
-
-    private val stateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == MusicService.BROADCAST_STATE_CHANGED) {
-                updateUI()
-            }
-        }
-    }
-
-    private val scanReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                MusicService.BROADCAST_SCAN_STARTED -> showLoading()
-                MusicService.BROADCAST_SCAN_COMPLETED -> {
-                    hideLoading()
-                    updateUI()
-                }
-            }
         }
     }
 
@@ -137,17 +129,6 @@ class MainActivity : AppCompatActivity() {
         val serviceIntent = Intent(this, MusicService::class.java)
         startForegroundService(serviceIntent)
         bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
-
-        LocalBroadcastManager.getInstance(this).registerReceiver(
-            stateReceiver,
-            IntentFilter(MusicService.BROADCAST_STATE_CHANGED)
-        )
-
-        val scanFilter = IntentFilter().apply {
-            addAction(MusicService.BROADCAST_SCAN_STARTED)
-            addAction(MusicService.BROADCAST_SCAN_COMPLETED)
-        }
-        LocalBroadcastManager.getInstance(this).registerReceiver(scanReceiver, scanFilter)
     }
 
     private fun bindViews() {
@@ -238,7 +219,11 @@ class MainActivity : AppCompatActivity() {
                 Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                 Uri.parse("package:$packageName")
             )
-            startActivity(intent)
+            try {
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not open battery optimization settings", e)
+            }
         }
     }
 
@@ -248,7 +233,11 @@ class MainActivity : AppCompatActivity() {
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:$packageName")
             )
-            startActivity(intent)
+            try {
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not open overlay permission settings", e)
+            }
         }
     }
 
@@ -263,27 +252,28 @@ class MainActivity : AppCompatActivity() {
         btnShuffle.isSelected = pm.isShuffleOn
         btnPlay.setIconResource(if (svc.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
 
+        if (song != null) {
+            val metadata = svc.currentMetadata
+            if (metadata != null) {
+                songTitle.text = metadata.title
+                songArtist.text = metadata.artist
+                songAlbum.text = metadata.album
+
+                if (metadata.coverArt != null) {
+                    coverArt.setImageBitmap(metadata.coverArt)
+                } else {
+                    coverArt.setImageResource(android.R.drawable.ic_media_play)
+                }
+            }
+        } else {
+            songTitle.text = getString(R.string.no_song)
+            songArtist.text = ""
+            songAlbum.text = ""
+            coverArt.setImageResource(android.R.drawable.ic_media_play)
+        }
+
         if (currentIdx != lastKnownSongIndex) {
             lastKnownSongIndex = currentIdx
-            if (song != null) {
-                val metadata = svc.currentMetadata
-                if (metadata != null) {
-                    songTitle.text = metadata.title
-                    songArtist.text = metadata.artist
-                    songAlbum.text = metadata.album
-
-                    if (metadata.coverArt != null) {
-                        coverArt.setImageBitmap(metadata.coverArt)
-                    } else {
-                        coverArt.setImageResource(android.R.drawable.ic_media_play)
-                    }
-                }
-            } else {
-                songTitle.text = getString(R.string.no_song)
-                songArtist.text = ""
-                songAlbum.text = ""
-                coverArt.setImageResource(android.R.drawable.ic_media_play)
-            }
             updatePlaylist()
         }
 
@@ -324,8 +314,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(stateReceiver)
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(scanReceiver)
+        musicService?.serviceListener = null
         if (isBound) {
             unbindService(serviceConnection)
             isBound = false
@@ -353,15 +342,37 @@ class MainActivity : AppCompatActivity() {
         private var currentSongIndex = -1
 
         fun submitData(folders: List<PlaylistFolder>, songs: List<Song>, currentIdx: Int) {
-            items.clear()
-            currentSongIndex = currentIdx
+            val newItems = mutableListOf<ListItem>()
             for ((fi, folder) in folders.withIndex()) {
-                items.add(ListItem(TYPE_FOLDER, folderIndex = fi, displayName = folder.name))
+                newItems.add(ListItem(TYPE_FOLDER, folderIndex = fi, displayName = folder.name))
                 for (si in folder.songs) {
-                    items.add(ListItem(TYPE_SONG, songIndex = si, displayName = songs[si].displayName))
+                    newItems.add(ListItem(TYPE_SONG, songIndex = si, displayName = songs[si].displayName))
                 }
             }
-            notifyDataSetChanged()
+            val oldItems = items.toList()
+            val oldSongIndex = currentSongIndex
+            currentSongIndex = currentIdx
+            val diffResult = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+                override fun getOldListSize() = oldItems.size
+                override fun getNewListSize() = newItems.size
+                override fun areItemsTheSame(oldPos: Int, newPos: Int): Boolean {
+                    val old = oldItems[oldPos]
+                    val new = newItems[newPos]
+                    return old.type == new.type &&
+                        old.folderIndex == new.folderIndex &&
+                        old.songIndex == new.songIndex
+                }
+                override fun areContentsTheSame(oldPos: Int, newPos: Int): Boolean {
+                    val old = oldItems[oldPos]
+                    val new = newItems[newPos]
+                    val selectedChanged = old.type == TYPE_SONG &&
+                        (old.songIndex == oldSongIndex) != (new.songIndex == currentSongIndex)
+                    return old == new && !selectedChanged
+                }
+            })
+            items.clear()
+            items.addAll(newItems)
+            diffResult.dispatchUpdatesTo(this)
         }
 
         override fun getItemViewType(position: Int) = items[position].type
