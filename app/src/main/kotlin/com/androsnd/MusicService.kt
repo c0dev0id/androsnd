@@ -38,6 +38,7 @@ class MusicService : MediaBrowserServiceCompat() {
 
         private const val DOUBLE_TAP_THRESHOLD = 500L
         private const val SKIP_DURATION_MS = 10000
+        private const val MAX_CONSECUTIVE_ERRORS = 3
     }
 
     interface Listener {
@@ -75,6 +76,7 @@ class MusicService : MediaBrowserServiceCompat() {
     private var lastPlayPauseTime = 0L
     private var nextPendingRunnable: Runnable? = null
     private var prevPendingRunnable: Runnable? = null
+    private var consecutiveErrors = 0
 
     private lateinit var overlayToastManager: OverlayToastManager
 
@@ -99,6 +101,7 @@ class MusicService : MediaBrowserServiceCompat() {
 
         @MainThread
         override fun onPreparedAndStarted() {
+            consecutiveErrors = 0
             updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
             startForegroundCompat(buildNotification())
             broadcastState()
@@ -130,7 +133,13 @@ class MusicService : MediaBrowserServiceCompat() {
         override fun onError() {
             currentMetadata = null
             broadcastState()
-            onTrackComplete()
+            consecutiveErrors++
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                consecutiveErrors = 0
+                stopPlayback()
+            } else {
+                onTrackComplete()
+            }
         }
 
         @MainThread
@@ -154,10 +163,11 @@ class MusicService : MediaBrowserServiceCompat() {
 
         val savedUri = playlistManager.loadSavedFolder()
         if (savedUri != null) {
-            if (playlistManager.loadScanCache()) {
+            if (playlistManager.loadScanCache() && playlistManager.isCacheValid()) {
                 serviceListener?.onScanCompleted()
                 broadcastState()
             } else {
+                playlistManager.clearScanCache()
                 scanFolderAsync(savedUri)
             }
         }
