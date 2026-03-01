@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer circle ring: center (54,54), radius 27, stroke 2.5 -->
+    <path
+        android:pathData="M54,54m-27,0a27,27 0,1,1 54,0a27,27 0,1,1 -54,0"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5" />
+
+    <!-- Subtle filled circle for frosted depth -->
+    <path
+        android:pathData="M54,54m-24.5,0a24.5,24.5 0,1,1 49,0a24.5,24.5 0,1,1 -49,0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.07" />
+
+    <!-- Teal accent arc: 60-degree sweep in upper-right of the ring -->
+    <!-- Outer arc r=27.5: from angle -60deg to 0deg -->
+    <!--   Start: (54 + 27.5*cos60, 54 - 27.5*sin60) = (67.75, 30.19) -->
+    <!--   End:   (54 + 27.5, 54) = (81.5, 54) -->
+    <!-- Inner arc r=25.5: -->
+    <!--   End:   (54 + 25.5, 54) = (79.5, 54) -->
+    <!--   Start: (54 + 25.5*cos60, 54 - 25.5*sin60) = (66.75, 31.92) -->
+    <path
+        android:pathData="M67.75,30.19 A27.5,27.5,0,0,1,81.5,54 L79.5,54 A25.5,25.5,0,0,0,66.75,31.92 Z"
+        android:fillColor="#03DAC5"
+        android:fillAlpha="0.80" />
+
+    <!-- Play triangle with rounded corners -->
+    <!-- Vertices: A=(44,34), B=(44,74), C=(74,54) -->
+    <!-- Centroid at (54,54) - perfectly centered -->
+    <!-- Rounded with quadratic beziers, r~3.5 at each corner -->
+    <path
+        android:pathData="M44,37.5 Q44,34 46.91,35.94 L71.09,52.06 Q74,54 71.09,55.94 L46.91,72.06 Q44,74 44,70.5 Z"
+        android:fillColor="#FFFFFF" />
+
+</vector>
