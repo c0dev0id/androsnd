@@ -111,6 +111,18 @@ class MusicService : Service() {
         overlayToastManager.updateScale(scale)
     }
 
+    fun showOverlayDemo() {
+        overlayToastManager.showDemo()
+    }
+
+    fun dismissOverlayDemo() {
+        overlayToastManager.dismiss()
+    }
+
+    fun updateOverlayOpacity(opacity: Int) {
+        overlayToastManager.updateOpacity(opacity)
+    }
+
     override fun onCreate() {
         super.onCreate()
         playlistManager = PlaylistManager(this)

@@ -245,6 +245,7 @@ class MainActivity : AppCompatActivity() {
             val opacity = value.toInt()
             labelOpacity.text = "${opacity}%"
             prefs.edit().putInt("overlay_opacity", opacity).apply()
+            musicService?.updateOverlayOpacity(opacity)
         }
 
         // Overlay Size
@@ -275,7 +276,10 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.settings)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
+            .setOnDismissListener { musicService?.dismissOverlayDemo() }
             .show()
+
+        musicService?.showOverlayDemo()
     }
 
     private fun requestPermissionsIfNeeded() {

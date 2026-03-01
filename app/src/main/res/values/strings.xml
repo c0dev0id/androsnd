@@ -21,4 +21,7 @@
     <string name="settings_overlay_opacity">Overlay Opacity</string>
     <string name="settings_overlay_size">Overlay Size</string>
     <string name="settings_double_tap">Double-Tap Timeout</string>
+    <string name="overlay_demo_title">Song Title</string>
+    <string name="overlay_demo_artist">Artist Name</string>
+    <string name="overlay_demo_album">Album Name</string>
 </resources>
