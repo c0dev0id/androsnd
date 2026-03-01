@@ -16,4 +16,9 @@
     <string name="notification_action_previous">Previous</string>
     <string name="notification_action_next">Next</string>
     <string name="loading_files">Loading files…</string>
+    <string name="settings">Settings</string>
+    <string name="settings_app_volume">App Volume</string>
+    <string name="settings_overlay_opacity">Overlay Opacity</string>
+    <string name="settings_overlay_size">Overlay Size</string>
+    <string name="settings_double_tap">Double-Tap Timeout</string>
 </resources>

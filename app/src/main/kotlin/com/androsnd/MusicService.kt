@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.BitmapFactory
@@ -52,7 +53,10 @@ class MusicService : Service() {
         const val BROADCAST_SCAN_STARTED = "com.androsnd.SCAN_STARTED"
         const val BROADCAST_SCAN_COMPLETED = "com.androsnd.SCAN_COMPLETED"
 
-        private const val DOUBLE_TAP_THRESHOLD = 500L
+        private const val PREFS_NAME = "androsnd_prefs"
+        private const val KEY_APP_VOLUME = "app_volume"
+        private const val KEY_DOUBLE_TAP_TIMEOUT = "double_tap_ms"
+        private const val DEFAULT_DOUBLE_TAP_MS = 500
         private const val SKIP_DURATION_MS = 10000
     }
 
@@ -87,6 +91,25 @@ class MusicService : Service() {
 
     private lateinit var overlayToastManager: OverlayToastManager
     private lateinit var broadcastManager: LocalBroadcastManager
+
+    private val doubleTapThreshold: Long
+        get() = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_DOUBLE_TAP_TIMEOUT, DEFAULT_DOUBLE_TAP_MS).toLong()
+
+    private fun getAppVolumeFloat(): Float {
+        val pct = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_APP_VOLUME, 100)
+        return pct / 100f
+    }
+
+    fun applyAppVolume() {
+        val vol = getAppVolumeFloat()
+        mediaPlayer?.setVolume(vol, vol)
+    }
+
+    fun updateOverlayScale(scale: Float) {
+        overlayToastManager.updateScale(scale)
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -162,6 +185,8 @@ class MusicService : Service() {
                                 )
                                 setDataSource(applicationContext, song.uri)
                                 prepare()
+                                val vol = getAppVolumeFloat()
+                                setVolume(vol, vol)
                                 setOnCompletionListener { onTrackComplete() }
                                 setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
                             }
@@ -217,6 +242,7 @@ class MusicService : Service() {
         } else {
             if (!isPlaying) {
                 mediaPlayer?.start()
+                applyAppVolume()
                 isPlaying = true
                 startProgressUpdates()
                 updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
@@ -245,7 +271,7 @@ class MusicService : Service() {
 
     fun handlePlayPause() {
         val now = System.currentTimeMillis()
-        if (now - lastPlayPauseTime < DOUBLE_TAP_THRESHOLD) {
+        if (now - lastPlayPauseTime < doubleTapThreshold) {
             lastPlayPauseTime = 0L
             playlistManager.toggleShuffle()
             mediaSession.setShuffleMode(if (playlistManager.isShuffleOn) PlaybackStateCompat.SHUFFLE_MODE_ALL else PlaybackStateCompat.SHUFFLE_MODE_NONE)
@@ -295,7 +321,7 @@ class MusicService : Service() {
                 if (song != null) playSong(song)
             }
             nextPendingRunnable = runnable
-            handler.postDelayed(runnable, DOUBLE_TAP_THRESHOLD)
+            handler.postDelayed(runnable, doubleTapThreshold)
         }
     }
 
@@ -321,7 +347,7 @@ class MusicService : Service() {
                 if (song != null) playSong(song)
             }
             prevPendingRunnable = runnable
-            handler.postDelayed(runnable, DOUBLE_TAP_THRESHOLD)
+            handler.postDelayed(runnable, doubleTapThreshold)
         }
     }
 
@@ -368,6 +394,8 @@ class MusicService : Service() {
                 )
                 setDataSource(applicationContext, song.uri)
                 prepare()
+                val vol = getAppVolumeFloat()
+                setVolume(vol, vol)
                 start()
                 setOnCompletionListener { onTrackComplete() }
                 setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)

@@ -6,7 +6,9 @@ import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -36,8 +38,11 @@ class OverlayToastManager(private val context: Context) {
         private const val KEY_OVERLAY_Y = "overlay_y"
         private const val KEY_OVERLAY_SCALE = "overlay_scale"
         private const val KEY_OVERLAY_CUSTOM_POS = "overlay_custom_pos"
+        private const val KEY_OVERLAY_OPACITY = "overlay_opacity"
         private const val MIN_OVERLAY_SCALE = 0.5f
         private const val MAX_OVERLAY_SCALE = 3.0f
+        private const val DEFAULT_OVERLAY_OPACITY = 80
+        private const val OVERLAY_CORNER_RADIUS_DP = 20f
     }
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -71,8 +76,19 @@ class OverlayToastManager(private val context: Context) {
         handler.post {
             dismiss()
 
+            savedScale = prefs.getFloat(KEY_OVERLAY_SCALE, 1f)
+
             val inflater = LayoutInflater.from(context)
             val content = inflater.inflate(R.layout.overlay_toast, null)
+
+            val opacityPct = prefs.getInt(KEY_OVERLAY_OPACITY, DEFAULT_OVERLAY_OPACITY)
+            val alpha = (opacityPct * 255 / 100).coerceIn(0, 255)
+            val cornerRadiusPx = OVERLAY_CORNER_RADIUS_DP * context.resources.displayMetrics.density
+            content.background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = cornerRadiusPx
+                setColor(Color.argb(alpha, 0, 0, 0))
+            }
 
             content.findViewById<TextView>(R.id.overlay_title).text = title
             content.findViewById<TextView>(R.id.overlay_artist).text = artist
@@ -288,6 +304,11 @@ class OverlayToastManager(private val context: Context) {
             currentView = null
             currentParams = null
         }
+    }
+
+    fun updateScale(scale: Float) {
+        savedScale = scale.coerceIn(MIN_OVERLAY_SCALE, MAX_OVERLAY_SCALE)
+        savePrefs()
     }
 
     fun dismiss() {
