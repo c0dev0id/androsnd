@@ -30,6 +30,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.androsnd.model.PlaylistFolder
 import com.androsnd.model.Song
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.slider.Slider
 
 class MainActivity : AppCompatActivity() {
 
@@ -202,10 +204,71 @@ class MainActivity : AppCompatActivity() {
         })
 
         findViewById<View>(R.id.btn_folder)?.setOnClickListener { openFolderPicker() }
+        findViewById<View>(R.id.btn_settings)?.setOnClickListener { showSettingsDialog() }
     }
 
     private fun openFolderPicker() {
         folderPickerLauncher.launch(null)
+    }
+
+    private fun showSettingsDialog() {
+        val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_settings, null)
+
+        // App Volume
+        val sliderVolume = dialogView.findViewById<Slider>(R.id.slider_volume)
+        val labelVolume = dialogView.findViewById<TextView>(R.id.label_volume)
+        val currentVolume = prefs.getInt("app_volume", 100)
+        sliderVolume.value = currentVolume.toFloat()
+        labelVolume.text = "${currentVolume}%"
+        sliderVolume.addOnChangeListener { _, value, _ ->
+            val vol = value.toInt()
+            labelVolume.text = "${vol}%"
+            prefs.edit().putInt("app_volume", vol).apply()
+            musicService?.applyAppVolume()
+        }
+
+        // Overlay Opacity
+        val sliderOpacity = dialogView.findViewById<Slider>(R.id.slider_opacity)
+        val labelOpacity = dialogView.findViewById<TextView>(R.id.label_opacity)
+        val currentOpacity = prefs.getInt("overlay_opacity", 80)
+        sliderOpacity.value = currentOpacity.toFloat()
+        labelOpacity.text = "${currentOpacity}%"
+        sliderOpacity.addOnChangeListener { _, value, _ ->
+            val opacity = value.toInt()
+            labelOpacity.text = "${opacity}%"
+            prefs.edit().putInt("overlay_opacity", opacity).apply()
+        }
+
+        // Overlay Size
+        val sliderSize = dialogView.findViewById<Slider>(R.id.slider_overlay_size)
+        val labelSize = dialogView.findViewById<TextView>(R.id.label_overlay_size)
+        val currentScale = prefs.getFloat("overlay_scale", 1.0f).coerceIn(0.5f, 3.0f)
+        sliderSize.value = currentScale
+        labelSize.text = "%.1fx".format(currentScale)
+        sliderSize.addOnChangeListener { _, value, _ ->
+            labelSize.text = "%.1fx".format(value)
+            prefs.edit().putFloat("overlay_scale", value).apply()
+            musicService?.updateOverlayScale(value)
+        }
+
+        // Double-Tap Timeout
+        val sliderDoubleTap = dialogView.findViewById<Slider>(R.id.slider_double_tap)
+        val labelDoubleTap = dialogView.findViewById<TextView>(R.id.label_double_tap)
+        val currentTimeout = prefs.getInt("double_tap_ms", 500).toFloat().coerceIn(300f, 2000f)
+        sliderDoubleTap.value = currentTimeout
+        labelDoubleTap.text = "${currentTimeout.toInt()}ms"
+        sliderDoubleTap.addOnChangeListener { _, value, _ ->
+            val ms = value.toInt()
+            labelDoubleTap.text = "${ms}ms"
+            prefs.edit().putInt("double_tap_ms", ms).apply()
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.settings)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun requestPermissionsIfNeeded() {

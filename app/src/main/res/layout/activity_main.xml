@@ -206,6 +206,17 @@
             android:text="Shuffle"
             style="@style/Widget.Material3.Button.OutlinedButton" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_settings"
+            android:layout_width="0dp"
+            android:layout_height="72dp"
+            android:layout_weight="1"
+            android:layout_margin="4dp"
+            app:icon="@drawable/ic_settings"
+            app:iconGravity="textStart"
+            android:text="@string/settings"
+            style="@style/Widget.Material3.Button.OutlinedButton" />
+
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
