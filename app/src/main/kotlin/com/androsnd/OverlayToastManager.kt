@@ -58,7 +58,9 @@ class OverlayToastManager(private val context: Context) {
     private var hasCustomPosition: Boolean = prefs.getBoolean(KEY_OVERLAY_CUSTOM_POS, false)
 
     private var currentAnimator: Animator? = null
+    private var currentContent: View? = null
     private var isDragging = false
+    private var isDemo = false
     private var naturalWidth = 0
     private var naturalHeight = 0
 
@@ -70,11 +72,35 @@ class OverlayToastManager(private val context: Context) {
         showOverlay(message, "", "", null)
     }
 
-    private fun showOverlay(title: String, artist: String, album: String, cover: Bitmap?) {
+    fun showDemo() {
+        showOverlay(
+            context.getString(R.string.overlay_demo_title),
+            context.getString(R.string.overlay_demo_artist),
+            context.getString(R.string.overlay_demo_album),
+            null,
+            demo = true
+        )
+    }
+
+    fun updateOpacity(opacityPct: Int) {
+        handler.post {
+            val content = currentContent ?: return@post
+            val alpha = (opacityPct * 255 / 100).coerceIn(0, 255)
+            val cornerRadiusPx = OVERLAY_CORNER_RADIUS_DP * context.resources.displayMetrics.density
+            content.background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = cornerRadiusPx
+                setColor(Color.argb(alpha, 0, 0, 0))
+            }
+        }
+    }
+
+    private fun showOverlay(title: String, artist: String, album: String, cover: Bitmap?, demo: Boolean = false) {
         if (!Settings.canDrawOverlays(context)) return
 
         handler.post {
             dismiss()
+            isDemo = demo
 
             savedScale = prefs.getFloat(KEY_OVERLAY_SCALE, 1f)
 
@@ -141,6 +167,7 @@ class OverlayToastManager(private val context: Context) {
 
             windowManager.addView(container, params)
             currentView = container
+            currentContent = content
             currentParams = params
 
             setupTouchHandling(container, content, params)
@@ -158,7 +185,7 @@ class OverlayToastManager(private val context: Context) {
         }
         fadeIn.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
-                if (!isDragging) {
+                if (!isDragging && !isDemo) {
                     scheduleDismiss(container)
                 }
             }
@@ -302,6 +329,7 @@ class OverlayToastManager(private val context: Context) {
         }
         if (currentView == view) {
             currentView = null
+            currentContent = null
             currentParams = null
         }
     }
@@ -309,9 +337,26 @@ class OverlayToastManager(private val context: Context) {
     fun updateScale(scale: Float) {
         savedScale = scale.coerceIn(MIN_OVERLAY_SCALE, MAX_OVERLAY_SCALE)
         savePrefs()
+        handler.post {
+            val content = currentContent ?: return@post
+            val container = currentView ?: return@post
+            val params = currentParams ?: return@post
+            content.scaleX = savedScale
+            content.scaleY = savedScale
+            val scaledW = (naturalWidth * savedScale).toInt().coerceAtLeast(1)
+            val scaledH = (naturalHeight * savedScale).toInt().coerceAtLeast(1)
+            params.width = scaledW
+            params.height = scaledH
+            try {
+                windowManager.updateViewLayout(container, params)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to update layout during scale", e)
+            }
+        }
     }
 
     fun dismiss() {
+        isDemo = false
         cancelDismissTimer()
         currentAnimator?.cancel()
         currentAnimator = null
