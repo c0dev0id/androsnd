@@ -211,6 +211,13 @@ class MainActivity : AppCompatActivity() {
         folderPickerLauncher.launch(null)
     }
 
+    private fun alignToSliderStep(value: Float, min: Float, max: Float, step: Float): Float {
+        val clamped = value.coerceIn(min, max)
+        if (step <= 0f) return clamped
+        val steps = Math.round((clamped - min) / step)
+        return (min + steps * step).coerceIn(min, max)
+    }
+
     private fun showSettingsDialog() {
         val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_settings, null)
@@ -219,8 +226,8 @@ class MainActivity : AppCompatActivity() {
         val sliderVolume = dialogView.findViewById<Slider>(R.id.slider_volume)
         val labelVolume = dialogView.findViewById<TextView>(R.id.label_volume)
         val currentVolume = prefs.getInt("app_volume", 100)
-        sliderVolume.value = currentVolume.toFloat()
-        labelVolume.text = "${currentVolume}%"
+        sliderVolume.value = alignToSliderStep(currentVolume.toFloat(), 0f, 100f, 1f)
+        labelVolume.text = "${sliderVolume.value.toInt()}%"
         sliderVolume.addOnChangeListener { _, value, _ ->
             val vol = value.toInt()
             labelVolume.text = "${vol}%"
@@ -232,8 +239,8 @@ class MainActivity : AppCompatActivity() {
         val sliderOpacity = dialogView.findViewById<Slider>(R.id.slider_opacity)
         val labelOpacity = dialogView.findViewById<TextView>(R.id.label_opacity)
         val currentOpacity = prefs.getInt("overlay_opacity", 80)
-        sliderOpacity.value = currentOpacity.toFloat()
-        labelOpacity.text = "${currentOpacity}%"
+        sliderOpacity.value = alignToSliderStep(currentOpacity.toFloat(), 0f, 100f, 1f)
+        labelOpacity.text = "${sliderOpacity.value.toInt()}%"
         sliderOpacity.addOnChangeListener { _, value, _ ->
             val opacity = value.toInt()
             labelOpacity.text = "${opacity}%"
@@ -243,7 +250,7 @@ class MainActivity : AppCompatActivity() {
         // Overlay Size
         val sliderSize = dialogView.findViewById<Slider>(R.id.slider_overlay_size)
         val labelSize = dialogView.findViewById<TextView>(R.id.label_overlay_size)
-        val currentScale = prefs.getFloat("overlay_scale", 1.0f).coerceIn(0.5f, 3.0f)
+        val currentScale = alignToSliderStep(prefs.getFloat("overlay_scale", 1.0f), 0.5f, 3.0f, 0.1f)
         sliderSize.value = currentScale
         labelSize.text = "%.1fx".format(currentScale)
         sliderSize.addOnChangeListener { _, value, _ ->
@@ -255,7 +262,7 @@ class MainActivity : AppCompatActivity() {
         // Double-Tap Timeout
         val sliderDoubleTap = dialogView.findViewById<Slider>(R.id.slider_double_tap)
         val labelDoubleTap = dialogView.findViewById<TextView>(R.id.label_double_tap)
-        val currentTimeout = prefs.getInt("double_tap_ms", 500).toFloat().coerceIn(300f, 2000f)
+        val currentTimeout = alignToSliderStep(prefs.getInt("double_tap_ms", 500).toFloat(), 300f, 2000f, 50f)
         sliderDoubleTap.value = currentTimeout
         labelDoubleTap.text = "${currentTimeout.toInt()}ms"
         sliderDoubleTap.addOnChangeListener { _, value, _ ->
