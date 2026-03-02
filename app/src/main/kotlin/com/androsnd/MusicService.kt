@@ -153,7 +153,13 @@ class MusicService : Service() {
     }
 
     private fun initMediaSession() {
+        val sessionActivity = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         mediaSession = MediaSessionCompat(this, "AndrosndSession").apply {
+            setSessionActivity(sessionActivity)
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() { play() }
                 override fun onPause() { pause() }
@@ -497,12 +503,24 @@ class MusicService : Service() {
         }
     }
 
-    private fun scaleBitmapForSession(bitmap: android.graphics.Bitmap, maxPx: Int = 512): android.graphics.Bitmap {
+    private fun scaleBitmapForSession(bitmap: android.graphics.Bitmap, maxPx: Int = 256): android.graphics.Bitmap {
         if (bitmap.width <= maxPx && bitmap.height <= maxPx) return bitmap
         val scale = maxPx.toFloat() / maxOf(bitmap.width, bitmap.height)
         return android.graphics.Bitmap.createScaledBitmap(
             bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true
         )
+    }
+
+    private fun saveArtToFile(bitmap: android.graphics.Bitmap, filename: String): Uri? {
+        return try {
+            val dir = java.io.File(cacheDir, "album_art").also { it.mkdirs() }
+            val file = java.io.File(dir, filename)
+            file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
+            Uri.parse("content://com.androsnd.albumart/$filename")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to save album art to cache", e)
+            null
+        }
     }
 
     private fun extractCoverArt(song: Song): android.graphics.Bitmap? {
@@ -520,14 +538,26 @@ class MusicService : Service() {
 
     private fun updateMediaSessionMetadata(metadata: SongMetadata) {
         val builder = MediaMetadataCompat.Builder()
+            .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, playlistManager.currentIndex.toString())
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, metadata.title)
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, metadata.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, metadata.album)
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, metadata.duration)
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, metadata.title)
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, metadata.artist)
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, metadata.album)
         if (metadata.coverArt != null) {
-            val art = scaleBitmapForSession(metadata.coverArt)
-            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, art)
-            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, art)
+            val scaled = scaleBitmapForSession(metadata.coverArt)
+            val uri = saveArtToFile(scaled, "current_art.jpg")
+            if (uri != null) {
+                val uriStr = uri.toString()
+                builder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, uriStr)
+                builder.putString(MediaMetadataCompat.METADATA_KEY_ART_URI, uriStr)
+                builder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, uriStr)
+            }
+            // Fallback bitmap for clients that do not load URIs (e.g. older lock screens)
+            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, scaled)
+            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, scaled)
         }
         mediaSession.setMetadata(builder.build())
     }
@@ -564,25 +594,33 @@ class MusicService : Service() {
         val prevIdx = if (songs.size > 1) (curIdx - 1 + songs.size) % songs.size else -1
         val nextIdx = if (songs.size > 1) (curIdx + 1) % songs.size else -1
 
-        val curArt  = currentMetadata?.coverArt?.let { scaleBitmapForSession(it) }
-        val prevArt = if (prevIdx >= 0) extractCoverArt(songs[prevIdx])?.let { scaleBitmapForSession(it) } else null
-        val nextArt = if (nextIdx >= 0) extractCoverArt(songs[nextIdx])?.let { scaleBitmapForSession(it) } else null
+        // current_art.jpg is written by updateMediaSessionMetadata(); read it as a URI here
+        val curArtUri = Uri.parse("content://com.androsnd.albumart/current_art.jpg")
+            .takeIf { java.io.File(cacheDir, "album_art/current_art.jpg").exists() }
+        val prevArtUri = if (prevIdx >= 0)
+            extractCoverArt(songs[prevIdx])?.let { saveArtToFile(scaleBitmapForSession(it), "prev_art.jpg") }
+        else null
+        val nextArtUri = if (nextIdx >= 0)
+            extractCoverArt(songs[nextIdx])?.let { saveArtToFile(scaleBitmapForSession(it), "next_art.jpg") }
+        else null
 
         val queue = songs.mapIndexed { index, song ->
-            val art = when (index) {
-                curIdx  -> curArt
-                prevIdx -> prevArt
-                nextIdx -> nextArt
+            val artUri = when (index) {
+                curIdx  -> curArtUri
+                prevIdx -> prevArtUri
+                nextIdx -> nextArtUri
                 else    -> null
             }
             val desc = MediaDescriptionCompat.Builder()
+                .setMediaId(index.toString())
                 .setTitle(song.displayName)
                 .setMediaUri(song.uri)
-                .apply { if (art != null) setIconBitmap(art) }
+                .apply { if (artUri != null) setIconUri(artUri) }
                 .build()
             MediaSessionCompat.QueueItem(desc, index.toLong())
         }
         mediaSession.setQueue(queue)
+        mediaSession.setQueueTitle(getString(R.string.app_name))
     }
 
     private fun buildNotification(): Notification {
