@@ -419,6 +419,7 @@ class MusicService : Service() {
             previousCoverArt = currentMetadata?.coverArt
             currentMetadata = metadata
             updateMediaSessionMetadata(metadata)
+            updateMediaSessionQueue()
             updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
             startForegroundCompat(buildNotification())
             broadcastState()
@@ -496,6 +497,27 @@ class MusicService : Service() {
         }
     }
 
+    private fun scaleBitmapForSession(bitmap: android.graphics.Bitmap, maxPx: Int = 512): android.graphics.Bitmap {
+        if (bitmap.width <= maxPx && bitmap.height <= maxPx) return bitmap
+        val scale = maxPx.toFloat() / maxOf(bitmap.width, bitmap.height)
+        return android.graphics.Bitmap.createScaledBitmap(
+            bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true
+        )
+    }
+
+    private fun extractCoverArt(song: Song): android.graphics.Bitmap? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(applicationContext, song.uri)
+            val bytes = retriever.embeddedPicture ?: return null
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        } catch (e: Exception) {
+            null
+        } finally {
+            retriever.release()
+        }
+    }
+
     private fun updateMediaSessionMetadata(metadata: SongMetadata) {
         val builder = MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, metadata.title)
@@ -503,7 +525,9 @@ class MusicService : Service() {
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, metadata.album)
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, metadata.duration)
         if (metadata.coverArt != null) {
-            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, metadata.coverArt)
+            val art = scaleBitmapForSession(metadata.coverArt)
+            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, art)
+            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, art)
         }
         mediaSession.setMetadata(builder.build())
     }
@@ -513,6 +537,7 @@ class MusicService : Service() {
         val speed = if (isPlaying) 1f else 0f
         val playbackState = PlaybackStateCompat.Builder()
             .setState(state, position, speed)
+            .setActiveQueueItemId(playlistManager.currentIndex.toLong())
             .setActions(
                 PlaybackStateCompat.ACTION_PLAY or
                 PlaybackStateCompat.ACTION_PAUSE or
@@ -534,12 +559,28 @@ class MusicService : Service() {
     }
 
     private fun updateMediaSessionQueue() {
-        val queue = playlistManager.songs.mapIndexed { index, song ->
-            val description = MediaDescriptionCompat.Builder()
+        val songs = playlistManager.songs
+        val curIdx = playlistManager.currentIndex
+        val prevIdx = if (songs.size > 1) (curIdx - 1 + songs.size) % songs.size else -1
+        val nextIdx = if (songs.size > 1) (curIdx + 1) % songs.size else -1
+
+        val curArt  = currentMetadata?.coverArt?.let { scaleBitmapForSession(it) }
+        val prevArt = if (prevIdx >= 0) extractCoverArt(songs[prevIdx])?.let { scaleBitmapForSession(it) } else null
+        val nextArt = if (nextIdx >= 0) extractCoverArt(songs[nextIdx])?.let { scaleBitmapForSession(it) } else null
+
+        val queue = songs.mapIndexed { index, song ->
+            val art = when (index) {
+                curIdx  -> curArt
+                prevIdx -> prevArt
+                nextIdx -> nextArt
+                else    -> null
+            }
+            val desc = MediaDescriptionCompat.Builder()
                 .setTitle(song.displayName)
                 .setMediaUri(song.uri)
+                .apply { if (art != null) setIconBitmap(art) }
                 .build()
-            MediaSessionCompat.QueueItem(description, index.toLong())
+            MediaSessionCompat.QueueItem(desc, index.toLong())
         }
         mediaSession.setQueue(queue)
     }
