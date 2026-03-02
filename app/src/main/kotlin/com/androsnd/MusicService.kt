@@ -576,6 +576,7 @@ class MusicService : Service() {
             .setContentTitle(contentTitle)
             .setContentText(getString(R.string.app_name))
             .setSmallIcon(android.R.drawable.ic_media_play)
+            .setLargeIcon(currentMetadata?.coverArt)
             .setContentIntent(mainIntent)
             .addAction(
                 android.R.drawable.ic_media_previous, getString(R.string.notification_action_previous),
