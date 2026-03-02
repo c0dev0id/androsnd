@@ -34,5 +34,10 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <provider
+            android:name=".AlbumArtProvider"
+            android:authorities="com.androsnd.albumart"
+            android:exported="true" />
+
     </application>
 </manifest>
