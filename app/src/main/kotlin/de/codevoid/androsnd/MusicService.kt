@@ -56,9 +56,6 @@ class MusicService : MediaBrowserServiceCompat() {
 
         private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_APP_VOLUME = "app_volume"
-        private const val KEY_DOUBLE_TAP_TIMEOUT = "double_tap_ms"
-        private const val KEY_DOUBLE_TAP_ENABLED = "double_tap_enabled"
-        private const val DEFAULT_DOUBLE_TAP_MS = 500
         private const val SKIP_DURATION_MS = 10000
     }
 
@@ -88,20 +85,9 @@ class MusicService : MediaBrowserServiceCompat() {
     private var previousCoverArt: android.graphics.Bitmap? = null
 
     private var artVersion = 0L
-    private var lastPlayPauseTime = 0L
-    private var nextPendingRunnable: Runnable? = null
-    private var prevPendingRunnable: Runnable? = null
 
     private lateinit var overlayToastManager: OverlayToastManager
     private lateinit var broadcastManager: LocalBroadcastManager
-
-    private val doubleTapThreshold: Long
-        get() = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(KEY_DOUBLE_TAP_TIMEOUT, DEFAULT_DOUBLE_TAP_MS).toLong()
-
-    private val isDoubleTapEnabled: Boolean
-        get() = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_DOUBLE_TAP_ENABLED, true)
 
     private fun getAppVolumeFloat(): Float {
         val pct = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -334,20 +320,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     fun handlePlayPause() {
-        if (!isDoubleTapEnabled) {
-            if (isPlaying) pause() else play()
-            return
-        }
-        val now = System.currentTimeMillis()
-        if (now - lastPlayPauseTime < doubleTapThreshold) {
-            lastPlayPauseTime = 0L
-            playlistManager.toggleShuffle()
-            mediaSession.setShuffleMode(if (playlistManager.isShuffleOn) PlaybackStateCompat.SHUFFLE_MODE_ALL else PlaybackStateCompat.SHUFFLE_MODE_NONE)
-            broadcastState()
-        } else {
-            lastPlayPauseTime = now
-            if (isPlaying) pause() else play()
-        }
+        if (isPlaying) pause() else play()
     }
 
     private fun stopPlayback() {
@@ -368,27 +341,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     fun handleNext() {
-        if (playlistManager.isShuffleOn || !isDoubleTapEnabled) {
-            playNextQueueSong()
-            return
-        }
-
-        val pending = nextPendingRunnable
-        if (pending != null) {
-            handler.removeCallbacks(pending)
-            nextPendingRunnable = null
-            val song = playlistManager.nextFolder()
-            if (song != null) {
-                playSong(song)
-            }
-        } else {
-            val runnable = Runnable {
-                nextPendingRunnable = null
-                playNextQueueSong()
-            }
-            nextPendingRunnable = runnable
-            handler.postDelayed(runnable, doubleTapThreshold)
-        }
+        playNextQueueSong()
     }
 
     private fun playNextQueueSong() {
@@ -405,30 +358,8 @@ class MusicService : MediaBrowserServiceCompat() {
             if (song != null) playSong(song)
             return
         }
-
-        if (!isDoubleTapEnabled) {
-            val song = playlistManager.prevSong()
-            if (song != null) playSong(song)
-            return
-        }
-
-        val pending = prevPendingRunnable
-        if (pending != null) {
-            handler.removeCallbacks(pending)
-            prevPendingRunnable = null
-            val song = playlistManager.prevFolder()
-            if (song != null) {
-                playSong(song)
-            }
-        } else {
-            val runnable = Runnable {
-                prevPendingRunnable = null
-                val song = playlistManager.prevSong()
-                if (song != null) playSong(song)
-            }
-            prevPendingRunnable = runnable
-            handler.postDelayed(runnable, doubleTapThreshold)
-        }
+        val song = playlistManager.prevSong()
+        if (song != null) playSong(song)
     }
 
     fun handleShuffleButton() {
@@ -820,8 +751,6 @@ class MusicService : MediaBrowserServiceCompat() {
 
     override fun onDestroy() {
         super.onDestroy()
-        nextPendingRunnable?.let { handler.removeCallbacks(it) }
-        prevPendingRunnable?.let { handler.removeCallbacks(it) }
         stopProgressUpdates()
         mediaPlayer?.release()
         mediaPlayer = null
