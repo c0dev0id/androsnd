@@ -13,7 +13,9 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
@@ -71,6 +73,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var seekBarContainer: View
     private lateinit var settingsItems: List<View>
     private var escapeLongPressConsumed = false
+
+    // Key-repeat state for DPAD navigation
+    private val navRepeatHandler = Handler(Looper.getMainLooper())
+    private var navRepeatRunnable: Runnable? = null
+    private var navRepeatStep = 0
 
     private val SETTINGS_COUNT = 7
     private val navButtons: List<MaterialButton>
@@ -637,20 +644,36 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_ESCAPE -> return handleEscape(event)
         }
 
-        if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
-
-        val handled = when (event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP    -> handleUp()
-            KeyEvent.KEYCODE_DPAD_DOWN  -> handleDown()
-            KeyEvent.KEYCODE_DPAD_LEFT  -> handleLeft()
-            KeyEvent.KEYCODE_DPAD_RIGHT -> handleRight()
-            // Button Top = KEYCODE_ENTER (66)
-            KeyEvent.KEYCODE_ENTER,
-            KeyEvent.KEYCODE_DPAD_CENTER,
-            KeyEvent.KEYCODE_BUTTON_A   -> handleConfirm()
-            else -> false
+        // DPAD: always consume both actions to prevent RecyclerView re-scrolling on ACTION_UP.
+        // Key repeat is driven by our own Handler; system-generated repeats (repeatCount > 0)
+        // are swallowed so timing is fully under our control.
+        val dpadAction: (() -> Boolean)? = when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP    -> ::handleUp
+            KeyEvent.KEYCODE_DPAD_DOWN  -> ::handleDown
+            KeyEvent.KEYCODE_DPAD_LEFT  -> ::handleLeft
+            KeyEvent.KEYCODE_DPAD_RIGHT -> ::handleRight
+            else -> null
         }
-        return if (handled) true else super.dispatchKeyEvent(event)
+        if (dpadAction != null) {
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> if (event.repeatCount == 0) {
+                    dpadAction()
+                    startNavRepeat(dpadAction)
+                }
+                KeyEvent.ACTION_UP -> cancelNavRepeat()
+            }
+            return true
+        }
+
+        // Confirm / Enter — no View needs raw key events, so always consume
+        if (event.keyCode == KeyEvent.KEYCODE_ENTER ||
+            event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+            event.keyCode == KeyEvent.KEYCODE_BUTTON_A) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) handleConfirm()
+            return true
+        }
+
+        return true  // consume any other unrecognised keys
     }
 
     private fun handleEscape(event: KeyEvent): Boolean {
@@ -672,6 +695,33 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return true
+    }
+
+    private fun startNavRepeat(action: () -> Boolean) {
+        cancelNavRepeat()
+        navRepeatStep = 0
+        postRepeat(action, 500L)   // initial hold delay before first repeat fires
+    }
+
+    private fun postRepeat(action: () -> Boolean, delayMs: Long) {
+        val r = Runnable {
+            action()
+            navRepeatStep++
+            val next = when {
+                navRepeatStep < 3 -> 300L   // slow
+                navRepeatStep < 8 -> 150L   // medium
+                else              -> 75L    // fast
+            }
+            postRepeat(action, next)
+        }
+        navRepeatRunnable = r
+        navRepeatHandler.postDelayed(r, delayMs)
+    }
+
+    private fun cancelNavRepeat() {
+        navRepeatRunnable?.let { navRepeatHandler.removeCallbacks(it) }
+        navRepeatRunnable = null
+        navRepeatStep = 0
     }
 
     // Physical back button on other devices mirrors Button Bottom short-press
@@ -885,6 +935,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        cancelNavRepeat()
         musicService?.setOnOverlayScaleChangedListener(null)
         musicService?.dismissOverlayDemo()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(stateReceiver)
