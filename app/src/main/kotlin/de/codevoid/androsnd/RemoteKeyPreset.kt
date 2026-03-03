@@ -10,7 +10,7 @@ import org.json.JSONObject
  * The [keycodes] array has exactly [ACTION_COUNT] entries, one per action in this fixed order:
  *   0 = Volume Up
  *   1 = Volume Down
- *   2 = Back / Play-Pause  (short=play/pause or close settings; long=move app to background)
+ *   2 = Area Select  (short=play/pause or close settings; long=move app to background)
  *   3 = Navigate Up
  *   4 = Navigate Down
  *   5 = Navigate Left
@@ -27,13 +27,20 @@ data class RemoteKeyPreset(
         val ACTION_NAMES = listOf(
             "Volume Up",
             "Volume Down",
-            "Back / Play-Pause",
+            "Area Select",
             "Navigate Up",
             "Navigate Down",
             "Navigate Left",
             "Navigate Right",
             "Confirm"
         )
+
+        /**
+         * Order in which the wizard asks the user to map actions.
+         * Each entry is an index into [ACTION_NAMES] / [keycodes].
+         * Order: Up, Left, Down, Right, Confirm, Area Select, Vol Up, Vol Down
+         */
+        val WIZARD_ORDER = intArrayOf(3, 5, 4, 6, 7, 2, 0, 1)
 
         /** The built-in default preset. Never stored in JSON, never deletable. */
         val DMD_REMOTE_2 = RemoteKeyPreset(

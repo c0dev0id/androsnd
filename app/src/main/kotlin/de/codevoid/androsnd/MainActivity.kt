@@ -82,12 +82,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var wizardCaptureProgress: TextView
     private lateinit var wizardCaptureAction: TextView
     private lateinit var wizardCaptureCurrent: TextView
+    private lateinit var wizardSkipButton: MaterialButton
 
     // Key capture state (used during wizard Phase 1)
     private var isCapturingKey = false
     private var captureTargetPreset: RemoteKeyPreset? = null
     private var captureActionIndex = 0
     private var captureKeycodes = IntArray(RemoteKeyPreset.ACTION_COUNT)
+
+    // Focus frame is hidden until the first remote key is pressed
+    private var hasReceivedRemoteKey = false
 
     // Key-repeat state for DPAD navigation (accelerating, used for up/down)
     private val navRepeatHandler = Handler(Looper.getMainLooper())
@@ -290,6 +294,7 @@ class MainActivity : AppCompatActivity() {
         wizardCaptureProgress   = wizardPanel.findViewById(R.id.wizard_capture_progress)
         wizardCaptureAction     = wizardPanel.findViewById(R.id.wizard_capture_action)
         wizardCaptureCurrent    = wizardPanel.findViewById(R.id.wizard_capture_current)
+        wizardSkipButton        = wizardPanel.findViewById(R.id.btn_wizard_skip)
 
         loadAccentColor()
     }
@@ -653,6 +658,12 @@ class MainActivity : AppCompatActivity() {
             return true
         }
 
+        // ── Reveal focus frame on first remote key press ──────────────────────
+        if (!hasReceivedRemoteKey) {
+            hasReceivedRemoteKey = true
+            updateFocusVisual()
+        }
+
         // ── Route through active preset key mappings ──────────────────────────
         val action = presetActionFor(event.keyCode)
 
@@ -861,8 +872,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateMapRemoteButton() {
-        settingsPanel.findViewById<MaterialButton>(R.id.btn_map_remote)?.isEnabled =
-            presetManager.isCustomActive()
+        settingsPanel.findViewById<MaterialButton>(R.id.btn_map_remote)?.visibility =
+            if (presetManager.isCustomActive()) View.VISIBLE else View.GONE
     }
 
     private fun adjustSlider(id: Int, delta: Float) {
@@ -874,6 +885,7 @@ class MainActivity : AppCompatActivity() {
     // ── Focus visuals ─────────────────────────────────────────────────────────
 
     private fun updateFocusVisual() {
+        if (!hasReceivedRemoteKey) return
         playlistAdapter.focusedPos = -1
         navButtons.forEach { it.foreground = null }
 
@@ -898,7 +910,7 @@ class MainActivity : AppCompatActivity() {
     // ── Key Mapping Wizard ────────────────────────────────────────────────────
 
     private fun setupWizardPanel() {
-        // Capture screen views are already bound in bindViews(); nothing else to set up.
+        wizardSkipButton.setOnClickListener { skipCurrentAction() }
     }
 
     private fun startRemoteCapture() {
@@ -936,21 +948,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateCaptureScreen() {
         val target = captureTargetPreset ?: return
+        val actionIdx = RemoteKeyPreset.WIZARD_ORDER[captureActionIndex]
         wizardCapturePresetName.text = target.name
         wizardCaptureProgress.text = getString(
             R.string.wizard_action_of,
             captureActionIndex + 1,
             RemoteKeyPreset.ACTION_COUNT
         )
-        wizardCaptureAction.text = RemoteKeyPreset.ACTION_NAMES[captureActionIndex]
+        wizardCaptureAction.text = RemoteKeyPreset.ACTION_NAMES[actionIdx]
         wizardCaptureCurrent.text = getString(
             R.string.wizard_current_key,
-            captureKeycodes[captureActionIndex]
+            captureKeycodes[actionIdx]
         )
     }
 
     private fun recordCapturedKey(keycode: Int) {
-        captureKeycodes[captureActionIndex] = keycode
+        captureKeycodes[RemoteKeyPreset.WIZARD_ORDER[captureActionIndex]] = keycode
         captureActionIndex++
 
         if (captureActionIndex >= RemoteKeyPreset.ACTION_COUNT) {
@@ -962,6 +975,22 @@ class MainActivity : AppCompatActivity() {
             isCapturingKey = false
             captureTargetPreset = null
 
+            Toast.makeText(this, getString(R.string.wizard_mapping_saved), Toast.LENGTH_SHORT).show()
+            closeWizard()
+        } else {
+            updateCaptureScreen()
+        }
+    }
+
+    private fun skipCurrentAction() {
+        captureActionIndex++
+        if (captureActionIndex >= RemoteKeyPreset.ACTION_COUNT) {
+            val saved = RemoteKeyPreset("Custom", captureKeycodes.copyOf())
+            presetManager.saveCustomPreset(saved)
+            presetManager.setCustomActive(true)
+            activePreset = saved
+            isCapturingKey = false
+            captureTargetPreset = null
             Toast.makeText(this, getString(R.string.wizard_mapping_saved), Toast.LENGTH_SHORT).show()
             closeWizard()
         } else {

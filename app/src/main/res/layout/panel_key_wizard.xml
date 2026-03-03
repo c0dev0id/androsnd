@@ -65,7 +65,17 @@
             android:textColor="@color/text_secondary"
             android:textSize="18sp"
             android:gravity="center"
-            android:layout_marginBottom="40dp" />
+            android:layout_marginBottom="24dp" />
+
+        <!-- Skip button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_wizard_skip"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="@string/wizard_skip"
+            android:layout_marginBottom="24dp" />
 
         <!-- Cancel hint -->
         <TextView
