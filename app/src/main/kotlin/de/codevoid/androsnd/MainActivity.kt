@@ -237,7 +237,6 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        findViewById<View>(R.id.btn_folder)?.setOnClickListener { openFolderPicker() }
         btnSettings.setOnClickListener { showSettingsDialog() }
     }
 
@@ -259,9 +258,8 @@ class MainActivity : AppCompatActivity() {
         progressBar.progressTintList = accentCSL
         progressBar.thumbTintList = accentCSL
 
-        // Outlined buttons (settings, folder)
+        // Outlined buttons (settings)
         btnSettings.strokeColor = accentCSL
-        findViewById<MaterialButton>(R.id.btn_folder)?.strokeColor = accentCSL
 
         // Playlist adapter
         playlistAdapter.accentColor = accentColor
@@ -370,12 +368,20 @@ class MainActivity : AppCompatActivity() {
             label.setTextColor(accentColor)
         }
 
-        MaterialAlertDialogBuilder(this)
+        // Select Folder
+        val btnFolder = dialogView.findViewById<MaterialButton>(R.id.btn_folder)
+        btnFolder.strokeColor = accentCSL
+        val dialog = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.settings)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
             .setOnDismissListener { musicService?.dismissOverlayDemo() }
             .show()
+
+        btnFolder.setOnClickListener {
+            dialog.dismiss()
+            openFolderPicker()
+        }
 
         musicService?.showOverlayDemo()
     }
