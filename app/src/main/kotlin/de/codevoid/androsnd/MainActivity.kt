@@ -140,6 +140,16 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        val contentArea = findViewById<View>(R.id.content_area)
+        ViewCompat.setOnApplyWindowInsetsListener(contentArea) { view, insets ->
+            val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+            view.setPadding(
+                view.paddingLeft, statusBarInsets.top,
+                view.paddingRight, view.paddingBottom
+            )
+            insets
+        }
+
         val buttonBar = findViewById<View>(R.id.button_bar)
         ViewCompat.setOnApplyWindowInsetsListener(buttonBar) { view, insets ->
             val navBarInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars())
