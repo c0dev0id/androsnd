@@ -677,6 +677,7 @@ class MainActivity : AppCompatActivity() {
     // Physical back button on other devices mirrors Button Bottom short-press
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
+        super.onBackPressed()
         if (settingsVisible) toggleSettings()
         else musicService?.handlePlayPause()
     }
