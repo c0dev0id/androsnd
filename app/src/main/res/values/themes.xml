@@ -1,8 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Androsnd" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/colorPrimary</item>
-        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
-        <item name="colorAccent">@color/colorAccent</item>
+    <style name="Theme.Androsnd" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#F57C00</item>
+        <item name="colorPrimaryDark">#E65100</item>
+        <item name="colorSecondary">#F57C00</item>
+        <item name="colorAccent">#F57C00</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSurface">#2B2B2B</item>
+        <item name="colorOnSurface">#FFFFFF</item>
+        <item name="android:colorBackground">#2B2B2B</item>
+        <item name="colorOnBackground">#FFFFFF</item>
+        <item name="android:statusBarColor">#1A1A1A</item>
+        <item name="android:navigationBarColor">#1A1A1A</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Androsnd.AlertDialog</item>
+    </style>
+
+    <style name="Widget.Androsnd.Button.Orange" parent="Widget.Material3.Button">
+        <item name="android:backgroundTint">#F57C00</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="iconTint">#FFFFFF</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="cornerRadius">8dp</item>
+    </style>
+
+    <style name="Widget.Androsnd.Button.Dark" parent="Widget.Material3.Button">
+        <item name="android:backgroundTint">#444444</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="iconTint">#FFFFFF</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="cornerRadius">8dp</item>
+    </style>
+
+    <style name="Widget.Androsnd.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="iconTint">#FFFFFF</item>
+        <item name="strokeColor">#F57C00</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="cornerRadius">8dp</item>
+    </style>
+
+    <style name="ThemeOverlay.Androsnd.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="android:background">#3C3C3C</item>
+        <item name="colorOnSurface">#FFFFFF</item>
     </style>
 </resources>
