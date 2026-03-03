@@ -5,9 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [labeled]
 
 jobs:
   lint:
+    if: github.event_name == 'push' || github.event.label.name == 'run-build'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,6 +28,7 @@ jobs:
         run: ./gradlew lint
 
   build:
+    if: github.event_name == 'push' || github.event.label.name == 'run-build'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,6 +54,7 @@ jobs:
 
   sign:
     needs: build
+    if: github.event_name == 'push' || github.event.label.name == 'run-build'
     runs-on: ubuntu-latest
     permissions:
       contents: read
