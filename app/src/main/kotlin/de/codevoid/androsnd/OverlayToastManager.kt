@@ -6,6 +6,7 @@ import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -73,13 +74,24 @@ class OverlayToastManager(private val context: Context) {
     }
 
     fun showDemo() {
+        val cover = BitmapFactory.decodeResource(context.resources, R.drawable.demo_cover)
         showOverlay(
             context.getString(R.string.overlay_demo_title),
             context.getString(R.string.overlay_demo_artist),
             context.getString(R.string.overlay_demo_album),
-            null,
+            cover,
             demo = true
         )
+    }
+
+    fun dismissDemo() {
+        val view = currentView
+        if (view != null && isDemo) {
+            isDemo = false
+            fadeOutAndRemove(view)
+        } else {
+            dismiss()
+        }
     }
 
     fun updateOpacity(opacityPct: Int) {
