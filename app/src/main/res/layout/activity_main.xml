@@ -147,6 +147,18 @@
 
     </LinearLayout>
 
+    <!-- Settings panel (replaces content_area when visible) -->
+    <include
+        layout="@layout/dialog_settings"
+        android:id="@+id/settings_panel"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/button_bar" />
+
     <!-- Bottom button bar: two rows for portrait -->
     <LinearLayout
         android:id="@+id/button_bar"

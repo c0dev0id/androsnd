@@ -15,9 +15,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.Settings
-import android.view.Gravity
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.SeekBar
@@ -35,7 +33,6 @@ import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.slider.Slider
 
@@ -60,6 +57,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnShuffle: MaterialButton
 
     private lateinit var btnSettings: MaterialButton
+    private lateinit var contentArea: View
+    private lateinit var settingsPanel: View
+    private var settingsVisible = false
+    private var settingsButtonStrokeWidth = 0
 
     private lateinit var playlistAdapter: PlaylistAdapter
     private var isUserSeekBarTouch = false
@@ -90,6 +91,14 @@ class MainActivity : AppCompatActivity() {
                 updateUI()
                 if (musicService?.playlistManager?.songs?.isEmpty() == true) {
                     openFolderPicker()
+                }
+            }
+            // Set up overlay scale listener for settings panel
+            val sliderSize = settingsPanel.findViewById<Slider>(R.id.slider_overlay_size)
+            musicService?.setOnOverlayScaleChangedListener { scale ->
+                val aligned = alignToSliderStep(scale, 0.5f, 3.0f, 0.1f)
+                if (sliderSize.value != aligned) {
+                    sliderSize.value = aligned
                 }
             }
         }
@@ -140,11 +149,22 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val contentArea = findViewById<View>(R.id.content_area)
-        ViewCompat.setOnApplyWindowInsetsListener(contentArea) { view, insets ->
+        val contentAreaView = findViewById<View>(R.id.content_area)
+        ViewCompat.setOnApplyWindowInsetsListener(contentAreaView) { view, insets ->
             val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
             view.setPadding(
                 view.paddingLeft, statusBarInsets.top,
+                view.paddingRight, view.paddingBottom
+            )
+            insets
+        }
+
+        val settingsPanelView = findViewById<View>(R.id.settings_panel)
+        ViewCompat.setOnApplyWindowInsetsListener(settingsPanelView) { view, insets ->
+            val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+            val basePadding = (24 * view.resources.displayMetrics.density).toInt()
+            view.setPadding(
+                view.paddingLeft, statusBarInsets.top + basePadding,
                 view.paddingRight, view.paddingBottom
             )
             insets
@@ -164,6 +184,7 @@ class MainActivity : AppCompatActivity() {
         bindViews()
         setupRecyclerView()
         setupButtons()
+        setupSettingsPanel()
         applyAccentColor()
         requestPermissionsIfNeeded()
         requestBatteryOptimizationExemption()
@@ -201,6 +222,9 @@ class MainActivity : AppCompatActivity() {
         btnStop = findViewById(R.id.btn_stop)
         btnShuffle = findViewById(R.id.btn_shuffle)
         btnSettings = findViewById(R.id.btn_settings)
+        contentArea = findViewById(R.id.content_area)
+        settingsPanel = findViewById(R.id.settings_panel)
+        settingsButtonStrokeWidth = btnSettings.strokeWidth
 
         loadAccentColor()
     }
@@ -238,7 +262,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        btnSettings.setOnClickListener { showSettingsDialog() }
+        btnSettings.setOnClickListener { toggleSettings() }
     }
 
     private fun loadAccentColor() {
@@ -260,6 +284,9 @@ class MainActivity : AppCompatActivity() {
         // Playlist adapter
         playlistAdapter.accentColor = accentColor
         playlistAdapter.notifyDataSetChanged()
+
+        // Settings panel controls
+        applyAccentToSettingsControls()
     }
 
     private fun updateButtonStates() {
@@ -269,6 +296,15 @@ class MainActivity : AppCompatActivity() {
 
         btnPlay.backgroundTintList = ColorStateList.valueOf(if (isPlaying) accentColor else inactiveColor)
         btnShuffle.backgroundTintList = ColorStateList.valueOf(if (isShuffleOn) accentColor else inactiveColor)
+
+        if (settingsVisible) {
+            btnSettings.backgroundTintList = ColorStateList.valueOf(accentColor)
+            btnSettings.strokeWidth = 0
+        } else {
+            btnSettings.backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
+            btnSettings.strokeWidth = settingsButtonStrokeWidth
+            btnSettings.strokeColor = ColorStateList.valueOf(accentColor)
+        }
     }
 
     private fun openFolderPicker() {
@@ -282,12 +318,11 @@ class MainActivity : AppCompatActivity() {
         return (min + steps * step).coerceIn(min, max)
     }
 
-    private fun showSettingsDialog() {
+    private fun setupSettingsPanel() {
         val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_settings, null)
 
         // Accent Color
-        val toggleAccent = dialogView.findViewById<MaterialButtonToggleGroup>(R.id.toggle_accent_settings)
+        val toggleAccent = settingsPanel.findViewById<MaterialButtonToggleGroup>(R.id.toggle_accent_settings)
         val savedKey = prefs.getString("accent_color", "orange") ?: "orange"
         val initialCheckedId = when (savedKey) {
             "orange" -> R.id.btn_accent_orange
@@ -308,13 +343,12 @@ class MainActivity : AppCompatActivity() {
                 prefs.edit().putString("accent_color", key).apply()
                 applyAccentColor()
                 updateButtonStates()
-                applyAccentToDialogControls(dialogView)
             }
         }
 
         // App Volume
-        val sliderVolume = dialogView.findViewById<Slider>(R.id.slider_volume)
-        val labelVolume = dialogView.findViewById<TextView>(R.id.label_volume)
+        val sliderVolume = settingsPanel.findViewById<Slider>(R.id.slider_volume)
+        val labelVolume = settingsPanel.findViewById<TextView>(R.id.label_volume)
         val currentVolume = prefs.getInt("app_volume", 100)
         sliderVolume.value = alignToSliderStep(currentVolume.toFloat(), 0f, 100f, 1f)
         labelVolume.text = "${sliderVolume.value.toInt()}%"
@@ -326,8 +360,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Overlay Opacity
-        val sliderOpacity = dialogView.findViewById<Slider>(R.id.slider_opacity)
-        val labelOpacity = dialogView.findViewById<TextView>(R.id.label_opacity)
+        val sliderOpacity = settingsPanel.findViewById<Slider>(R.id.slider_opacity)
+        val labelOpacity = settingsPanel.findViewById<TextView>(R.id.label_opacity)
         val currentOpacity = prefs.getInt("overlay_opacity", 80)
         sliderOpacity.value = alignToSliderStep(currentOpacity.toFloat(), 0f, 100f, 1f)
         labelOpacity.text = "${sliderOpacity.value.toInt()}%"
@@ -339,8 +373,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Overlay Size
-        val sliderSize = dialogView.findViewById<Slider>(R.id.slider_overlay_size)
-        val labelSize = dialogView.findViewById<TextView>(R.id.label_overlay_size)
+        val sliderSize = settingsPanel.findViewById<Slider>(R.id.slider_overlay_size)
+        val labelSize = settingsPanel.findViewById<TextView>(R.id.label_overlay_size)
         val currentScale = alignToSliderStep(prefs.getFloat("overlay_scale", 1.0f), 0.5f, 3.0f, 0.1f)
         sliderSize.value = currentScale
         labelSize.text = "%.1fx".format(currentScale)
@@ -349,16 +383,10 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putFloat("overlay_scale", value).apply()
             musicService?.updateOverlayScale(value)
         }
-        musicService?.setOnOverlayScaleChangedListener { scale ->
-            val aligned = alignToSliderStep(scale, 0.5f, 3.0f, 0.1f)
-            if (sliderSize.value != aligned) {
-                sliderSize.value = aligned
-            }
-        }
 
         // Double-Tap Speed slider
-        val sliderDoubleTap = dialogView.findViewById<Slider>(R.id.slider_double_tap)
-        val labelDoubleTap = dialogView.findViewById<TextView>(R.id.label_double_tap)
+        val sliderDoubleTap = settingsPanel.findViewById<Slider>(R.id.slider_double_tap)
+        val labelDoubleTap = settingsPanel.findViewById<TextView>(R.id.label_double_tap)
         val currentTimeout = alignToSliderStep(prefs.getInt("double_tap_ms", 500).toFloat(), 300f, 2000f, 50f)
         sliderDoubleTap.value = currentTimeout
         labelDoubleTap.text = "${currentTimeout.toInt()}ms"
@@ -369,8 +397,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Double-Tap Actions toggle
-        val switchDoubleTap = dialogView.findViewById<MaterialSwitch>(R.id.switch_double_tap)
-        val doubleTapSliderGroup = dialogView.findViewById<View>(R.id.double_tap_slider_group)
+        val switchDoubleTap = settingsPanel.findViewById<MaterialSwitch>(R.id.switch_double_tap)
+        val doubleTapSliderGroup = settingsPanel.findViewById<View>(R.id.double_tap_slider_group)
         val doubleTapEnabled = prefs.getBoolean("double_tap_enabled", true)
         switchDoubleTap.isChecked = doubleTapEnabled
         doubleTapSliderGroup.alpha = if (doubleTapEnabled) 1.0f else 0.38f
@@ -382,91 +410,49 @@ class MainActivity : AppCompatActivity() {
             sliderDoubleTap.isEnabled = isChecked
         }
 
-        // Apply accent color to dialog controls
-        applyAccentToDialogControls(dialogView)
+        // Apply accent color to settings controls
+        applyAccentToSettingsControls()
 
         // Select Folder
-        val btnFolder = dialogView.findViewById<MaterialButton>(R.id.btn_folder)
-        val titleView = LayoutInflater.from(this).inflate(R.layout.dialog_settings_title, null)
-        val dialog = MaterialAlertDialogBuilder(this)
-            .setCustomTitle(titleView)
-            .setView(dialogView)
-            .setPositiveButton(android.R.string.ok, null)
-            .setOnDismissListener {
-                musicService?.setOnOverlayScaleChangedListener(null)
-                musicService?.dismissOverlayDemo()
-            }
-            .show()
-
-        // Make dialog draggable via the title bar
-        var gravityConverted = false
-        var dragStartX = 0f
-        var dragStartY = 0f
-        var windowStartX = 0
-        var windowStartY = 0
-
-        titleView.setOnTouchListener { _, event ->
-            val window = dialog.window ?: return@setOnTouchListener false
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    if (!gravityConverted) {
-                        // Convert from default CENTER gravity to absolute TOP|START coords
-                        val decorView = window.decorView
-                        val lp = window.attributes
-                        val screenWidth = resources.displayMetrics.widthPixels
-                        val screenHeight = resources.displayMetrics.heightPixels
-                        lp.x = (screenWidth - decorView.width) / 2 + lp.x
-                        lp.y = (screenHeight - decorView.height) / 2 + lp.y
-                        lp.gravity = Gravity.TOP or Gravity.START
-                        window.attributes = lp
-                        gravityConverted = true
-                    }
-                    val lp = window.attributes
-                    dragStartX = event.rawX
-                    dragStartY = event.rawY
-                    windowStartX = lp.x
-                    windowStartY = lp.y
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val lp = window.attributes
-                    lp.x = windowStartX + (event.rawX - dragStartX).toInt()
-                    lp.y = windowStartY + (event.rawY - dragStartY).toInt()
-                    window.attributes = lp
-                    true
-                }
-                else -> false
-            }
-        }
-
-        btnFolder.setOnClickListener {
-            dialog.dismiss()
+        settingsPanel.findViewById<MaterialButton>(R.id.btn_folder).setOnClickListener {
             openFolderPicker()
         }
-
-        musicService?.showOverlayDemo()
     }
 
-    private fun applyAccentToDialogControls(dialogView: View) {
+    private fun toggleSettings() {
+        settingsVisible = !settingsVisible
+        if (settingsVisible) {
+            contentArea.visibility = View.GONE
+            settingsPanel.visibility = View.VISIBLE
+            musicService?.showOverlayDemo()
+        } else {
+            settingsPanel.visibility = View.GONE
+            contentArea.visibility = View.VISIBLE
+            musicService?.dismissOverlayDemo()
+        }
+        updateButtonStates()
+    }
+
+    private fun applyAccentToSettingsControls() {
         val accentCSL = ColorStateList.valueOf(accentColor)
         listOf(R.id.slider_volume, R.id.slider_opacity, R.id.slider_overlay_size, R.id.slider_double_tap)
-            .mapNotNull { dialogView.findViewById<Slider>(it) }
+            .mapNotNull { settingsPanel.findViewById<Slider>(it) }
             .forEach { slider ->
                 slider.trackActiveTintList = accentCSL
                 slider.thumbTintList = accentCSL
             }
         listOf(R.id.label_volume, R.id.label_opacity, R.id.label_overlay_size, R.id.label_double_tap)
-            .mapNotNull { dialogView.findViewById<TextView>(it) }
+            .mapNotNull { settingsPanel.findViewById<TextView>(it) }
             .forEach { label ->
                 label.setTextColor(accentColor)
             }
         listOf(R.id.btn_accent_orange, R.id.btn_accent_blue, R.id.btn_accent_green)
-            .mapNotNull { dialogView.findViewById<MaterialButton>(it) }
+            .mapNotNull { settingsPanel.findViewById<MaterialButton>(it) }
             .forEach { btn ->
                 btn.strokeColor = accentCSL
             }
-        dialogView.findViewById<MaterialButton>(R.id.btn_folder)?.strokeColor = accentCSL
-        dialogView.findViewById<MaterialSwitch>(R.id.switch_double_tap)?.let { sw ->
+        settingsPanel.findViewById<MaterialButton>(R.id.btn_folder)?.strokeColor = accentCSL
+        settingsPanel.findViewById<MaterialSwitch>(R.id.switch_double_tap)?.let { sw ->
             sw.thumbTintList = ColorStateList(
                 arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
                 intArrayOf(accentColor, Color.parseColor("#888888"))
@@ -597,6 +583,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        musicService?.setOnOverlayScaleChangedListener(null)
+        musicService?.dismissOverlayDemo()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(stateReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(scanReceiver)
         if (isBound) {
