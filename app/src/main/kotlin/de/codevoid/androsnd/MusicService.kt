@@ -118,7 +118,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     fun dismissOverlayDemo() {
-        overlayToastManager.dismiss()
+        overlayToastManager.dismissDemo()
     }
 
     fun updateOverlayOpacity(opacity: Int) {
