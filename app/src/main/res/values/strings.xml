@@ -36,4 +36,5 @@
     <string name="wizard_action_of">Action %1$d of %2$d</string>
     <string name="wizard_current_key">Currently mapped: keycode %1$d</string>
     <string name="wizard_mapping_saved">Key mapping saved</string>
+    <string name="wizard_skip">Skip (keep unmapped)</string>
 </resources>
