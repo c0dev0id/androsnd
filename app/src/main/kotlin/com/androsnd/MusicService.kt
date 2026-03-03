@@ -493,8 +493,7 @@ class MusicService : Service() {
             val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
             val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
             val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            val artBytes = retriever.embeddedPicture
-            val coverArt = if (artBytes != null) BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size) else null
+            val coverArt = retriever.embeddedPicture?.let { decodeBitmapWithSampling(it) }
             SongMetadata(title, artist, album, duration, coverArt)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to extract metadata for ${song.displayName}", e)
@@ -504,8 +503,16 @@ class MusicService : Service() {
         }
     }
 
+    private fun decodeBitmapWithSampling(bytes: ByteArray, maxPx: Int = 512): android.graphics.Bitmap? {
+        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+        opts.inSampleSize = maxOf(1, maxOf(opts.outWidth, opts.outHeight) / maxPx)
+        opts.inJustDecodeBounds = false
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+    }
+
     private fun scaleBitmapForSession(bitmap: android.graphics.Bitmap, maxPx: Int = 256): android.graphics.Bitmap {
-        if (bitmap.width <= maxPx && bitmap.height <= maxPx) return bitmap
+        if (bitmap.width <= maxPx && bitmap.height <= maxPx) return bitmap.copy(bitmap.config, false)
         val scale = maxPx.toFloat() / maxOf(bitmap.width, bitmap.height)
         return android.graphics.Bitmap.createScaledBitmap(
             bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true
@@ -529,7 +536,7 @@ class MusicService : Service() {
         return try {
             retriever.setDataSource(applicationContext, song.uri)
             val bytes = retriever.embeddedPicture ?: return null
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            decodeBitmapWithSampling(bytes)
         } catch (e: Exception) {
             null
         } finally {
@@ -598,12 +605,24 @@ class MusicService : Service() {
         // current_art.jpg is written by updateMediaSessionMetadata(); read it as a URI here
         val curArtUri = Uri.parse("content://com.androsnd.albumart/current_art.jpg")
             .takeIf { java.io.File(cacheDir, "album_art/current_art.jpg").exists() }
-        val prevArtUri = if (prevIdx >= 0)
-            extractCoverArt(songs[prevIdx])?.let { saveArtToFile(scaleBitmapForSession(it), "prev_art.jpg") }
-        else null
-        val nextArtUri = if (nextIdx >= 0)
-            extractCoverArt(songs[nextIdx])?.let { saveArtToFile(scaleBitmapForSession(it), "next_art.jpg") }
-        else null
+        val prevArtUri = if (prevIdx >= 0) {
+            extractCoverArt(songs[prevIdx])?.let { original ->
+                val scaled = scaleBitmapForSession(original)
+                val uri = saveArtToFile(scaled, "prev_art.jpg")
+                original.recycle()
+                scaled.recycle()
+                uri
+            }
+        } else null
+        val nextArtUri = if (nextIdx >= 0) {
+            extractCoverArt(songs[nextIdx])?.let { original ->
+                val scaled = scaleBitmapForSession(original)
+                val uri = saveArtToFile(scaled, "next_art.jpg")
+                original.recycle()
+                scaled.recycle()
+                uri
+            }
+        } else null
 
         val queue = songs.mapIndexed { index, song ->
             val artUri = when (index) {
