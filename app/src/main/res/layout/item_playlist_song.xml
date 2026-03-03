@@ -6,7 +6,8 @@
     android:minHeight="52dp"
     android:padding="12dp"
     android:paddingStart="24dp"
-    android:background="@drawable/selector_song_item"
+    android:background="@android:color/transparent"
+    android:foreground="?attr/selectableItemBackground"
     android:gravity="center_vertical">
 
     <TextView
