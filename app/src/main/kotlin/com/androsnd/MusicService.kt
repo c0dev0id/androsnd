@@ -263,6 +263,7 @@ class MusicService : Service() {
                 applyAppVolume()
                 isPlaying = true
                 startProgressUpdates()
+                currentMetadata?.let { updateMediaSessionMetadata(it) }
                 updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
                 startForegroundCompat(buildNotification())
                 broadcastState()
@@ -625,7 +626,7 @@ class MusicService : Service() {
 
     private fun buildNotification(): Notification {
         val song = playlistManager.getCurrentSong()
-        val contentTitle = song?.displayName ?: getString(R.string.app_name)
+        val contentTitle = currentMetadata?.title ?: song?.displayName ?: getString(R.string.app_name)
 
         val playPauseAction = if (isPlaying) {
             NotificationCompat.Action(
