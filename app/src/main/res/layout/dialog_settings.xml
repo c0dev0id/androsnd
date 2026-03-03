@@ -10,6 +10,23 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
+        <!-- Accent Color -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Accent Color"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold"
+            android:textSize="16sp" />
+
+        <Spinner
+            android:id="@+id/spinner_accent_settings"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="16dp"
+            android:popupBackground="@color/surface_card" />
+
         <!-- App Volume -->
         <TextView
             android:layout_width="wrap_content"
