@@ -4,7 +4,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -23,10 +22,12 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import java.util.concurrent.Executors
+import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import androidx.media.MediaBrowserServiceCompat
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -34,7 +35,7 @@ import androidx.media.app.NotificationCompat.MediaStyle
 import com.androsnd.model.Song
 import com.androsnd.model.SongMetadata
 
-class MusicService : Service() {
+class MusicService : MediaBrowserServiceCompat() {
 
     companion object {
         private const val TAG = "MusicService"
@@ -85,6 +86,7 @@ class MusicService : Service() {
         private set
     private var previousCoverArt: android.graphics.Bitmap? = null
 
+    private var artVersion = 0L
     private var lastPlayPauseTime = 0L
     private var nextPendingRunnable: Runnable? = null
     private var prevPendingRunnable: Runnable? = null
@@ -221,6 +223,7 @@ class MusicService : Service() {
             })
             isActive = true
         }
+        setSessionToken(mediaSession.sessionToken)
     }
 
     private fun startForegroundCompat(notification: Notification) {
@@ -249,7 +252,39 @@ class MusicService : Service() {
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder = binder
+    override fun onBind(intent: Intent?): IBinder? {
+        if (intent?.action == SERVICE_INTERFACE) {
+            return super.onBind(intent)
+        }
+        return binder
+    }
+
+    override fun onGetRoot(
+        clientPackageName: String,
+        clientUid: Int,
+        rootHints: Bundle?
+    ): BrowserRoot {
+        return BrowserRoot("androsnd_root", null)
+    }
+
+    override fun onLoadChildren(
+        parentId: String,
+        result: Result<MutableList<MediaBrowserCompat.MediaItem>>
+    ) {
+        if (parentId == "androsnd_root") {
+            val items = playlistManager.songs.mapIndexed { index, song ->
+                val desc = MediaDescriptionCompat.Builder()
+                    .setMediaId(index.toString())
+                    .setTitle(song.displayName)
+                    .setMediaUri(song.uri)
+                    .build()
+                MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE)
+            }.toMutableList()
+            result.sendResult(items)
+        } else {
+            result.sendResult(mutableListOf())
+        }
+    }
 
     fun play() {
         if (playlistManager.songs.isEmpty()) return
@@ -421,6 +456,7 @@ class MusicService : Service() {
             }
             isPlaying = true
             startProgressUpdates()
+            artVersion++
             val metadata = extractMetadata(song)
             previousCoverArt?.recycle()
             previousCoverArt = currentMetadata?.coverArt
@@ -524,23 +560,12 @@ class MusicService : Service() {
             val dir = java.io.File(cacheDir, "album_art").also { it.mkdirs() }
             val file = java.io.File(dir, filename)
             file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
-            Uri.parse("content://com.androsnd.albumart/$filename")
+            val uri = Uri.parse("content://com.androsnd.albumart/$filename?v=$artVersion")
+            contentResolver.notifyChange(uri, null)
+            uri
         } catch (e: Exception) {
             Log.w(TAG, "Failed to save album art to cache", e)
             null
-        }
-    }
-
-    private fun extractCoverArt(song: Song): android.graphics.Bitmap? {
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(applicationContext, song.uri)
-            val bytes = retriever.embeddedPicture ?: return null
-            decodeBitmapWithSampling(bytes)
-        } catch (e: Exception) {
-            null
-        } finally {
-            retriever.release()
         }
     }
 
@@ -551,6 +576,7 @@ class MusicService : Service() {
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, metadata.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, metadata.album)
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, metadata.duration)
+            .putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, playlistManager.songs.size.toLong())
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, metadata.title)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, metadata.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, metadata.album)
@@ -596,51 +622,86 @@ class MusicService : Service() {
         mediaSession.setPlaybackState(playbackState)
     }
 
+    private data class NeighborInfo(
+        val title: String,
+        val artist: String,
+        val album: String,
+        val artUri: Uri?
+    )
+
+    private fun extractNeighborInfo(song: Song, artFilename: String): NeighborInfo {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(applicationContext, song.uri)
+            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: song.displayName
+            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
+            val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
+            val artUri = retriever.embeddedPicture?.let { bytes ->
+                decodeBitmapWithSampling(bytes)?.let { original ->
+                    val scaled = scaleBitmapForSession(original)
+                    val uri = saveArtToFile(scaled, artFilename)
+                    original.recycle()
+                    scaled.recycle()
+                    uri
+                }
+            }
+            NeighborInfo(title, artist, album, artUri)
+        } catch (e: Exception) {
+            NeighborInfo(song.displayName, "", "", null)
+        } finally {
+            retriever.release()
+        }
+    }
+
     private fun updateMediaSessionQueue() {
         val songs = playlistManager.songs
         val curIdx = playlistManager.currentIndex
         val prevIdx = if (songs.size > 1) (curIdx - 1 + songs.size) % songs.size else -1
         val nextIdx = if (songs.size > 1) (curIdx + 1) % songs.size else -1
 
-        // current_art.jpg is written by updateMediaSessionMetadata(); read it as a URI here
-        val curArtUri = Uri.parse("content://com.androsnd.albumart/current_art.jpg")
+        // current_art.jpg is written by updateMediaSessionMetadata(); read it as a versioned URI here
+        val curArtUri = Uri.parse("content://com.androsnd.albumart/current_art.jpg?v=$artVersion")
             .takeIf { java.io.File(cacheDir, "album_art/current_art.jpg").exists() }
-        val prevArtUri = if (prevIdx >= 0) {
-            extractCoverArt(songs[prevIdx])?.let { original ->
-                val scaled = scaleBitmapForSession(original)
-                val uri = saveArtToFile(scaled, "prev_art.jpg")
-                original.recycle()
-                scaled.recycle()
-                uri
-            }
-        } else null
-        val nextArtUri = if (nextIdx >= 0) {
-            extractCoverArt(songs[nextIdx])?.let { original ->
-                val scaled = scaleBitmapForSession(original)
-                val uri = saveArtToFile(scaled, "next_art.jpg")
-                original.recycle()
-                scaled.recycle()
-                uri
-            }
-        } else null
+        val prevInfo = if (prevIdx >= 0) extractNeighborInfo(songs[prevIdx], "prev_art.jpg") else null
+        val nextInfo = if (nextIdx >= 0) extractNeighborInfo(songs[nextIdx], "next_art.jpg") else null
 
         val queue = songs.mapIndexed { index, song ->
-            val artUri = when (index) {
-                curIdx  -> curArtUri
-                prevIdx -> prevArtUri
-                nextIdx -> nextArtUri
-                else    -> null
+            val desc = when (index) {
+                curIdx -> MediaDescriptionCompat.Builder()
+                    .setMediaId(index.toString())
+                    .setTitle(currentMetadata?.title ?: song.displayName)
+                    .setSubtitle(currentMetadata?.artist ?: "")
+                    .setDescription(currentMetadata?.album ?: "")
+                    .setMediaUri(song.uri)
+                    .apply { if (curArtUri != null) setIconUri(curArtUri) }
+                    .build()
+                prevIdx -> MediaDescriptionCompat.Builder()
+                    .setMediaId(index.toString())
+                    .setTitle(prevInfo?.title ?: song.displayName)
+                    .setSubtitle(prevInfo?.artist ?: "")
+                    .setDescription(prevInfo?.album ?: "")
+                    .setMediaUri(song.uri)
+                    .apply { if (prevInfo?.artUri != null) setIconUri(prevInfo.artUri) }
+                    .build()
+                nextIdx -> MediaDescriptionCompat.Builder()
+                    .setMediaId(index.toString())
+                    .setTitle(nextInfo?.title ?: song.displayName)
+                    .setSubtitle(nextInfo?.artist ?: "")
+                    .setDescription(nextInfo?.album ?: "")
+                    .setMediaUri(song.uri)
+                    .apply { if (nextInfo?.artUri != null) setIconUri(nextInfo.artUri) }
+                    .build()
+                else -> MediaDescriptionCompat.Builder()
+                    .setMediaId(index.toString())
+                    .setTitle(song.displayName)
+                    .setMediaUri(song.uri)
+                    .build()
             }
-            val desc = MediaDescriptionCompat.Builder()
-                .setMediaId(index.toString())
-                .setTitle(song.displayName)
-                .setMediaUri(song.uri)
-                .apply { if (artUri != null) setIconUri(artUri) }
-                .build()
             MediaSessionCompat.QueueItem(desc, index.toLong())
         }
         mediaSession.setQueue(queue)
         mediaSession.setQueueTitle(getString(R.string.app_name))
+        notifyChildrenChanged("androsnd_root")
     }
 
     private fun buildNotification(): Notification {
