@@ -70,6 +70,7 @@ class MainActivity : AppCompatActivity() {
     private var playlistFocusPos: Int = 0
     private lateinit var seekBarContainer: View
     private lateinit var settingsItems: List<View>
+    private var escapeLongPressConsumed = false
 
     private val SETTINGS_COUNT = 7
     private val navButtons: List<MaterialButton>
@@ -621,28 +622,63 @@ class MainActivity : AppCompatActivity() {
     // ── Remote control navigation ─────────────────────────────────────────────
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Lever Up (F6=136) / Lever Down (F7=137): global volume, zone-independent
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_F6 -> {
+                if (event.action == KeyEvent.ACTION_DOWN) adjustSlider(R.id.slider_volume, 5f)
+                return true
+            }
+            KeyEvent.KEYCODE_F7 -> {
+                if (event.action == KeyEvent.ACTION_DOWN) adjustSlider(R.id.slider_volume, -5f)
+                return true
+            }
+            // Button Bottom = KEYCODE_ESCAPE (111): short-press = play/pause or close settings
+            //                                       long-press  = move app to background
+            KeyEvent.KEYCODE_ESCAPE -> return handleEscape(event)
+        }
+
         if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
+
         val handled = when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_UP    -> handleUp()
             KeyEvent.KEYCODE_DPAD_DOWN  -> handleDown()
             KeyEvent.KEYCODE_DPAD_LEFT  -> handleLeft()
             KeyEvent.KEYCODE_DPAD_RIGHT -> handleRight()
-            KeyEvent.KEYCODE_DPAD_CENTER,
+            // Button Top = KEYCODE_ENTER (66)
             KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_BUTTON_A   -> handleConfirm()
             else -> false
         }
         return if (handled) true else super.dispatchKeyEvent(event)
     }
 
+    private fun handleEscape(event: KeyEvent): Boolean {
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                if (event.repeatCount == 0) {
+                    escapeLongPressConsumed = false
+                } else if (event.repeatCount >= 1 && !escapeLongPressConsumed) {
+                    escapeLongPressConsumed = true
+                    moveTaskToBack(true)
+                }
+            }
+            KeyEvent.ACTION_UP -> {
+                if (!escapeLongPressConsumed) {
+                    // Short press: close settings or play/pause
+                    if (settingsVisible) toggleSettings()
+                    else musicService?.handlePlayPause()
+                }
+            }
+        }
+        return true
+    }
+
+    // Physical back button on other devices mirrors Button Bottom short-press
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        // Button B: close settings if open, otherwise play/pause
-        if (settingsVisible) {
-            toggleSettings()  // navZone and focus updated inside toggleSettings
-        } else {
-            musicService?.handlePlayPause()
-        }
+        if (settingsVisible) toggleSettings()
+        else musicService?.handlePlayPause()
     }
 
     private fun handleUp(): Boolean {
