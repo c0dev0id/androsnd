@@ -98,55 +98,83 @@
                     android:textColor="@color/text_secondary" />
             </LinearLayout>
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_folder"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:minHeight="56dp"
-                android:text="@string/select_folder"
-                android:textSize="15sp"
-                android:textStyle="bold"
-                style="@style/Widget.Androsnd.Button.Outlined" />
-
         </LinearLayout>
 
-        <!-- Right panel: playlist -->
-        <FrameLayout
+        <!-- Right panel: toolbar + playlist -->
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_weight="1">
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/playlist_recycler"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:padding="4dp" />
-
+            <!-- Toolbar: folder button + accent color picker -->
             <LinearLayout
-                android:id="@+id/loading_indicator"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:orientation="vertical"
-                android:gravity="center"
-                android:visibility="gone">
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp">
 
-                <ProgressBar
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    style="?android:attr/progressBarStyle" />
-
-                <TextView
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_folder"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/loading_files"
-                    android:layout_marginTop="8dp"
-                    android:textAppearance="?attr/textAppearanceBodyMedium" />
+                    android:layout_height="44dp"
+                    android:text="@string/select_folder"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    style="@style/Widget.Androsnd.Button.Outlined" />
+
+                <Spinner
+                    android:id="@+id/spinner_accent"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:popupBackground="@color/surface_card"
+                    android:background="@color/surface_dark" />
 
             </LinearLayout>
 
-        </FrameLayout>
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/playlist_recycler"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:padding="4dp" />
+
+                <LinearLayout
+                    android:id="@+id/loading_indicator"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:visibility="gone">
+
+                    <ProgressBar
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        style="?android:attr/progressBarStyle" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/loading_files"
+                        android:layout_marginTop="8dp"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                </LinearLayout>
+
+            </FrameLayout>
+
+        </LinearLayout>
 
     </LinearLayout>
 
@@ -175,7 +203,7 @@
             app:iconGravity="textStart"
             app:iconTint="@android:color/white"
             android:text="Prev"
-            style="@style/Widget.Androsnd.Button.Orange" />
+            style="@style/Widget.Androsnd.Button.Dark" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_play"
@@ -189,7 +217,7 @@
             app:iconGravity="textStart"
             app:iconTint="@android:color/white"
             android:text="Play"
-            style="@style/Widget.Androsnd.Button.Orange" />
+            style="@style/Widget.Androsnd.Button.Dark" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_next"
@@ -203,7 +231,7 @@
             app:iconGravity="textStart"
             app:iconTint="@android:color/white"
             android:text="Next"
-            style="@style/Widget.Androsnd.Button.Orange" />
+            style="@style/Widget.Androsnd.Button.Dark" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_stop"
@@ -231,7 +259,7 @@
             app:iconGravity="textStart"
             app:iconTint="@android:color/white"
             android:text="Shuffle"
-            style="@style/Widget.Androsnd.Button.Outlined" />
+            style="@style/Widget.Androsnd.Button.Dark" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_settings"

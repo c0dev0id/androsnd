@@ -17,4 +17,9 @@
     <color name="destructive">#D32F2F</color>
     <color name="orange_border">#F57C00</color>
     <color name="seekbar_track_bg">#555555</color>
+
+    <!-- Accent color options -->
+    <color name="accent_orange">#F57C00</color>
+    <color name="accent_blue">#2196F3</color>
+    <color name="accent_green">#4CAF50</color>
 </resources>
