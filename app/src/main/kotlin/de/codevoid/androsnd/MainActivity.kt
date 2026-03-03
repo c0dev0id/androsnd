@@ -381,6 +381,12 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putFloat("overlay_scale", value).apply()
             musicService?.updateOverlayScale(value)
         }
+        musicService?.setOnOverlayScaleChangedListener { scale ->
+            val aligned = alignToSliderStep(scale, 0.5f, 3.0f, 0.1f)
+            if (sliderSize.value != aligned) {
+                sliderSize.value = aligned
+            }
+        }
 
         // Double-Tap Timeout
         val sliderDoubleTap = dialogView.findViewById<Slider>(R.id.slider_double_tap)
@@ -403,7 +409,10 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.settings)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
-            .setOnDismissListener { musicService?.dismissOverlayDemo() }
+            .setOnDismissListener {
+                musicService?.setOnOverlayScaleChangedListener(null)
+                musicService?.dismissOverlayDemo()
+            }
             .show()
 
         btnFolder.setOnClickListener {

@@ -113,6 +113,10 @@ class MusicService : MediaBrowserServiceCompat() {
         overlayToastManager.updateScale(scale)
     }
 
+    fun setOnOverlayScaleChangedListener(listener: ((Float) -> Unit)?) {
+        overlayToastManager.onScaleChanged = listener
+    }
+
     fun showOverlayDemo() {
         overlayToastManager.showDemo()
     }

@@ -65,6 +65,8 @@ class OverlayToastManager(private val context: Context) {
     private var naturalWidth = 0
     private var naturalHeight = 0
 
+    var onScaleChanged: ((Float) -> Unit)? = null
+
     fun showSong(metadata: SongMetadata) {
         showOverlay(metadata.title, metadata.artist, metadata.album, metadata.coverArt)
     }
@@ -245,6 +247,7 @@ class OverlayToastManager(private val context: Context) {
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to update layout during scale", e)
                     }
+                    onScaleChanged?.invoke(savedScale)
                     return true
                 }
 
