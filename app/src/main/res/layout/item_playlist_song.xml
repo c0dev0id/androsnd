@@ -3,7 +3,8 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:padding="8dp"
+    android:minHeight="52dp"
+    android:padding="12dp"
     android:paddingStart="24dp"
     android:background="@drawable/selector_song_item"
     android:gravity="center_vertical">
@@ -12,7 +13,8 @@
         android:id="@+id/song_name"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textSize="15sp"
+        android:textColor="@color/text_secondary"
         android:maxLines="1"
         android:ellipsize="end" />
 
