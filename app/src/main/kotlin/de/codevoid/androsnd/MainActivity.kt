@@ -21,10 +21,7 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import android.widget.SeekBar
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.ImageView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -38,6 +35,7 @@ import androidx.recyclerview.widget.RecyclerView
 import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.Slider
 
@@ -322,21 +320,29 @@ class MainActivity : AppCompatActivity() {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_settings, null)
 
         // Accent Color
-        val spinnerAccent = dialogView.findViewById<Spinner>(R.id.spinner_accent_settings)
-        val accentAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, ACCENT_NAMES)
-        accentAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spinnerAccent.adapter = accentAdapter
+        val toggleAccent = dialogView.findViewById<MaterialButtonToggleGroup>(R.id.toggle_accent_settings)
         val savedKey = prefs.getString("accent_color", "orange") ?: "orange"
-        spinnerAccent.setSelection(ACCENT_KEYS.indexOf(savedKey).coerceAtLeast(0))
-        spinnerAccent.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val key = ACCENT_KEYS[position]
+        val initialCheckedId = when (savedKey) {
+            "orange" -> R.id.btn_accent_orange
+            "blue" -> R.id.btn_accent_blue
+            "green" -> R.id.btn_accent_green
+            else -> R.id.btn_accent_orange
+        }
+        toggleAccent.check(initialCheckedId)
+        toggleAccent.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                val key = when (checkedId) {
+                    R.id.btn_accent_orange -> "orange"
+                    R.id.btn_accent_blue -> "blue"
+                    R.id.btn_accent_green -> "green"
+                    else -> "orange"
+                }
                 accentColor = ACCENT_COLORS[key] ?: ACCENT_COLORS["orange"]!!
                 prefs.edit().putString("accent_color", key).apply()
                 applyAccentColor()
                 updateButtonStates()
+                applyAccentToDialogControls(dialogView)
             }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
         // App Volume
@@ -389,19 +395,11 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putInt("double_tap_ms", ms).apply()
         }
 
-        // Apply accent color to sliders
-        val accentCSL = ColorStateList.valueOf(accentColor)
-        listOf(sliderVolume, sliderOpacity, sliderSize, sliderDoubleTap).forEach { slider ->
-            slider.trackActiveTintList = accentCSL
-            slider.thumbTintList = accentCSL
-        }
-        listOf(labelVolume, labelOpacity, labelSize, labelDoubleTap).forEach { label ->
-            label.setTextColor(accentColor)
-        }
+        // Apply accent color to dialog controls
+        applyAccentToDialogControls(dialogView)
 
         // Select Folder
         val btnFolder = dialogView.findViewById<MaterialButton>(R.id.btn_folder)
-        btnFolder.strokeColor = accentCSL
         val dialog = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.settings)
             .setView(dialogView)
@@ -415,6 +413,27 @@ class MainActivity : AppCompatActivity() {
         }
 
         musicService?.showOverlayDemo()
+    }
+
+    private fun applyAccentToDialogControls(dialogView: View) {
+        val accentCSL = ColorStateList.valueOf(accentColor)
+        listOf(R.id.slider_volume, R.id.slider_opacity, R.id.slider_overlay_size, R.id.slider_double_tap)
+            .mapNotNull { dialogView.findViewById<Slider>(it) }
+            .forEach { slider ->
+                slider.trackActiveTintList = accentCSL
+                slider.thumbTintList = accentCSL
+            }
+        listOf(R.id.label_volume, R.id.label_opacity, R.id.label_overlay_size, R.id.label_double_tap)
+            .mapNotNull { dialogView.findViewById<TextView>(it) }
+            .forEach { label ->
+                label.setTextColor(accentColor)
+            }
+        listOf(R.id.btn_accent_orange, R.id.btn_accent_blue, R.id.btn_accent_green)
+            .mapNotNull { dialogView.findViewById<MaterialButton>(it) }
+            .forEach { btn ->
+                btn.strokeColor = accentCSL
+            }
+        dialogView.findViewById<MaterialButton>(R.id.btn_folder)?.strokeColor = accentCSL
     }
 
     private fun requestPermissionsIfNeeded() {
