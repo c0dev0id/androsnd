@@ -18,9 +18,11 @@
     <string name="loading_files">Loading files…</string>
     <string name="settings">Settings</string>
     <string name="settings_app_volume">App Volume</string>
-    <string name="settings_overlay_opacity">Overlay Opacity</string>
-    <string name="settings_overlay_size">Overlay Size</string>
-    <string name="settings_double_tap">Double-Tap Timeout</string>
+    <string name="settings_overlay_opacity">Now-Playing Popup Opacity</string>
+    <string name="settings_overlay_size">Now-Playing Popup Size</string>
+    <string name="settings_double_tap">Double-Tap Speed</string>
+    <string name="settings_double_tap_enabled">Double-Tap Actions</string>
+    <string name="settings_double_tap_description">Double-tap play/pause to toggle shuffle. Double-tap next/previous to skip by folder.</string>
     <string name="overlay_demo_title">Overlay Settings</string>
     <string name="overlay_demo_artist">Drag me and I\'ll remember</string>
     <string name="overlay_demo_album">Pinch me and I will resize :)</string>

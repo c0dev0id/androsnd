@@ -36,6 +36,7 @@ import de.codevoid.androsnd.model.Song
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.slider.Slider
 
 class MainActivity : AppCompatActivity() {
@@ -355,7 +356,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Double-Tap Timeout
+        // Double-Tap Speed slider
         val sliderDoubleTap = dialogView.findViewById<Slider>(R.id.slider_double_tap)
         val labelDoubleTap = dialogView.findViewById<TextView>(R.id.label_double_tap)
         val currentTimeout = alignToSliderStep(prefs.getInt("double_tap_ms", 500).toFloat(), 300f, 2000f, 50f)
@@ -365,6 +366,20 @@ class MainActivity : AppCompatActivity() {
             val ms = value.toInt()
             labelDoubleTap.text = "${ms}ms"
             prefs.edit().putInt("double_tap_ms", ms).apply()
+        }
+
+        // Double-Tap Actions toggle
+        val switchDoubleTap = dialogView.findViewById<MaterialSwitch>(R.id.switch_double_tap)
+        val doubleTapSliderGroup = dialogView.findViewById<View>(R.id.double_tap_slider_group)
+        val doubleTapEnabled = prefs.getBoolean("double_tap_enabled", true)
+        switchDoubleTap.isChecked = doubleTapEnabled
+        doubleTapSliderGroup.alpha = if (doubleTapEnabled) 1.0f else 0.38f
+        sliderDoubleTap.isEnabled = doubleTapEnabled
+
+        switchDoubleTap.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("double_tap_enabled", isChecked).apply()
+            doubleTapSliderGroup.alpha = if (isChecked) 1.0f else 0.38f
+            sliderDoubleTap.isEnabled = isChecked
         }
 
         // Apply accent color to dialog controls
@@ -451,6 +466,16 @@ class MainActivity : AppCompatActivity() {
                 btn.strokeColor = accentCSL
             }
         dialogView.findViewById<MaterialButton>(R.id.btn_folder)?.strokeColor = accentCSL
+        dialogView.findViewById<MaterialSwitch>(R.id.switch_double_tap)?.let { sw ->
+            sw.thumbTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(accentColor, Color.parseColor("#888888"))
+            )
+            sw.trackTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(Color.argb(128, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor)), Color.parseColor("#555555"))
+            )
+        }
     }
 
     private fun requestPermissionsIfNeeded() {

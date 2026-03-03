@@ -19,7 +19,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Accent Color"
+            android:text="@string/accent_color"
             android:textColor="@color/text_primary"
             android:textStyle="bold"
             android:textSize="16sp" />
@@ -184,45 +184,86 @@
                 android:textSize="16sp" />
         </LinearLayout>
 
-        <!-- Double-Tap Timeout -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_double_tap"
-            android:textColor="@color/text_primary"
-            android:textStyle="bold"
-            android:textSize="16sp"
-            android:layout_marginTop="16dp" />
-
+        <!-- Double-Tap Actions -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:gravity="center_vertical"
+            android:layout_marginTop="16dp">
 
-            <com.google.android.material.slider.Slider
-                android:id="@+id/slider_double_tap"
+            <TextView
+                android:id="@+id/label_double_tap_section"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:minHeight="56dp"
-                android:valueFrom="300"
-                android:valueTo="2000"
-                android:stepSize="50"
-                app:trackColorActive="@color/colorPrimary"
-                app:trackColorInactive="@color/seekbar_track_bg"
-                app:thumbColor="@color/colorPrimary"
-                app:thumbRadius="16dp"
-                app:labelBehavior="gone" />
-
-            <TextView
-                android:id="@+id/label_double_tap"
-                android:layout_width="64dp"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/colorPrimary"
+                android:text="@string/settings_double_tap_enabled"
+                android:textColor="@color/text_primary"
                 android:textStyle="bold"
                 android:textSize="16sp" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_double_tap"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/label_double_tap_desc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_double_tap_description"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            android:layout_marginTop="2dp"
+            android:layout_marginBottom="4dp" />
+
+        <LinearLayout
+            android:id="@+id/double_tap_slider_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/label_double_tap_heading"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_double_tap"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:layout_marginTop="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <com.google.android.material.slider.Slider
+                    android:id="@+id/slider_double_tap"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:minHeight="56dp"
+                    android:valueFrom="300"
+                    android:valueTo="2000"
+                    android:stepSize="50"
+                    app:trackColorActive="@color/colorPrimary"
+                    app:trackColorInactive="@color/seekbar_track_bg"
+                    app:thumbColor="@color/colorPrimary"
+                    app:thumbRadius="16dp"
+                    app:labelBehavior="gone" />
+
+                <TextView
+                    android:id="@+id/label_double_tap"
+                    android:layout_width="64dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:textColor="@color/colorPrimary"
+                    android:textStyle="bold"
+                    android:textSize="16sp" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- Select Folder -->
