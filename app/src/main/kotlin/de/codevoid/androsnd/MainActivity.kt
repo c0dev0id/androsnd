@@ -852,14 +852,14 @@ class MainActivity : AppCompatActivity() {
         if (!::settingsItems.isInitialized) return
 
         // Clear all highlights
-        playlistAdapter.setFocusedPos(-1)
+        playlistAdapter.focusedPos = -1
         seekBarContainer.foreground = null
         navButtons.forEach { it.foreground = null }
         settingsItems.forEach { it.foreground = null }
 
         // Apply highlight to active zone
         when (val z = navZone) {
-            is NavZone.Playlist  -> playlistAdapter.setFocusedPos(playlistFocusPos)
+            is NavZone.Playlist  -> playlistAdapter.focusedPos = playlistFocusPos
             is NavZone.SeekBar   -> seekBarContainer.foreground = makeFocusRing(dpToPx(6))
             is NavZone.ButtonBar -> navButtons[z.idx].foreground = makeFocusRing(dpToPx(8))
             is NavZone.Settings  -> {
@@ -915,13 +915,12 @@ class MainActivity : AppCompatActivity() {
         private var currentSongIndex = -1
         var accentColor: Int = Color.parseColor("#F57C00")
         var focusedPos: Int = -1
-
-        fun setFocusedPos(newPos: Int) {
-            val old = focusedPos
-            focusedPos = newPos
-            if (old >= 0 && old < itemCount) notifyItemChanged(old)
-            if (newPos >= 0 && newPos < itemCount) notifyItemChanged(newPos)
-        }
+            set(newPos) {
+                val old = field
+                field = newPos
+                if (old >= 0 && old < itemCount) notifyItemChanged(old)
+                if (newPos >= 0 && newPos < itemCount) notifyItemChanged(newPos)
+            }
 
         fun getSongIndexAt(pos: Int): Int? {
             val item = items.getOrNull(pos) ?: return null
