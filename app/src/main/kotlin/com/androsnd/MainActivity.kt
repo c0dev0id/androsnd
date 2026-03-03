@@ -8,6 +8,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -16,7 +18,10 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.SeekBar
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.ImageView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,10 +58,27 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnStop: MaterialButton
     private lateinit var btnShuffle: MaterialButton
 
+    private lateinit var btnSettings: MaterialButton
+    private lateinit var spinnerAccent: Spinner
+
     private lateinit var playlistAdapter: PlaylistAdapter
     private var isUserSeekBarTouch = false
     private var lastKnownPlaylistIndex = -1
     private var lastKnownSongCount = -1
+
+    private var accentColor: Int = Color.parseColor("#F57C00")
+    private val inactiveColor: Int = Color.parseColor("#444444")
+
+    companion object {
+        private val ACCENT_COLORS = mapOf(
+            "orange" to Color.parseColor("#F57C00"),
+            "blue" to Color.parseColor("#2196F3"),
+            "green" to Color.parseColor("#4CAF50")
+        )
+        private val ACCENT_NAMES = listOf("Orange", "Blue", "Green")
+        private val ACCENT_KEYS = listOf("orange", "blue", "green")
+        private const val FLASH_DURATION_MS = 200L
+    }
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -133,6 +155,8 @@ class MainActivity : AppCompatActivity() {
         bindViews()
         setupRecyclerView()
         setupButtons()
+        setupAccentPicker()
+        applyAccentColor()
         requestPermissionsIfNeeded()
         requestBatteryOptimizationExemption()
         requestOverlayPermission()
@@ -168,6 +192,10 @@ class MainActivity : AppCompatActivity() {
         btnNext = findViewById(R.id.btn_next)
         btnStop = findViewById(R.id.btn_stop)
         btnShuffle = findViewById(R.id.btn_shuffle)
+        btnSettings = findViewById(R.id.btn_settings)
+        spinnerAccent = findViewById(R.id.spinner_accent)
+
+        loadAccentColor()
     }
 
     private fun setupRecyclerView() {
@@ -185,9 +213,18 @@ class MainActivity : AppCompatActivity() {
         btnPlay.setOnClickListener {
             musicService?.handlePlayPause()
         }
-        btnPrev.setOnClickListener { musicService?.handlePrevious() }
-        btnNext.setOnClickListener { musicService?.handleNext() }
-        btnStop.setOnClickListener { musicService?.handleStop() }
+        btnPrev.setOnClickListener {
+            flashButton(btnPrev)
+            musicService?.handlePrevious()
+        }
+        btnNext.setOnClickListener {
+            flashButton(btnNext)
+            musicService?.handleNext()
+        }
+        btnStop.setOnClickListener {
+            flashButton(btnStop)
+            musicService?.handleStop()
+        }
         btnShuffle.setOnClickListener { musicService?.handleShuffleButton() }
 
         progressBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -204,7 +241,65 @@ class MainActivity : AppCompatActivity() {
         })
 
         findViewById<View>(R.id.btn_folder)?.setOnClickListener { openFolderPicker() }
-        findViewById<View>(R.id.btn_settings)?.setOnClickListener { showSettingsDialog() }
+        btnSettings.setOnClickListener { showSettingsDialog() }
+    }
+
+    private fun flashButton(btn: MaterialButton) {
+        btn.backgroundTintList = ColorStateList.valueOf(accentColor)
+        btn.postDelayed({ btn.backgroundTintList = ColorStateList.valueOf(inactiveColor) }, FLASH_DURATION_MS)
+    }
+
+    private fun loadAccentColor() {
+        val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+        val key = prefs.getString("accent_color", "orange") ?: "orange"
+        accentColor = ACCENT_COLORS[key] ?: ACCENT_COLORS["orange"]!!
+    }
+
+    private fun setupAccentPicker() {
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, ACCENT_NAMES)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerAccent.adapter = adapter
+
+        val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+        val savedKey = prefs.getString("accent_color", "orange") ?: "orange"
+        val idx = ACCENT_KEYS.indexOf(savedKey).coerceAtLeast(0)
+        spinnerAccent.setSelection(idx)
+
+        spinnerAccent.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val key = ACCENT_KEYS[position]
+                accentColor = ACCENT_COLORS[key] ?: ACCENT_COLORS["orange"]!!
+                prefs.edit().putString("accent_color", key).apply()
+                applyAccentColor()
+                updateButtonStates()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+
+    private fun applyAccentColor() {
+        val accentCSL = ColorStateList.valueOf(accentColor)
+
+        // SeekBar
+        progressBar.progressTintList = accentCSL
+        progressBar.thumbTintList = accentCSL
+
+        // Outlined buttons (settings, folder)
+        btnSettings.strokeColor = accentCSL
+        findViewById<MaterialButton>(R.id.btn_folder)?.strokeColor = accentCSL
+
+        // Playlist adapter
+        playlistAdapter.accentColor = accentColor
+        playlistAdapter.notifyDataSetChanged()
+    }
+
+    private fun updateButtonStates() {
+        val svc = musicService
+        val isPlaying = svc?.isPlaying == true
+        val isShuffleOn = svc?.playlistManager?.isShuffleOn == true
+
+        btnPlay.backgroundTintList = ColorStateList.valueOf(if (isPlaying) accentColor else inactiveColor)
+        btnShuffle.backgroundTintList = ColorStateList.valueOf(if (isShuffleOn) accentColor else inactiveColor)
     }
 
     private fun openFolderPicker() {
@@ -272,6 +367,16 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putInt("double_tap_ms", ms).apply()
         }
 
+        // Apply accent color to sliders
+        val accentCSL = ColorStateList.valueOf(accentColor)
+        listOf(sliderVolume, sliderOpacity, sliderSize, sliderDoubleTap).forEach { slider ->
+            slider.trackActiveTintList = accentCSL
+            slider.thumbTintList = accentCSL
+        }
+        listOf(labelVolume, labelOpacity, labelSize, labelDoubleTap).forEach { label ->
+            label.setTextColor(accentColor)
+        }
+
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.settings)
             .setView(dialogView)
@@ -333,9 +438,8 @@ class MainActivity : AppCompatActivity() {
         val pm = svc.playlistManager
         val song = pm.getCurrentSong()
 
-        btnPlay.isSelected = svc.isPlaying
-        btnShuffle.isSelected = pm.isShuffleOn
         btnPlay.setIconResource(if (svc.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
+        updateButtonStates()
 
         if (song != null) {
             val metadata = svc.currentMetadata
@@ -424,6 +528,7 @@ class MainActivity : AppCompatActivity() {
 
         private val items = mutableListOf<ListItem>()
         private var currentSongIndex = -1
+        var accentColor: Int = Color.parseColor("#F57C00")
 
         fun submitData(folders: List<PlaylistFolder>, songs: List<Song>, currentIdx: Int) {
             items.clear()
@@ -461,7 +566,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 is SongViewHolder -> {
                     holder.name.text = item.displayName
-                    holder.itemView.isSelected = item.songIndex == currentSongIndex
+                    val isSelected = item.songIndex == currentSongIndex
+                    holder.itemView.isSelected = isSelected
+                    val selectedBg = Color.argb(128, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
+                    holder.itemView.setBackgroundColor(if (isSelected) selectedBg else Color.TRANSPARENT)
                     holder.itemView.setOnClickListener { onSongClick(item.songIndex) }
                 }
             }
