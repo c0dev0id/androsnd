@@ -12,7 +12,6 @@ import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -526,9 +525,14 @@ class MainActivity : AppCompatActivity() {
         val svc = musicService ?: return
         val pm = svc.playlistManager
         if (pm.currentIndex == lastKnownPlaylistIndex && pm.songs.size == lastKnownSongCount) return
-        lastKnownPlaylistIndex = pm.currentIndex
-        lastKnownSongCount = pm.songs.size
-        playlistAdapter.submitData(pm.folders, pm.songs, pm.currentIndex)
+        if (pm.songs.size == lastKnownSongCount && pm.currentIndex != lastKnownPlaylistIndex) {
+            lastKnownPlaylistIndex = pm.currentIndex
+            playlistAdapter.updateCurrentIndex(pm.currentIndex)
+        } else {
+            lastKnownPlaylistIndex = pm.currentIndex
+            lastKnownSongCount = pm.songs.size
+            playlistAdapter.submitData(pm.folders, pm.songs, pm.currentIndex)
+        }
     }
 
     private fun showLoading() {
@@ -579,6 +583,16 @@ class MainActivity : AppCompatActivity() {
         private var currentSongIndex = -1
         var accentColor: Int = Color.parseColor("#F57C00")
 
+        fun updateCurrentIndex(newIndex: Int) {
+            val oldIndex = currentSongIndex
+            currentSongIndex = newIndex
+            items.forEachIndexed { pos, item ->
+                if (item.type == TYPE_SONG && (item.songIndex == oldIndex || item.songIndex == newIndex)) {
+                    notifyItemChanged(pos)
+                }
+            }
+        }
+
         fun submitData(folders: List<PlaylistFolder>, songs: List<Song>, currentIdx: Int) {
             items.clear()
             currentSongIndex = currentIdx
@@ -617,17 +631,7 @@ class MainActivity : AppCompatActivity() {
                     holder.name.text = item.displayName
                     val isSelected = item.songIndex == currentSongIndex
                     holder.itemView.isSelected = isSelected
-                    val targetColor = if (isSelected) accentColor else Color.TRANSPARENT
-                    val currentColor = (holder.itemView.background as? ColorDrawable)?.color ?: Color.TRANSPARENT
-                    if (currentColor != targetColor) {
-                        ValueAnimator.ofObject(ArgbEvaluator(), currentColor, targetColor).apply {
-                            duration = 200
-                            addUpdateListener { anim ->
-                                holder.itemView.setBackgroundColor(anim.animatedValue as Int)
-                            }
-                            start()
-                        }
-                    }
+                    holder.itemView.setBackgroundColor(if (isSelected) accentColor else Color.TRANSPARENT)
                     holder.itemView.setOnClickListener { onSongClick(item.songIndex) }
                 }
             }
