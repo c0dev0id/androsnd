@@ -1,4 +1,4 @@
-package com.androsnd
+package de.codevoid.androsnd
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -32,8 +32,8 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media.app.NotificationCompat.MediaStyle
-import com.androsnd.model.Song
-import com.androsnd.model.SongMetadata
+import de.codevoid.androsnd.model.Song
+import de.codevoid.androsnd.model.SongMetadata
 
 class MusicService : MediaBrowserServiceCompat() {
 
@@ -43,16 +43,16 @@ class MusicService : MediaBrowserServiceCompat() {
         const val CHANNEL_ID = "androsnd_channel"
         const val NOTIFICATION_ID = 1
 
-        const val ACTION_PLAY = "com.androsnd.PLAY"
-        const val ACTION_PAUSE = "com.androsnd.PAUSE"
-        const val ACTION_STOP = "com.androsnd.STOP"
-        const val ACTION_NEXT = "com.androsnd.NEXT"
-        const val ACTION_PREVIOUS = "com.androsnd.PREVIOUS"
-        const val ACTION_SHUFFLE = "com.androsnd.SHUFFLE"
+        const val ACTION_PLAY = "de.codevoid.androsnd.PLAY"
+        const val ACTION_PAUSE = "de.codevoid.androsnd.PAUSE"
+        const val ACTION_STOP = "de.codevoid.androsnd.STOP"
+        const val ACTION_NEXT = "de.codevoid.androsnd.NEXT"
+        const val ACTION_PREVIOUS = "de.codevoid.androsnd.PREVIOUS"
+        const val ACTION_SHUFFLE = "de.codevoid.androsnd.SHUFFLE"
 
-        const val BROADCAST_STATE_CHANGED = "com.androsnd.STATE_CHANGED"
-        const val BROADCAST_SCAN_STARTED = "com.androsnd.SCAN_STARTED"
-        const val BROADCAST_SCAN_COMPLETED = "com.androsnd.SCAN_COMPLETED"
+        const val BROADCAST_STATE_CHANGED = "de.codevoid.androsnd.STATE_CHANGED"
+        const val BROADCAST_SCAN_STARTED = "de.codevoid.androsnd.SCAN_STARTED"
+        const val BROADCAST_SCAN_COMPLETED = "de.codevoid.androsnd.SCAN_COMPLETED"
 
         private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_APP_VOLUME = "app_volume"
@@ -554,7 +554,7 @@ class MusicService : MediaBrowserServiceCompat() {
             val dir = java.io.File(cacheDir, "album_art").also { it.mkdirs() }
             val file = java.io.File(dir, filename)
             file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
-            val uri = Uri.parse("content://com.androsnd.albumart/$filename?v=$artVersion")
+            val uri = Uri.parse("content://de.codevoid.androsnd.albumart/$filename?v=$artVersion")
             contentResolver.notifyChange(uri, null)
             uri
         } catch (e: Exception) {
@@ -653,7 +653,7 @@ class MusicService : MediaBrowserServiceCompat() {
         val nextIdx = playlistManager.nextQueueIndex
         val curSong = songs.getOrNull(curIdx) ?: return
 
-        val curArtUri = Uri.parse("content://com.androsnd.albumart/current_art.jpg?v=$artVersion")
+        val curArtUri = Uri.parse("content://de.codevoid.androsnd.albumart/current_art.jpg?v=$artVersion")
             .takeIf { java.io.File(cacheDir, "album_art/current_art.jpg").exists() }
         val curDesc = MediaDescriptionCompat.Builder()
             .setMediaId(curIdx.toString())

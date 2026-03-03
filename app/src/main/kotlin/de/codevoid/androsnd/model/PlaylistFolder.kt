@@ -1,4 +1,4 @@
-package com.androsnd.model
+package de.codevoid.androsnd.model
 
 data class PlaylistFolder(
     val name: String,

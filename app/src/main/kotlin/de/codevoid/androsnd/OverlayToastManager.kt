@@ -1,4 +1,4 @@
-package com.androsnd
+package de.codevoid.androsnd
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
@@ -24,7 +24,7 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
-import com.androsnd.model.SongMetadata
+import de.codevoid.androsnd.model.SongMetadata
 
 class OverlayToastManager(private val context: Context) {
 

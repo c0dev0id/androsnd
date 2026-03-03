@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.androsnd"
+    namespace = "de.codevoid.androsnd"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.androsnd"
+        applicationId = "de.codevoid.androsnd"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

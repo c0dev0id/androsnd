@@ -1,4 +1,4 @@
-package com.androsnd
+package de.codevoid.androsnd
 
 import android.Manifest
 import android.content.BroadcastReceiver
@@ -32,8 +32,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.androsnd.model.PlaylistFolder
-import com.androsnd.model.Song
+import de.codevoid.androsnd.model.PlaylistFolder
+import de.codevoid.androsnd.model.Song
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.Slider

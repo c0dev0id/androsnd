@@ -1,11 +1,11 @@
-package com.androsnd
+package de.codevoid.androsnd
 
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.provider.DocumentsContract
-import com.androsnd.model.PlaylistFolder
-import com.androsnd.model.Song
+import de.codevoid.androsnd.model.PlaylistFolder
+import de.codevoid.androsnd.model.Song
 
 class PlaylistManager(private val context: Context) {
 

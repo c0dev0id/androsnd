@@ -40,7 +40,7 @@
 
         <provider
             android:name=".AlbumArtProvider"
-            android:authorities="com.androsnd.albumart"
+            android:authorities="de.codevoid.androsnd.albumart"
             android:exported="true"
             android:grantUriPermissions="true" />
 

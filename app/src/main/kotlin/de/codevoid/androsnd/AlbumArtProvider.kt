@@ -1,4 +1,4 @@
-package com.androsnd
+package de.codevoid.androsnd
 
 import android.content.ContentProvider
 import android.content.ContentValues
