@@ -22,7 +22,7 @@
     <string name="settings_overlay_size">Overlay Size</string>
     <string name="settings_double_tap">Double-Tap Timeout</string>
     <string name="overlay_demo_title">Overlay Settings</string>
-    <string name="overlay_demo_artist">Drag me and I'll remember</string>
+    <string name="overlay_demo_artist">Drag me and I\'ll remember</string>
     <string name="overlay_demo_album">Pinch me and I will resize :)</string>
     <string name="accent_color">Accent Color</string>
 </resources>
