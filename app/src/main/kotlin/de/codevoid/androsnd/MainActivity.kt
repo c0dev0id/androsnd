@@ -35,7 +35,6 @@ import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
-import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.slider.Slider
 import android.graphics.drawable.GradientDrawable
 import android.view.KeyEvent
@@ -73,7 +72,6 @@ class MainActivity : AppCompatActivity() {
     private var playlistFocusPos: Int = 0
     private lateinit var seekBarContainer: View
     private lateinit var settingsItems: List<View>
-    private var escapeLongPressConsumed = false
 
     // ── Key mapping preset ────────────────────────────────────────────────────
     private lateinit var presetManager: RemotePresetManager
@@ -98,7 +96,7 @@ class MainActivity : AppCompatActivity() {
     private var navRepeatRunnable: Runnable? = null
     private var navRepeatStep = 0
 
-    private val SETTINGS_COUNT = 9
+    private val SETTINGS_COUNT = 7
     private val navButtons: List<MaterialButton>
         get() = listOf(btnPrev, btnPlay, btnNext, btnStop, btnShuffle, btnSettings)
 
@@ -453,32 +451,6 @@ class MainActivity : AppCompatActivity() {
             musicService?.updateOverlayScale(value)
         }
 
-        // Double-Tap Speed slider
-        val sliderDoubleTap = settingsPanel.findViewById<Slider>(R.id.slider_double_tap)
-        val labelDoubleTap = settingsPanel.findViewById<TextView>(R.id.label_double_tap)
-        val currentTimeout = alignToSliderStep(prefs.getInt("double_tap_ms", 500).toFloat(), 300f, 2000f, 50f)
-        sliderDoubleTap.value = currentTimeout
-        labelDoubleTap.text = "${currentTimeout.toInt()}ms"
-        sliderDoubleTap.addOnChangeListener { _, value, _ ->
-            val ms = value.toInt()
-            labelDoubleTap.text = "${ms}ms"
-            prefs.edit().putInt("double_tap_ms", ms).apply()
-        }
-
-        // Double-Tap Actions toggle
-        val switchDoubleTap = settingsPanel.findViewById<MaterialSwitch>(R.id.switch_double_tap)
-        val doubleTapSliderGroup = settingsPanel.findViewById<View>(R.id.double_tap_slider_group)
-        val doubleTapEnabled = prefs.getBoolean("double_tap_enabled", true)
-        switchDoubleTap.isChecked = doubleTapEnabled
-        doubleTapSliderGroup.alpha = if (doubleTapEnabled) 1.0f else 0.38f
-        sliderDoubleTap.isEnabled = doubleTapEnabled
-
-        switchDoubleTap.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("double_tap_enabled", isChecked).apply()
-            doubleTapSliderGroup.alpha = if (isChecked) 1.0f else 0.38f
-            sliderDoubleTap.isEnabled = isChecked
-        }
-
         // Apply accent color to settings controls
         applyAccentToSettingsControls()
 
@@ -505,15 +477,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Build the ordered list of focusable settings rows for remote navigation:
-        // 0=colors, 1=volume, 2=opacity, 3=size, 4=double-tap switch, 5=double-tap speed,
-        // 6=folder, 7=remote preset toggle, 8=map remote button
+        // 0=colors, 1=volume, 2=opacity, 3=size, 4=folder, 5=remote preset toggle, 6=map remote button
         settingsItems = listOf(
             settingsPanel.findViewById(R.id.toggle_accent_settings),
             settingsPanel.findViewById<Slider>(R.id.slider_volume).parent as View,
             settingsPanel.findViewById<Slider>(R.id.slider_opacity).parent as View,
             settingsPanel.findViewById<Slider>(R.id.slider_overlay_size).parent as View,
-            settingsPanel.findViewById<MaterialSwitch>(R.id.switch_double_tap).parent as View,
-            settingsPanel.findViewById(R.id.double_tap_slider_group),
             settingsPanel.findViewById(R.id.btn_folder),
             settingsPanel.findViewById(R.id.toggle_remote_preset),
             settingsPanel.findViewById(R.id.btn_map_remote)
@@ -540,13 +509,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyAccentToSettingsControls() {
         val accentCSL = ColorStateList.valueOf(accentColor)
-        listOf(R.id.slider_volume, R.id.slider_opacity, R.id.slider_overlay_size, R.id.slider_double_tap)
+        listOf(R.id.slider_volume, R.id.slider_opacity, R.id.slider_overlay_size)
             .mapNotNull { settingsPanel.findViewById<Slider>(it) }
             .forEach { slider ->
                 slider.trackActiveTintList = accentCSL
                 slider.thumbTintList = accentCSL
             }
-        listOf(R.id.label_volume, R.id.label_opacity, R.id.label_overlay_size, R.id.label_double_tap)
+        listOf(R.id.label_volume, R.id.label_opacity, R.id.label_overlay_size)
             .mapNotNull { settingsPanel.findViewById<TextView>(it) }
             .forEach { label ->
                 label.setTextColor(accentColor)
@@ -561,16 +530,6 @@ class MainActivity : AppCompatActivity() {
         listOf(R.id.btn_preset_dmd, R.id.btn_preset_custom)
             .mapNotNull { settingsPanel.findViewById<MaterialButton>(it) }
             .forEach { it.strokeColor = accentCSL }
-        settingsPanel.findViewById<MaterialSwitch>(R.id.switch_double_tap)?.let { sw ->
-            sw.thumbTintList = ColorStateList(
-                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                intArrayOf(accentColor, Color.parseColor("#888888"))
-            )
-            sw.trackTintList = ColorStateList(
-                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                intArrayOf(Color.argb(128, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor)), Color.parseColor("#555555"))
-            )
-        }
     }
 
     private fun requestPermissionsIfNeeded() {
@@ -764,25 +723,11 @@ class MainActivity : AppCompatActivity() {
         activePreset.keycodes.indexOfFirst { it == keycode }
 
     private fun handleEscape(event: KeyEvent): Boolean {
-        when (event.action) {
-            KeyEvent.ACTION_DOWN -> {
-                if (event.repeatCount == 0) {
-                    escapeLongPressConsumed = false
-                } else if (event.repeatCount >= 1 && !escapeLongPressConsumed) {
-                    escapeLongPressConsumed = true
-                    if (!wizardVisible) moveTaskToBack(true)
-                    // long-press inside wizard: no-op (don't background the app)
-                }
-            }
-            KeyEvent.ACTION_UP -> {
-                if (!escapeLongPressConsumed) {
-                    // Short press: close wizard, close settings, or play/pause
-                    when {
-                        wizardVisible   -> closeWizard()
-                        settingsVisible -> toggleSettings()
-                        else            -> musicService?.handlePlayPause()
-                    }
-                }
+        if (event.action == KeyEvent.ACTION_UP) {
+            when {
+                wizardVisible   -> closeWizard()
+                settingsVisible -> toggleSettings()
+                else            -> musicService?.handlePlayPause()
             }
         }
         return true
@@ -948,21 +893,18 @@ class MainActivity : AppCompatActivity() {
             1 -> adjustSlider(R.id.slider_volume, 5f * direction)
             2 -> adjustSlider(R.id.slider_opacity, 5f * direction)
             3 -> adjustSlider(R.id.slider_overlay_size, 0.1f * direction)
-            4 -> toggleDoubleTapSwitch()
-            5 -> adjustSlider(R.id.slider_double_tap, 50f * direction)
-            // 6 = folder button: left/right has no effect
-            7 -> cycleRemotePreset(direction)
-            // 8 = map remote button: left/right has no effect
+            // 4 = folder button: left/right has no effect
+            5 -> cycleRemotePreset(direction)
+            // 6 = map remote button: left/right has no effect
         }
     }
 
     private fun activateSettingsItem(idx: Int) {
         when (idx) {
             0 -> cycleAccentColor(+1)
-            4 -> toggleDoubleTapSwitch()
-            6 -> openFolderPicker()
-            7 -> cycleRemotePreset(0)  // toggle
-            8 -> startRemoteCapture()
+            4 -> openFolderPicker()
+            5 -> cycleRemotePreset(0)  // toggle
+            6 -> startRemoteCapture()
         }
     }
 
@@ -1008,10 +950,6 @@ class MainActivity : AppCompatActivity() {
         val slider = settingsPanel.findViewById<Slider>(id) ?: return
         if (!slider.isEnabled) return
         slider.value = (slider.value + delta).coerceIn(slider.valueFrom, slider.valueTo)
-    }
-
-    private fun toggleDoubleTapSwitch() {
-        settingsPanel.findViewById<MaterialSwitch>(R.id.switch_double_tap)?.toggle()
     }
 
     private fun scrollSettingsToItem(idx: Int) {
