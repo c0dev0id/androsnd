@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.provider.DocumentsContract
-import android.support.v4.media.session.PlaybackStateCompat
 import com.androsnd.model.PlaylistFolder
 import com.androsnd.model.Song
 
@@ -28,15 +27,8 @@ class PlaylistManager(private val context: Context) {
         private set
     var isShuffleOn: Boolean = false
         private set
-    var repeatMode: Int = PlaybackStateCompat.REPEAT_MODE_NONE
+    var nextQueueIndex: Int = -1
         private set
-
-    fun setRepeatMode(mode: Int) {
-        if (mode in listOf(PlaybackStateCompat.REPEAT_MODE_NONE, PlaybackStateCompat.REPEAT_MODE_ONE,
-                           PlaybackStateCompat.REPEAT_MODE_ALL, PlaybackStateCompat.REPEAT_MODE_GROUP)) {
-            repeatMode = mode
-        }
-    }
 
     fun loadSavedFolder(): Uri? {
         val uriString = prefs.getString(KEY_FOLDER_URI, null) ?: return null
@@ -189,5 +181,21 @@ class PlaylistManager(private val context: Context) {
     fun toggleShuffle(): Boolean {
         isShuffleOn = !isShuffleOn
         return isShuffleOn
+    }
+
+    fun selectNextQueueSong() {
+        if (songs.isEmpty()) {
+            nextQueueIndex = -1
+            return
+        }
+        nextQueueIndex = if (isShuffleOn) {
+            if (songs.size > 1) {
+                var r: Int
+                do { r = kotlin.random.Random.nextInt(songs.size) } while (r == currentIndex)
+                r
+            } else 0
+        } else {
+            (currentIndex + 1) % songs.size
+        }
     }
 }
