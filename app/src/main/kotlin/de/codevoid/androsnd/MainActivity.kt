@@ -39,7 +39,6 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.slider.Slider
 import android.graphics.drawable.GradientDrawable
 import android.view.KeyEvent
-import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
 
@@ -83,15 +82,10 @@ class MainActivity : AppCompatActivity() {
     // ── Wizard state ─────────────────────────────────────────────────────────
     private lateinit var wizardPanel: View
     private var wizardVisible = false
-    private lateinit var wizardScreenPresets: View
-    private lateinit var wizardScreenCapture: View
-    private lateinit var wizardPresetContainer: LinearLayout
-    private lateinit var wizardActiveLabel: TextView
     private lateinit var wizardCapturePresetName: TextView
     private lateinit var wizardCaptureProgress: TextView
     private lateinit var wizardCaptureAction: TextView
     private lateinit var wizardCaptureCurrent: TextView
-    private var wizardPresetRows: List<View> = emptyList()
 
     // Key capture state (used during wizard Phase 1)
     private var isCapturingKey = false
@@ -104,7 +98,7 @@ class MainActivity : AppCompatActivity() {
     private var navRepeatRunnable: Runnable? = null
     private var navRepeatStep = 0
 
-    private val SETTINGS_COUNT = 8
+    private val SETTINGS_COUNT = 9
     private val navButtons: List<MaterialButton>
         get() = listOf(btnPrev, btnPlay, btnNext, btnStop, btnShuffle, btnSettings)
 
@@ -130,8 +124,7 @@ class MainActivity : AppCompatActivity() {
         object Playlist : NavZone()
         object SeekBar : NavZone()
         data class ButtonBar(val idx: Int = 1) : NavZone()  // 1 = Play button
-        data class Settings(val idx: Int = 0) : NavZone()   // 0-7 settings items
-        data class Wizard(val presetIdx: Int = 0) : NavZone()
+        data class Settings(val idx: Int = 0) : NavZone()   // 0-8 settings items
     }
 
     private val serviceConnection = object : ServiceConnection {
@@ -295,15 +288,11 @@ class MainActivity : AppCompatActivity() {
         settingsButtonStrokeWidth = btnSettings.strokeWidth
         seekBarContainer = findViewById(R.id.seek_row)
 
-        wizardPanel = findViewById(R.id.wizard_panel)
-        wizardScreenPresets    = wizardPanel.findViewById(R.id.wizard_screen_presets)
-        wizardScreenCapture    = wizardPanel.findViewById(R.id.wizard_screen_capture)
-        wizardPresetContainer  = wizardPanel.findViewById(R.id.wizard_preset_container)
-        wizardActiveLabel      = wizardPanel.findViewById(R.id.wizard_active_label)
-        wizardCapturePresetName= wizardPanel.findViewById(R.id.wizard_capture_preset_name)
-        wizardCaptureProgress  = wizardPanel.findViewById(R.id.wizard_capture_progress)
-        wizardCaptureAction    = wizardPanel.findViewById(R.id.wizard_capture_action)
-        wizardCaptureCurrent   = wizardPanel.findViewById(R.id.wizard_capture_current)
+        wizardPanel             = findViewById(R.id.wizard_panel)
+        wizardCapturePresetName = wizardPanel.findViewById(R.id.wizard_capture_preset_name)
+        wizardCaptureProgress   = wizardPanel.findViewById(R.id.wizard_capture_progress)
+        wizardCaptureAction     = wizardPanel.findViewById(R.id.wizard_capture_action)
+        wizardCaptureCurrent    = wizardPanel.findViewById(R.id.wizard_capture_current)
 
         loadAccentColor()
     }
@@ -367,13 +356,6 @@ class MainActivity : AppCompatActivity() {
         // Settings panel controls
         applyAccentToSettingsControls()
 
-        // Wizard preset rows
-        if (::wizardPresetContainer.isInitialized) {
-            val accentCSL = ColorStateList.valueOf(accentColor)
-            wizardPresetRows.filterIsInstance<MaterialButton>().forEach {
-                it.strokeColor = accentCSL
-            }
-        }
     }
 
     private fun updateButtonStates() {
@@ -505,14 +487,26 @@ class MainActivity : AppCompatActivity() {
             openFolderPicker()
         }
 
-        // Remote Key Mapping
-        settingsPanel.findViewById<MaterialButton>(R.id.btn_remote_keys).setOnClickListener {
-            openWizard()
+        // Remote Control: preset toggle + map button
+        val toggleRemote = settingsPanel.findViewById<MaterialButtonToggleGroup>(R.id.toggle_remote_preset)
+        toggleRemote.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                val useCustom = checkedId == R.id.btn_preset_custom
+                presetManager.setCustomActive(useCustom)
+                activePreset = presetManager.getActivePreset()
+                updateMapRemoteButton()
+            }
+        }
+        toggleRemote.check(
+            if (presetManager.isCustomActive()) R.id.btn_preset_custom else R.id.btn_preset_dmd
+        )
+        settingsPanel.findViewById<MaterialButton>(R.id.btn_map_remote).setOnClickListener {
+            startRemoteCapture()
         }
 
         // Build the ordered list of focusable settings rows for remote navigation:
         // 0=colors, 1=volume, 2=opacity, 3=size, 4=double-tap switch, 5=double-tap speed,
-        // 6=folder, 7=remote keys
+        // 6=folder, 7=remote preset toggle, 8=map remote button
         settingsItems = listOf(
             settingsPanel.findViewById(R.id.toggle_accent_settings),
             settingsPanel.findViewById<Slider>(R.id.slider_volume).parent as View,
@@ -521,7 +515,8 @@ class MainActivity : AppCompatActivity() {
             settingsPanel.findViewById<MaterialSwitch>(R.id.switch_double_tap).parent as View,
             settingsPanel.findViewById(R.id.double_tap_slider_group),
             settingsPanel.findViewById(R.id.btn_folder),
-            settingsPanel.findViewById(R.id.btn_remote_keys)
+            settingsPanel.findViewById(R.id.toggle_remote_preset),
+            settingsPanel.findViewById(R.id.btn_map_remote)
         )
         updateFocusVisual()
     }
@@ -562,7 +557,10 @@ class MainActivity : AppCompatActivity() {
                 btn.strokeColor = accentCSL
             }
         settingsPanel.findViewById<MaterialButton>(R.id.btn_folder)?.strokeColor = accentCSL
-        settingsPanel.findViewById<MaterialButton>(R.id.btn_remote_keys)?.strokeColor = accentCSL
+        settingsPanel.findViewById<MaterialButton>(R.id.btn_map_remote)?.strokeColor = accentCSL
+        listOf(R.id.btn_preset_dmd, R.id.btn_preset_custom)
+            .mapNotNull { settingsPanel.findViewById<MaterialButton>(it) }
+            .forEach { it.strokeColor = accentCSL }
         settingsPanel.findViewById<MaterialSwitch>(R.id.switch_double_tap)?.let { sw ->
             sw.thumbTintList = ColorStateList(
                 arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
@@ -852,13 +850,6 @@ class MainActivity : AppCompatActivity() {
                     scrollSettingsToItem(z.idx - 1)
                 }
             }
-            is NavZone.Wizard -> {
-                if (z.presetIdx > 0) {
-                    navZone = NavZone.Wizard(z.presetIdx - 1)
-                    updateFocusVisual()
-                    scrollWizardToRow(z.presetIdx - 1)
-                }
-            }
         }
         return true
     }
@@ -887,13 +878,6 @@ class MainActivity : AppCompatActivity() {
                     scrollSettingsToItem(z.idx + 1)
                 }
             }
-            is NavZone.Wizard -> {
-                if (z.presetIdx < wizardPresetRows.size - 1) {
-                    navZone = NavZone.Wizard(z.presetIdx + 1)
-                    updateFocusVisual()
-                    scrollWizardToRow(z.presetIdx + 1)
-                }
-            }
         }
         return true
     }
@@ -909,7 +893,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             is NavZone.Settings -> adjustSettingsItem(z.idx, -1)
-            is NavZone.Wizard   -> { /* no horizontal action in wizard list */ }
         }
         return true
     }
@@ -925,7 +908,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             is NavZone.Settings -> adjustSettingsItem(z.idx, +1)
-            is NavZone.Wizard   -> { /* no horizontal action in wizard list */ }
         }
         return true
     }
@@ -939,7 +921,6 @@ class MainActivity : AppCompatActivity() {
             is NavZone.SeekBar   -> musicService?.handlePlayPause()
             is NavZone.ButtonBar -> navButtons[z.idx].performClick()
             is NavZone.Settings  -> activateSettingsItem(z.idx)
-            is NavZone.Wizard    -> activateWizardRow(z.presetIdx)
         }
         return true
     }
@@ -970,6 +951,8 @@ class MainActivity : AppCompatActivity() {
             4 -> toggleDoubleTapSwitch()
             5 -> adjustSlider(R.id.slider_double_tap, 50f * direction)
             // 6 = folder button: left/right has no effect
+            7 -> cycleRemotePreset(direction)
+            // 8 = map remote button: left/right has no effect
         }
     }
 
@@ -978,8 +961,34 @@ class MainActivity : AppCompatActivity() {
             0 -> cycleAccentColor(+1)
             4 -> toggleDoubleTapSwitch()
             6 -> openFolderPicker()
-            7 -> openWizard()
+            7 -> cycleRemotePreset(0)  // toggle
+            8 -> startRemoteCapture()
         }
+    }
+
+    /** Left=DMD Remote 2, Right=Custom, direction==0 means toggle. */
+    private fun cycleRemotePreset(direction: Int) {
+        val useCustom = when {
+            direction > 0 -> true
+            direction < 0 -> false
+            else          -> !presetManager.isCustomActive()  // Confirm = toggle
+        }
+        presetManager.setCustomActive(useCustom)
+        activePreset = presetManager.getActivePreset()
+        updateRemotePresetToggle()
+        updateMapRemoteButton()
+    }
+
+    private fun updateRemotePresetToggle() {
+        val toggle = settingsPanel.findViewById<MaterialButtonToggleGroup>(R.id.toggle_remote_preset)
+            ?: return
+        val id = if (presetManager.isCustomActive()) R.id.btn_preset_custom else R.id.btn_preset_dmd
+        if (toggle.checkedButtonId != id) toggle.check(id)
+    }
+
+    private fun updateMapRemoteButton() {
+        settingsPanel.findViewById<MaterialButton>(R.id.btn_map_remote)?.isEnabled =
+            presetManager.isCustomActive()
     }
 
     private fun cycleAccentColor(direction: Int) {
@@ -1021,7 +1030,6 @@ class MainActivity : AppCompatActivity() {
         seekBarContainer.foreground = null
         navButtons.forEach { it.foreground = null }
         settingsItems.forEach { it.foreground = null }
-        wizardPresetRows.forEach { it.foreground = null }
 
         // Apply highlight to active zone
         when (val z = navZone) {
@@ -1031,11 +1039,6 @@ class MainActivity : AppCompatActivity() {
             is NavZone.Settings  -> {
                 if (z.idx < settingsItems.size) {
                     settingsItems[z.idx].foreground = makeFocusRing(dpToPx(8))
-                }
-            }
-            is NavZone.Wizard -> {
-                if (z.presetIdx < wizardPresetRows.size) {
-                    wizardPresetRows[z.presetIdx].foreground = makeFocusRing(dpToPx(8))
                 }
             }
         }
@@ -1056,81 +1059,24 @@ class MainActivity : AppCompatActivity() {
     // ── Key Mapping Wizard ────────────────────────────────────────────────────
 
     private fun setupWizardPanel() {
-        rebuildWizardPresetRows()
+        // Capture screen views are already bound in bindViews(); nothing else to set up.
     }
 
-    private fun rebuildWizardPresetRows() {
-        wizardPresetContainer.removeAllViews()
-        val presets = presetManager.allPresets()
-        val rows = mutableListOf<View>()
-        val activeCSL = ColorStateList.valueOf(accentColor)
-        val inactiveCSL = ColorStateList.valueOf(Color.parseColor("#888888"))
-
-        presets.forEachIndexed { _, preset ->
-            val isActive = preset.name == activePreset.name
-            val btn = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                val lp = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dpToPx(52)
-                )
-                lp.bottomMargin = dpToPx(8)
-                layoutParams = lp
-                text = if (isActive) "${preset.name}  ✓" else preset.name
-                textSize = 15f
-                strokeColor = if (isActive) activeCSL else inactiveCSL
-                strokeWidth = if (isActive) dpToPx(2) else dpToPx(1)
-            }
-            btn.setOnClickListener {
-                val idx = wizardPresetRows.indexOf(btn)
-                if (idx >= 0) activateWizardRow(idx)
-            }
-            wizardPresetContainer.addView(btn)
-            rows.add(btn)
-        }
-
-        // "Add New Preset" button at the bottom of the list
-        val btnNew = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-            val lp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(52)
-            )
-            lp.topMargin = dpToPx(8)
-            layoutParams = lp
-            text = getString(R.string.wizard_btn_new)
-            textSize = 15f
-            strokeColor = activeCSL
-            strokeWidth = dpToPx(1)
-        }
-        btnNew.setOnClickListener { startNewPresetCapture() }
-        wizardPresetContainer.addView(btnNew)
-        rows.add(btnNew)
-
-        wizardPresetRows = rows
-        updateWizardActiveLabel()
-    }
-
-    private fun updateWizardActiveLabel() {
-        wizardActiveLabel.text = "${getString(R.string.wizard_active_prefix)}${activePreset.name}"
-    }
-
-    private fun openWizard() {
+    private fun startRemoteCapture() {
         settingsPanel.visibility = View.GONE
         contentArea.visibility = View.GONE
         settingsVisible = false
         musicService?.dismissOverlayDemo()
 
+        val template = presetManager.getCustomPreset()
+        captureTargetPreset = template
+        captureActionIndex  = 0
+        captureKeycodes     = template.keycodes.copyOf()
+        isCapturingKey      = true
+
         wizardPanel.visibility = View.VISIBLE
         wizardVisible = true
-        wizardScreenPresets.visibility = View.VISIBLE
-        wizardScreenCapture.visibility = View.GONE
-        isCapturingKey = false
-
-        // Focus on the currently active preset
-        val activeIdx = presetManager.allPresets().indexOfFirst { it.name == activePreset.name }
-            .coerceAtLeast(0)
-        navZone = NavZone.Wizard(activeIdx)
-        rebuildWizardPresetRows()
-        updateFocusVisual()
+        updateCaptureScreen()
         updateButtonStates()
     }
 
@@ -1140,42 +1086,13 @@ class MainActivity : AppCompatActivity() {
         isCapturingKey = false
         captureTargetPreset = null
 
-        contentArea.visibility = View.VISIBLE
-        navZone = NavZone.ButtonBar(5)  // return focus to Settings button
+        settingsPanel.visibility = View.VISIBLE
+        settingsVisible = true
+        contentArea.visibility = View.GONE
+        musicService?.showOverlayDemo()
+        navZone = NavZone.Settings(8)  // return focus to Map Remote button
         updateFocusVisual()
         updateButtonStates()
-    }
-
-    private fun activateWizardRow(presetIdx: Int) {
-        val presets = presetManager.allPresets()
-        val isNewPresetRow = presetIdx == presets.size  // last row = "Add New Preset"
-        if (isNewPresetRow) {
-            startNewPresetCapture()
-            return
-        }
-        val selected = presets.getOrNull(presetIdx) ?: return
-        // Activate the selected preset
-        presetManager.setActivePreset(selected)
-        activePreset = selected
-        rebuildWizardPresetRows()
-        navZone = NavZone.Wizard(presetIdx)
-        updateFocusVisual()
-    }
-
-    private fun startNewPresetCapture() {
-        // Copy keycodes from the active preset as starting point for the new one
-        val newPreset = presetManager.createCustomCopy(activePreset)
-        presetManager.setActivePreset(newPreset)
-        activePreset = newPreset
-
-        captureTargetPreset = newPreset
-        captureActionIndex  = 0
-        captureKeycodes     = newPreset.keycodes.copyOf()
-        isCapturingKey      = true
-
-        wizardScreenPresets.visibility = View.GONE
-        wizardScreenCapture.visibility = View.VISIBLE
-        updateCaptureScreen()
     }
 
     private fun updateCaptureScreen() {
@@ -1198,25 +1115,16 @@ class MainActivity : AppCompatActivity() {
         captureActionIndex++
 
         if (captureActionIndex >= RemoteKeyPreset.ACTION_COUNT) {
-            // All 8 actions mapped — save and return to preset list
-            val target = captureTargetPreset ?: return
-            val saved = RemoteKeyPreset(target.name, captureKeycodes.copyOf())
-            presetManager.updateCustomPreset(saved)
-            presetManager.setActivePreset(saved)
+            // All 8 actions mapped — save as the single custom preset
+            val saved = RemoteKeyPreset("Custom", captureKeycodes.copyOf())
+            presetManager.saveCustomPreset(saved)
+            presetManager.setCustomActive(true)
             activePreset = saved
             isCapturingKey = false
             captureTargetPreset = null
 
-            wizardScreenPresets.visibility = View.VISIBLE
-            wizardScreenCapture.visibility = View.GONE
-            rebuildWizardPresetRows()
-
-            val newIdx = presetManager.allPresets().indexOfFirst { it.name == saved.name }
-                .coerceAtLeast(0)
-            navZone = NavZone.Wizard(newIdx)
-            updateFocusVisual()
-
             Toast.makeText(this, getString(R.string.wizard_mapping_saved), Toast.LENGTH_SHORT).show()
+            closeWizard()
         } else {
             updateCaptureScreen()
         }
@@ -1225,21 +1133,7 @@ class MainActivity : AppCompatActivity() {
     private fun cancelCaptureSession() {
         isCapturingKey = false
         captureTargetPreset = null
-        activePreset = presetManager.getActivePreset()
-
-        wizardScreenPresets.visibility = View.VISIBLE
-        wizardScreenCapture.visibility = View.GONE
-        rebuildWizardPresetRows()
-        val activeIdx = presetManager.allPresets().indexOfFirst { it.name == activePreset.name }
-            .coerceAtLeast(0)
-        navZone = NavZone.Wizard(activeIdx)
-        updateFocusVisual()
-    }
-
-    private fun scrollWizardToRow(idx: Int) {
-        val row = wizardPresetRows.getOrNull(idx) ?: return
-        wizardPanel.findViewById<ScrollView>(R.id.wizard_preset_scroll)
-            ?.smoothScrollTo(0, row.top)
+        closeWizard()
     }
 
     override fun onDestroy() {
