@@ -35,6 +35,9 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.slider.Slider
+import android.graphics.drawable.GradientDrawable
+import android.view.KeyEvent
+import android.widget.ScrollView
 
 class MainActivity : AppCompatActivity() {
 
@@ -62,6 +65,16 @@ class MainActivity : AppCompatActivity() {
     private var settingsVisible = false
     private var settingsButtonStrokeWidth = 0
 
+    // Remote control navigation state
+    private var navZone: NavZone = NavZone.Playlist
+    private var playlistFocusPos: Int = 0
+    private lateinit var seekBarContainer: View
+    private lateinit var settingsItems: List<View>
+
+    private val SETTINGS_COUNT = 7
+    private val navButtons: List<MaterialButton>
+        get() = listOf(btnPrev, btnPlay, btnNext, btnStop, btnShuffle, btnSettings)
+
     private lateinit var playlistAdapter: PlaylistAdapter
     private var isUserSeekBarTouch = false
     private var lastKnownPlaylistIndex = -1
@@ -78,6 +91,13 @@ class MainActivity : AppCompatActivity() {
         )
         private val ACCENT_NAMES = listOf("Orange", "Blue", "Green")
         private val ACCENT_KEYS = listOf("orange", "blue", "green")
+    }
+
+    sealed class NavZone {
+        object Playlist : NavZone()
+        object SeekBar : NavZone()
+        data class ButtonBar(val idx: Int = 1) : NavZone()  // 1 = Play button
+        data class Settings(val idx: Int = 0) : NavZone()   // 0-6 settings items
     }
 
     private val serviceConnection = object : ServiceConnection {
@@ -225,6 +245,7 @@ class MainActivity : AppCompatActivity() {
         contentArea = findViewById(R.id.content_area)
         settingsPanel = findViewById(R.id.settings_panel)
         settingsButtonStrokeWidth = btnSettings.strokeWidth
+        seekBarContainer = findViewById(R.id.seek_row)
 
         loadAccentColor()
     }
@@ -417,6 +438,19 @@ class MainActivity : AppCompatActivity() {
         settingsPanel.findViewById<MaterialButton>(R.id.btn_folder).setOnClickListener {
             openFolderPicker()
         }
+
+        // Build the ordered list of focusable settings rows for remote navigation:
+        // 0=colors, 1=volume, 2=opacity, 3=size, 4=double-tap switch, 5=double-tap speed, 6=folder
+        settingsItems = listOf(
+            settingsPanel.findViewById(R.id.toggle_accent_settings),
+            settingsPanel.findViewById<Slider>(R.id.slider_volume).parent as View,
+            settingsPanel.findViewById<Slider>(R.id.slider_opacity).parent as View,
+            settingsPanel.findViewById<Slider>(R.id.slider_overlay_size).parent as View,
+            settingsPanel.findViewById<MaterialSwitch>(R.id.switch_double_tap).parent as View,
+            settingsPanel.findViewById(R.id.double_tap_slider_group),
+            settingsPanel.findViewById(R.id.btn_folder)
+        )
+        updateFocusVisual()
     }
 
     private fun toggleSettings() {
@@ -425,12 +459,15 @@ class MainActivity : AppCompatActivity() {
             contentArea.visibility = View.GONE
             settingsPanel.visibility = View.VISIBLE
             musicService?.showOverlayDemo()
+            navZone = NavZone.Settings(0)
         } else {
             settingsPanel.visibility = View.GONE
             contentArea.visibility = View.VISIBLE
             musicService?.dismissOverlayDemo()
+            navZone = NavZone.ButtonBar(5)  // return focus to Settings button
         }
         updateButtonStates()
+        updateFocusVisual()
     }
 
     private fun applyAccentToSettingsControls() {
@@ -581,6 +618,234 @@ class MainActivity : AppCompatActivity() {
         return "%d:%02d".format(minutes, seconds)
     }
 
+    // ── Remote control navigation ─────────────────────────────────────────────
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
+        val handled = when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP    -> handleUp()
+            KeyEvent.KEYCODE_DPAD_DOWN  -> handleDown()
+            KeyEvent.KEYCODE_DPAD_LEFT  -> handleLeft()
+            KeyEvent.KEYCODE_DPAD_RIGHT -> handleRight()
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_BUTTON_A   -> handleConfirm()
+            else -> false
+        }
+        return if (handled) true else super.dispatchKeyEvent(event)
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        // Button B: close settings if open, otherwise play/pause
+        if (settingsVisible) {
+            toggleSettings()  // navZone and focus updated inside toggleSettings
+        } else {
+            musicService?.handlePlayPause()
+        }
+    }
+
+    private fun handleUp(): Boolean {
+        when (val z = navZone) {
+            is NavZone.Playlist -> {
+                if (playlistFocusPos > 0) {
+                    playlistFocusPos--
+                    updateFocusVisual()
+                    playlistRecycler.scrollToPosition(playlistFocusPos)
+                }
+            }
+            is NavZone.SeekBar -> {
+                navZone = NavZone.Playlist
+                updateFocusVisual()
+            }
+            is NavZone.ButtonBar -> {
+                navZone = NavZone.SeekBar
+                updateFocusVisual()
+            }
+            is NavZone.Settings -> {
+                if (z.idx > 0) {
+                    navZone = NavZone.Settings(z.idx - 1)
+                    updateFocusVisual()
+                    scrollSettingsToItem(z.idx - 1)
+                }
+            }
+        }
+        return true
+    }
+
+    private fun handleDown(): Boolean {
+        when (val z = navZone) {
+            is NavZone.Playlist -> {
+                if (playlistFocusPos < playlistAdapter.itemCount - 1) {
+                    playlistFocusPos++
+                    updateFocusVisual()
+                    playlistRecycler.scrollToPosition(playlistFocusPos)
+                } else {
+                    navZone = NavZone.SeekBar
+                    updateFocusVisual()
+                }
+            }
+            is NavZone.SeekBar -> {
+                navZone = NavZone.ButtonBar(1)  // land on Play button
+                updateFocusVisual()
+            }
+            is NavZone.ButtonBar -> { /* already at bottom */ }
+            is NavZone.Settings -> {
+                if (z.idx < SETTINGS_COUNT - 1) {
+                    navZone = NavZone.Settings(z.idx + 1)
+                    updateFocusVisual()
+                    scrollSettingsToItem(z.idx + 1)
+                }
+            }
+        }
+        return true
+    }
+
+    private fun handleLeft(): Boolean {
+        when (val z = navZone) {
+            is NavZone.Playlist -> jumpToAdjacentFolder(backward = true)
+            is NavZone.SeekBar  -> seekRelative(-5000)
+            is NavZone.ButtonBar -> {
+                if (z.idx > 0) {
+                    navZone = NavZone.ButtonBar(z.idx - 1)
+                    updateFocusVisual()
+                }
+            }
+            is NavZone.Settings -> adjustSettingsItem(z.idx, -1)
+        }
+        return true
+    }
+
+    private fun handleRight(): Boolean {
+        when (val z = navZone) {
+            is NavZone.Playlist -> jumpToAdjacentFolder(backward = false)
+            is NavZone.SeekBar  -> seekRelative(5000)
+            is NavZone.ButtonBar -> {
+                if (z.idx < navButtons.size - 1) {
+                    navZone = NavZone.ButtonBar(z.idx + 1)
+                    updateFocusVisual()
+                }
+            }
+            is NavZone.Settings -> adjustSettingsItem(z.idx, +1)
+        }
+        return true
+    }
+
+    private fun handleConfirm(): Boolean {
+        when (val z = navZone) {
+            is NavZone.Playlist -> {
+                val songIdx = playlistAdapter.getSongIndexAt(playlistFocusPos)
+                if (songIdx != null) musicService?.playSongAtIndex(songIdx)
+            }
+            is NavZone.SeekBar   -> musicService?.handlePlayPause()
+            is NavZone.ButtonBar -> navButtons[z.idx].performClick()
+            is NavZone.Settings  -> activateSettingsItem(z.idx)
+        }
+        return true
+    }
+
+    private fun seekRelative(deltaMs: Int) {
+        val svc = musicService ?: return
+        val newPos = (svc.getPosition() + deltaMs).coerceIn(0, svc.getDuration())
+        svc.seekTo(newPos)
+        progressBar.progress = newPos
+        timeCurrentView.text = formatTime(newPos)
+    }
+
+    private fun jumpToAdjacentFolder(backward: Boolean) {
+        val newPos = playlistAdapter.nearestFolderPos(playlistFocusPos, forward = !backward)
+        if (newPos != playlistFocusPos) {
+            playlistFocusPos = newPos
+            updateFocusVisual()
+            playlistRecycler.scrollToPosition(playlistFocusPos)
+        }
+    }
+
+    private fun adjustSettingsItem(idx: Int, direction: Int) {
+        when (idx) {
+            0 -> cycleAccentColor(direction)
+            1 -> adjustSlider(R.id.slider_volume, 5f * direction)
+            2 -> adjustSlider(R.id.slider_opacity, 5f * direction)
+            3 -> adjustSlider(R.id.slider_overlay_size, 0.1f * direction)
+            4 -> toggleDoubleTapSwitch()
+            5 -> adjustSlider(R.id.slider_double_tap, 50f * direction)
+            // 6 = folder button: left/right has no effect
+        }
+    }
+
+    private fun activateSettingsItem(idx: Int) {
+        when (idx) {
+            0 -> cycleAccentColor(+1)
+            4 -> toggleDoubleTapSwitch()
+            6 -> openFolderPicker()
+        }
+    }
+
+    private fun cycleAccentColor(direction: Int) {
+        val group = settingsPanel.findViewById<MaterialButtonToggleGroup>(R.id.toggle_accent_settings)
+        val currentIdx = when (group.checkedButtonId) {
+            R.id.btn_accent_orange -> 0
+            R.id.btn_accent_blue   -> 1
+            R.id.btn_accent_green  -> 2
+            else                   -> 0
+        }
+        val newIdx = ((currentIdx + direction) + 3) % 3
+        val newId = listOf(R.id.btn_accent_orange, R.id.btn_accent_blue, R.id.btn_accent_green)[newIdx]
+        group.check(newId)
+    }
+
+    private fun adjustSlider(id: Int, delta: Float) {
+        val slider = settingsPanel.findViewById<Slider>(id) ?: return
+        if (!slider.isEnabled) return
+        slider.value = (slider.value + delta).coerceIn(slider.valueFrom, slider.valueTo)
+    }
+
+    private fun toggleDoubleTapSwitch() {
+        settingsPanel.findViewById<MaterialSwitch>(R.id.switch_double_tap)?.toggle()
+    }
+
+    private fun scrollSettingsToItem(idx: Int) {
+        if (idx < settingsItems.size) {
+            (settingsPanel as? ScrollView)?.smoothScrollTo(0, settingsItems[idx].top)
+        }
+    }
+
+    // ── Focus visuals ─────────────────────────────────────────────────────────
+
+    private fun updateFocusVisual() {
+        if (!::settingsItems.isInitialized) return
+
+        // Clear all highlights
+        playlistAdapter.setFocusedPos(-1)
+        seekBarContainer.foreground = null
+        navButtons.forEach { it.foreground = null }
+        settingsItems.forEach { it.foreground = null }
+
+        // Apply highlight to active zone
+        when (val z = navZone) {
+            is NavZone.Playlist  -> playlistAdapter.setFocusedPos(playlistFocusPos)
+            is NavZone.SeekBar   -> seekBarContainer.foreground = makeFocusRing(dpToPx(6))
+            is NavZone.ButtonBar -> navButtons[z.idx].foreground = makeFocusRing(dpToPx(8))
+            is NavZone.Settings  -> {
+                if (z.idx < settingsItems.size) {
+                    settingsItems[z.idx].foreground = makeFocusRing(dpToPx(8))
+                }
+            }
+        }
+    }
+
+    private fun makeFocusRing(cornerRadiusPx: Int): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = cornerRadiusPx.toFloat()
+            setStroke(dpToPx(3), accentColor)
+            setColor(Color.TRANSPARENT)
+        }
+    }
+
+    private fun dpToPx(dp: Int): Int =
+        (dp * resources.displayMetrics.density + 0.5f).toInt()
+
     override fun onDestroy() {
         super.onDestroy()
         musicService?.setOnOverlayScaleChangedListener(null)
@@ -613,6 +878,25 @@ class MainActivity : AppCompatActivity() {
         private val items = mutableListOf<ListItem>()
         private var currentSongIndex = -1
         var accentColor: Int = Color.parseColor("#F57C00")
+        var focusedPos: Int = -1
+
+        fun setFocusedPos(newPos: Int) {
+            val old = focusedPos
+            focusedPos = newPos
+            if (old >= 0 && old < itemCount) notifyItemChanged(old)
+            if (newPos >= 0 && newPos < itemCount) notifyItemChanged(newPos)
+        }
+
+        fun getSongIndexAt(pos: Int): Int? {
+            val item = items.getOrNull(pos) ?: return null
+            return if (item.type == TYPE_SONG) item.songIndex else null
+        }
+
+        fun nearestFolderPos(from: Int, forward: Boolean): Int {
+            val range = if (forward) (from + 1 until items.size) else (from - 1 downTo 0)
+            for (i in range) if (items[i].type == TYPE_FOLDER) return i
+            return from  // no adjacent folder found
+        }
 
         fun updateCurrentIndex(newIndex: Int) {
             val oldIndex = currentSongIndex
@@ -653,18 +937,35 @@ class MainActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
             val item = items[position]
+            val isFocused = position == focusedPos
             when (holder) {
                 is FolderViewHolder -> {
                     holder.name.text = item.displayName
+                    holder.itemView.foreground = if (isFocused) makeFocusRingFor(holder.itemView) else null
                     holder.itemView.setOnClickListener { onFolderClick(item.folderIndex) }
                 }
                 is SongViewHolder -> {
                     holder.name.text = item.displayName
                     val isSelected = item.songIndex == currentSongIndex
                     holder.itemView.isSelected = isSelected
-                    holder.itemView.setBackgroundColor(if (isSelected) accentColor else Color.TRANSPARENT)
+                    holder.itemView.setBackgroundColor(when {
+                        isSelected -> accentColor
+                        isFocused  -> Color.argb(77, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
+                        else       -> Color.TRANSPARENT
+                    })
+                    holder.itemView.foreground = if (isFocused) makeFocusRingFor(holder.itemView) else null
                     holder.itemView.setOnClickListener { onSongClick(item.songIndex) }
                 }
+            }
+        }
+
+        private fun makeFocusRingFor(view: View): GradientDrawable {
+            val dp = view.resources.displayMetrics.density
+            return GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 8f * dp
+                setStroke((3f * dp + 0.5f).toInt(), accentColor)
+                setColor(Color.TRANSPARENT)
             }
         }
 
