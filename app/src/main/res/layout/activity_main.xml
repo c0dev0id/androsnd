@@ -71,39 +71,48 @@
                 android:maxLines="1"
                 android:ellipsize="end" />
 
-            <SeekBar
-                android:id="@+id/progress_bar"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="48dp"
-                android:progressTint="@color/colorPrimary"
-                android:thumbTint="@color/colorPrimary"
-                android:progressBackgroundTint="@color/seekbar_track_bg"
-                android:layout_marginTop="8dp" />
-
             <LinearLayout
+                android:id="@+id/seek_row"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                android:orientation="vertical"
+                android:padding="2dp">
 
-                <TextView
-                    android:id="@+id/time_current"
-                    android:layout_width="wrap_content"
+                <SeekBar
+                    android:id="@+id/progress_bar"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="0:00"
-                    android:textColor="@color/text_secondary" />
+                    android:minHeight="48dp"
+                    android:progressTint="@color/colorPrimary"
+                    android:thumbTint="@color/colorPrimary"
+                    android:progressBackgroundTint="@color/seekbar_track_bg"
+                    android:layout_marginTop="8dp" />
 
-                <View
-                    android:layout_width="0dp"
-                    android:layout_height="0dp"
-                    android:layout_weight="1" />
-
-                <TextView
-                    android:id="@+id/time_total"
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="0:00"
-                    android:textColor="@color/text_secondary" />
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/time_current"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0:00"
+                        android:textColor="@color/text_secondary" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+
+                    <TextView
+                        android:id="@+id/time_total"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0:00"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+
             </LinearLayout>
 
         </LinearLayout>
