@@ -17,7 +17,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.Settings
+import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.SeekBar
@@ -399,12 +401,54 @@ class MainActivity : AppCompatActivity() {
 
         // Select Folder
         val btnFolder = dialogView.findViewById<MaterialButton>(R.id.btn_folder)
+        val titleView = LayoutInflater.from(this).inflate(R.layout.dialog_settings_title, null)
         val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.settings)
+            .setCustomTitle(titleView)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
             .setOnDismissListener { musicService?.dismissOverlayDemo() }
             .show()
+
+        // Make dialog draggable via the title bar
+        var gravityConverted = false
+        var dragStartX = 0f
+        var dragStartY = 0f
+        var windowStartX = 0
+        var windowStartY = 0
+
+        titleView.setOnTouchListener { _, event ->
+            val window = dialog.window ?: return@setOnTouchListener false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    if (!gravityConverted) {
+                        // Convert from default CENTER gravity to absolute TOP|START coords
+                        val decorView = window.decorView
+                        val lp = window.attributes
+                        val screenWidth = resources.displayMetrics.widthPixels
+                        val screenHeight = resources.displayMetrics.heightPixels
+                        lp.x = (screenWidth - decorView.width) / 2 + lp.x
+                        lp.y = (screenHeight - decorView.height) / 2 + lp.y
+                        lp.gravity = Gravity.TOP or Gravity.START
+                        window.attributes = lp
+                        gravityConverted = true
+                    }
+                    val lp = window.attributes
+                    dragStartX = event.rawX
+                    dragStartY = event.rawY
+                    windowStartX = lp.x
+                    windowStartY = lp.y
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val lp = window.attributes
+                    lp.x = windowStartX + (event.rawX - dragStartX).toInt()
+                    lp.y = windowStartY + (event.rawY - dragStartY).toInt()
+                    window.attributes = lp
+                    true
+                }
+                else -> false
+            }
+        }
 
         btnFolder.setOnClickListener {
             dialog.dismiss()
