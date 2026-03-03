@@ -1,8 +1,6 @@
 package de.codevoid.androsnd
 
 import android.Manifest
-import android.animation.ArgbEvaluator
-import android.animation.ValueAnimator
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -79,8 +77,6 @@ class MainActivity : AppCompatActivity() {
         )
         private val ACCENT_NAMES = listOf("Orange", "Blue", "Green")
         private val ACCENT_KEYS = listOf("orange", "blue", "green")
-        private const val FLASH_DURATION_MS = 200L
-        private const val TRANSITION_DURATION_MS = 150L
     }
 
     private val serviceConnection = object : ServiceConnection {
@@ -224,18 +220,9 @@ class MainActivity : AppCompatActivity() {
         btnPlay.setOnClickListener {
             musicService?.handlePlayPause()
         }
-        btnPrev.setOnClickListener {
-            flashButton(btnPrev)
-            musicService?.handlePrevious()
-        }
-        btnNext.setOnClickListener {
-            flashButton(btnNext)
-            musicService?.handleNext()
-        }
-        btnStop.setOnClickListener {
-            flashButton(btnStop)
-            musicService?.handleStop()
-        }
+        btnPrev.setOnClickListener { musicService?.handlePrevious() }
+        btnNext.setOnClickListener { musicService?.handleNext() }
+        btnStop.setOnClickListener { musicService?.handleStop() }
         btnShuffle.setOnClickListener { musicService?.handleShuffleButton() }
 
         progressBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -252,28 +239,6 @@ class MainActivity : AppCompatActivity() {
         })
 
         btnSettings.setOnClickListener { showSettingsDialog() }
-    }
-
-    private fun flashButton(btn: MaterialButton) {
-        ValueAnimator.ofObject(ArgbEvaluator(), inactiveColor, accentColor, inactiveColor).apply {
-            duration = FLASH_DURATION_MS * 2
-            addUpdateListener { anim ->
-                btn.backgroundTintList = ColorStateList.valueOf(anim.animatedValue as Int)
-            }
-            start()
-        }
-    }
-
-    private fun animateButtonTint(btn: MaterialButton, toColor: Int) {
-        val fromColor = btn.backgroundTintList?.defaultColor ?: inactiveColor
-        if (fromColor == toColor) return
-        ValueAnimator.ofObject(ArgbEvaluator(), fromColor, toColor).apply {
-            duration = TRANSITION_DURATION_MS
-            addUpdateListener { anim ->
-                btn.backgroundTintList = ColorStateList.valueOf(anim.animatedValue as Int)
-            }
-            start()
-        }
     }
 
     private fun loadAccentColor() {
@@ -302,8 +267,8 @@ class MainActivity : AppCompatActivity() {
         val isPlaying = svc?.isPlaying == true
         val isShuffleOn = svc?.playlistManager?.isShuffleOn == true
 
-        animateButtonTint(btnPlay, if (isPlaying) accentColor else inactiveColor)
-        animateButtonTint(btnShuffle, if (isShuffleOn) accentColor else inactiveColor)
+        btnPlay.backgroundTintList = ColorStateList.valueOf(if (isPlaying) accentColor else inactiveColor)
+        btnShuffle.backgroundTintList = ColorStateList.valueOf(if (isShuffleOn) accentColor else inactiveColor)
     }
 
     private fun openFolderPicker() {
