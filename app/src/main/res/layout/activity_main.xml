@@ -119,15 +119,6 @@
                 android:textStyle="bold"
                 style="@style/Widget.Androsnd.Button.Outlined" />
 
-            <Spinner
-                android:id="@+id/spinner_accent"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:popupBackground="@color/surface_card"
-                android:background="@color/surface_dark" />
-
         </LinearLayout>
 
         <!-- Playlist area -->

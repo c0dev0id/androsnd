@@ -59,7 +59,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnShuffle: MaterialButton
 
     private lateinit var btnSettings: MaterialButton
-    private lateinit var spinnerAccent: Spinner
 
     private lateinit var playlistAdapter: PlaylistAdapter
     private var isUserSeekBarTouch = false
@@ -155,7 +154,6 @@ class MainActivity : AppCompatActivity() {
         bindViews()
         setupRecyclerView()
         setupButtons()
-        setupAccentPicker()
         applyAccentColor()
         requestPermissionsIfNeeded()
         requestBatteryOptimizationExemption()
@@ -193,7 +191,6 @@ class MainActivity : AppCompatActivity() {
         btnStop = findViewById(R.id.btn_stop)
         btnShuffle = findViewById(R.id.btn_shuffle)
         btnSettings = findViewById(R.id.btn_settings)
-        spinnerAccent = findViewById(R.id.spinner_accent)
 
         loadAccentColor()
     }
@@ -255,28 +252,6 @@ class MainActivity : AppCompatActivity() {
         accentColor = ACCENT_COLORS[key] ?: ACCENT_COLORS["orange"]!!
     }
 
-    private fun setupAccentPicker() {
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, ACCENT_NAMES)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spinnerAccent.adapter = adapter
-
-        val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-        val savedKey = prefs.getString("accent_color", "orange") ?: "orange"
-        val idx = ACCENT_KEYS.indexOf(savedKey).coerceAtLeast(0)
-        spinnerAccent.setSelection(idx)
-
-        spinnerAccent.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val key = ACCENT_KEYS[position]
-                accentColor = ACCENT_COLORS[key] ?: ACCENT_COLORS["orange"]!!
-                prefs.edit().putString("accent_color", key).apply()
-                applyAccentColor()
-                updateButtonStates()
-            }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-    }
-
     private fun applyAccentColor() {
         val accentCSL = ColorStateList.valueOf(accentColor)
 
@@ -316,6 +291,24 @@ class MainActivity : AppCompatActivity() {
     private fun showSettingsDialog() {
         val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_settings, null)
+
+        // Accent Color
+        val spinnerAccent = dialogView.findViewById<Spinner>(R.id.spinner_accent_settings)
+        val accentAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, ACCENT_NAMES)
+        accentAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerAccent.adapter = accentAdapter
+        val savedKey = prefs.getString("accent_color", "orange") ?: "orange"
+        spinnerAccent.setSelection(ACCENT_KEYS.indexOf(savedKey).coerceAtLeast(0))
+        spinnerAccent.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val key = ACCENT_KEYS[position]
+                accentColor = ACCENT_COLORS[key] ?: ACCENT_COLORS["orange"]!!
+                prefs.edit().putString("accent_color", key).apply()
+                applyAccentColor()
+                updateButtonStates()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
 
         // App Volume
         val sliderVolume = dialogView.findViewById<Slider>(R.id.slider_volume)
@@ -568,8 +561,7 @@ class MainActivity : AppCompatActivity() {
                     holder.name.text = item.displayName
                     val isSelected = item.songIndex == currentSongIndex
                     holder.itemView.isSelected = isSelected
-                    val selectedBg = Color.argb(128, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
-                    holder.itemView.setBackgroundColor(if (isSelected) selectedBg else Color.TRANSPARENT)
+                    holder.itemView.setBackgroundColor(if (isSelected) accentColor else Color.TRANSPARENT)
                     holder.itemView.setOnClickListener { onSongClick(item.songIndex) }
                 }
             }
