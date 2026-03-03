@@ -6,29 +6,28 @@
     android:layout_height="match_parent"
     android:background="@color/surface_dark">
 
-    <!-- Top content area: left (info) + right (playlist) -->
+    <!-- Content area: vertical stack for portrait -->
     <LinearLayout
         android:id="@+id/content_area"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@id/button_bar">
 
-        <!-- Left panel: cover art + song info + progress -->
+        <!-- Top section: cover art + song info + progress -->
         <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="16dp">
 
             <ImageView
                 android:id="@+id/cover_art"
-                android:layout_width="160dp"
-                android:layout_height="160dp"
+                android:layout_width="120dp"
+                android:layout_height="120dp"
                 android:layout_gravity="center_horizontal"
                 android:scaleType="centerCrop"
                 android:src="@android:drawable/ic_media_play" />
@@ -71,7 +70,7 @@
                 android:progressTint="@color/colorPrimary"
                 android:thumbTint="@color/colorPrimary"
                 android:progressBackgroundTint="@color/seekbar_track_bg"
-                android:layout_marginTop="12dp" />
+                android:layout_marginTop="8dp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -100,180 +99,189 @@
 
         </LinearLayout>
 
-        <!-- Right panel: toolbar + playlist -->
+        <!-- Toolbar: folder button + accent color picker -->
         <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
 
-            <!-- Toolbar: folder button + accent color picker -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                android:paddingTop="4dp"
-                android:paddingBottom="4dp">
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_folder"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:text="@string/select_folder"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                style="@style/Widget.Androsnd.Button.Outlined" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_folder"
-                    android:layout_width="wrap_content"
-                    android:layout_height="44dp"
-                    android:text="@string/select_folder"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    style="@style/Widget.Androsnd.Button.Outlined" />
-
-                <Spinner
-                    android:id="@+id/spinner_accent"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"
-                    android:popupBackground="@color/surface_card"
-                    android:background="@color/surface_dark" />
-
-            </LinearLayout>
-
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1">
-
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/playlist_recycler"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:padding="4dp" />
-
-                <LinearLayout
-                    android:id="@+id/loading_indicator"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:orientation="vertical"
-                    android:gravity="center"
-                    android:visibility="gone">
-
-                    <ProgressBar
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        style="?android:attr/progressBarStyle" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/loading_files"
-                        android:layout_marginTop="8dp"
-                        android:textAppearance="?attr/textAppearanceBodyMedium" />
-
-                </LinearLayout>
-
-            </FrameLayout>
+            <Spinner
+                android:id="@+id/spinner_accent"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:popupBackground="@color/surface_card"
+                android:background="@color/surface_dark" />
 
         </LinearLayout>
 
+        <!-- Playlist area -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/playlist_recycler"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:padding="4dp" />
+
+            <LinearLayout
+                android:id="@+id/loading_indicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:visibility="gone">
+
+                <ProgressBar
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    style="?android:attr/progressBarStyle" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/loading_files"
+                    android:layout_marginTop="8dp"
+                    android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+            </LinearLayout>
+
+        </FrameLayout>
+
     </LinearLayout>
 
-    <!-- Bottom button bar -->
+    <!-- Bottom button bar: two rows for portrait -->
     <LinearLayout
         android:id="@+id/button_bar"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:padding="8dp"
-        android:gravity="center_vertical"
         android:background="@color/bottom_bar_bg"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_prev"
-            android:layout_width="0dp"
-            android:layout_height="80dp"
-            android:layout_weight="1"
-            android:layout_margin="4dp"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            app:icon="@drawable/ic_previous"
-            app:iconGravity="textStart"
-            app:iconTint="@android:color/white"
-            android:text="Prev"
-            style="@style/Widget.Androsnd.Button.Dark" />
+        <!-- Row 1: Prev, Play, Next -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_play"
-            android:layout_width="0dp"
-            android:layout_height="80dp"
-            android:layout_weight="1"
-            android:layout_margin="4dp"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            app:icon="@drawable/ic_play"
-            app:iconGravity="textStart"
-            app:iconTint="@android:color/white"
-            android:text="Play"
-            style="@style/Widget.Androsnd.Button.Dark" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_prev"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_margin="4dp"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                app:icon="@drawable/ic_previous"
+                app:iconGravity="textStart"
+                app:iconTint="@android:color/white"
+                android:text="Prev"
+                style="@style/Widget.Androsnd.Button.Dark" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_next"
-            android:layout_width="0dp"
-            android:layout_height="80dp"
-            android:layout_weight="1"
-            android:layout_margin="4dp"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            app:icon="@drawable/ic_next"
-            app:iconGravity="textStart"
-            app:iconTint="@android:color/white"
-            android:text="Next"
-            style="@style/Widget.Androsnd.Button.Dark" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_play"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_margin="4dp"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                app:icon="@drawable/ic_play"
+                app:iconGravity="textStart"
+                app:iconTint="@android:color/white"
+                android:text="Play"
+                style="@style/Widget.Androsnd.Button.Dark" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_stop"
-            android:layout_width="0dp"
-            android:layout_height="80dp"
-            android:layout_weight="1"
-            android:layout_margin="4dp"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            app:icon="@drawable/ic_stop"
-            app:iconGravity="textStart"
-            app:iconTint="@android:color/white"
-            android:text="Stop"
-            style="@style/Widget.Androsnd.Button.Dark" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_next"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_margin="4dp"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                app:icon="@drawable/ic_next"
+                app:iconGravity="textStart"
+                app:iconTint="@android:color/white"
+                android:text="Next"
+                style="@style/Widget.Androsnd.Button.Dark" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_shuffle"
-            android:layout_width="0dp"
-            android:layout_height="80dp"
-            android:layout_weight="1"
-            android:layout_margin="4dp"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            app:icon="@drawable/ic_shuffle"
-            app:iconGravity="textStart"
-            app:iconTint="@android:color/white"
-            android:text="Shuffle"
-            style="@style/Widget.Androsnd.Button.Dark" />
+        </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_settings"
-            android:layout_width="0dp"
-            android:layout_height="80dp"
-            android:layout_weight="1"
-            android:layout_margin="4dp"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            app:icon="@drawable/ic_settings"
-            app:iconGravity="textStart"
-            app:iconTint="@android:color/white"
-            android:text="@string/settings"
-            style="@style/Widget.Androsnd.Button.Outlined" />
+        <!-- Row 2: Stop, Shuffle, Settings -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_stop"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_margin="4dp"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                app:icon="@drawable/ic_stop"
+                app:iconGravity="textStart"
+                app:iconTint="@android:color/white"
+                android:text="Stop"
+                style="@style/Widget.Androsnd.Button.Dark" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_shuffle"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_margin="4dp"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                app:icon="@drawable/ic_shuffle"
+                app:iconGravity="textStart"
+                app:iconTint="@android:color/white"
+                android:text="Shuffle"
+                style="@style/Widget.Androsnd.Button.Dark" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_settings"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_margin="4dp"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                app:icon="@drawable/ic_settings"
+                app:iconGravity="textStart"
+                app:iconTint="@android:color/white"
+                android:text="@string/settings"
+                style="@style/Widget.Androsnd.Button.Outlined" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
