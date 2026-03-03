@@ -168,6 +168,18 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@id/button_bar" />
 
+    <!-- Key Wizard panel (full-screen overlay above button bar) -->
+    <include
+        layout="@layout/panel_key_wizard"
+        android:id="@+id/wizard_panel"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/button_bar" />
+
     <!-- Bottom button bar: two rows for portrait -->
     <LinearLayout
         android:id="@+id/button_bar"
