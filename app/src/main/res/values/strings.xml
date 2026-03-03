@@ -27,4 +27,18 @@
     <string name="overlay_demo_artist">Drag me and I\'ll remember</string>
     <string name="overlay_demo_album">Pinch me and I will resize :)</string>
     <string name="accent_color">Accent Color</string>
+
+    <!-- Remote Key Mapping Wizard -->
+    <string name="wizard_settings_button">Remote Keys…</string>
+    <string name="wizard_title">Remote Key Mapping</string>
+    <string name="wizard_subtitle">Select a preset to activate it, or create a new mapping</string>
+    <string name="wizard_hint_presets">Up/Down = select  •  Confirm = activate  •  Back = close</string>
+    <string name="wizard_active_prefix">Active: </string>
+    <string name="wizard_press_key">Press a key on your remote…</string>
+    <string name="wizard_cancel_hint">Press Back to cancel</string>
+    <string name="wizard_action_of">Action %1$d of %2$d</string>
+    <string name="wizard_current_key">Currently mapped: keycode %1$d</string>
+    <string name="wizard_mapping_saved">Key mapping saved</string>
+    <string name="wizard_btn_new">Add New Preset</string>
+    <string name="wizard_btn_delete">Delete Selected</string>
 </resources>
