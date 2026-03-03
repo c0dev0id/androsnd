@@ -512,7 +512,7 @@ class MusicService : Service() {
     }
 
     private fun scaleBitmapForSession(bitmap: android.graphics.Bitmap, maxPx: Int = 256): android.graphics.Bitmap {
-        if (bitmap.width <= maxPx && bitmap.height <= maxPx) return bitmap.copy(bitmap.config, false)
+        if (bitmap.width <= maxPx && bitmap.height <= maxPx) return bitmap.copy(bitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
         val scale = maxPx.toFloat() / maxOf(bitmap.width, bitmap.height)
         return android.graphics.Bitmap.createScaledBitmap(
             bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true
