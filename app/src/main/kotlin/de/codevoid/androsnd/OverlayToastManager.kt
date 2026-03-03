@@ -304,7 +304,9 @@ class OverlayToastManager(private val context: Context) {
                     savedY = params.y
                     hasCustomPosition = true
                     savePrefs()
-                    scheduleDismiss(container)
+                    if (!isDemo) {
+                        scheduleDismiss(container)
+                    }
                     true
                 }
                 else -> true
