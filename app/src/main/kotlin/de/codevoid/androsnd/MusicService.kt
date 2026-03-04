@@ -57,6 +57,10 @@ class MusicService : MediaBrowserServiceCompat() {
         private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_APP_VOLUME = "app_volume"
         private const val SKIP_DURATION_MS = 10000
+
+        private const val MEDIA_ROOT_ID = "androsnd_root"
+        private const val MEDIA_FOLDER_PREFIX = "folder_"
+        private const val MEDIA_SONG_PREFIX = "song_"
     }
 
     inner class MusicBinder : Binder() {
@@ -182,6 +186,13 @@ class MusicService : MediaBrowserServiceCompat() {
                     broadcastState()
                 }
                 override fun onSkipToQueueItem(id: Long) { playSongAtIndex(id.toInt()) }
+                override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
+                    val index = mediaId
+                        ?.removePrefix(MEDIA_SONG_PREFIX)
+                        ?.toIntOrNull()
+                        ?: return
+                    playSongAtIndex(index)
+                }
                 override fun onPlayFromUri(uri: Uri?, extras: Bundle?) {
                     uri ?: return
                     val song = Song(uri = uri, displayName = uri.lastPathSegment ?: "Unknown", folderPath = "", folderName = "")
@@ -260,25 +271,59 @@ class MusicService : MediaBrowserServiceCompat() {
         clientUid: Int,
         rootHints: Bundle?
     ): BrowserRoot {
-        return BrowserRoot("androsnd_root", null)
+        return BrowserRoot(MEDIA_ROOT_ID, null)
     }
 
     override fun onLoadChildren(
         parentId: String,
         result: Result<MutableList<MediaBrowserCompat.MediaItem>>
     ) {
-        if (parentId == "androsnd_root") {
-            val items = playlistManager.songs.mapIndexed { index, song ->
-                val desc = MediaDescriptionCompat.Builder()
-                    .setMediaId(index.toString())
-                    .setTitle(song.displayName)
-                    .setMediaUri(song.uri)
-                    .build()
-                MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE)
-            }.toMutableList()
-            result.sendResult(items)
-        } else {
-            result.sendResult(mutableListOf())
+        when {
+            parentId == MEDIA_ROOT_ID -> {
+                val folders = playlistManager.folders
+                if (folders.isEmpty()) {
+                    // No folder configured yet — return flat song list (or empty if none loaded)
+                    val items = playlistManager.songs.mapIndexed { index, song ->
+                        val desc = MediaDescriptionCompat.Builder()
+                            .setMediaId("$MEDIA_SONG_PREFIX$index")
+                            .setTitle(song.displayName)
+                            .setSubtitle(song.folderName)
+                            .setMediaUri(song.uri)
+                            .build()
+                        MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE)
+                    }.toMutableList()
+                    result.sendResult(items)
+                } else {
+                    val items = folders.mapIndexed { index, folder ->
+                        val desc = MediaDescriptionCompat.Builder()
+                            .setMediaId("$MEDIA_FOLDER_PREFIX$index")
+                            .setTitle(folder.name)
+                            .setSubtitle("${folder.songs.size} tracks")
+                            .build()
+                        MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_BROWSABLE)
+                    }.toMutableList()
+                    result.sendResult(items)
+                }
+            }
+            parentId.startsWith(MEDIA_FOLDER_PREFIX) -> {
+                val folderIndex = parentId.removePrefix(MEDIA_FOLDER_PREFIX).toIntOrNull()
+                val folder = folderIndex?.let { playlistManager.folders.getOrNull(it) }
+                if (folder == null) {
+                    result.sendResult(mutableListOf())
+                    return
+                }
+                val items = folder.songs.map { songIndex ->
+                    val song = playlistManager.songs[songIndex]
+                    val desc = MediaDescriptionCompat.Builder()
+                        .setMediaId("$MEDIA_SONG_PREFIX$songIndex")
+                        .setTitle(song.displayName)
+                        .setMediaUri(song.uri)
+                        .build()
+                    MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE)
+                }.toMutableList()
+                result.sendResult(items)
+            }
+            else -> result.sendResult(mutableListOf())
         }
     }
 
