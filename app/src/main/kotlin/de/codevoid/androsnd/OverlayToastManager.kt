@@ -62,6 +62,7 @@ class OverlayToastManager(private val context: Context) {
     private var currentContent: View? = null
     private var isDragging = false
     private var isDemo = false
+    private var demoBitmap: Bitmap? = null
     private var naturalWidth = 0
     private var naturalHeight = 0
 
@@ -76,12 +77,13 @@ class OverlayToastManager(private val context: Context) {
     }
 
     fun showDemo() {
-        val cover = BitmapFactory.decodeResource(context.resources, R.drawable.demo_cover)
+        demoBitmap?.recycle()
+        demoBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.demo_cover)
         showOverlay(
             context.getString(R.string.overlay_demo_title),
             context.getString(R.string.overlay_demo_artist),
             context.getString(R.string.overlay_demo_album),
-            cover,
+            demoBitmap,
             demo = true
         )
     }
@@ -348,6 +350,8 @@ class OverlayToastManager(private val context: Context) {
             currentView = null
             currentContent = null
             currentParams = null
+            demoBitmap?.recycle()
+            demoBitmap = null
         }
     }
 

@@ -75,6 +75,7 @@ class MusicService : MediaBrowserServiceCompat() {
     private val handler = Handler(Looper.getMainLooper())
     private var progressRunnable: Runnable? = null
     private val scanExecutor = Executors.newSingleThreadExecutor()
+    @Volatile private var isServiceDestroyed = false
 
     var isPlaying: Boolean = false
         private set
@@ -82,8 +83,6 @@ class MusicService : MediaBrowserServiceCompat() {
         private set
     var currentMetadata: SongMetadata? = null
         private set
-    private var previousCoverArt: android.graphics.Bitmap? = null
-
     private var artVersion = 0L
 
     private lateinit var overlayToastManager: OverlayToastManager
@@ -331,9 +330,7 @@ class MusicService : MediaBrowserServiceCompat() {
         mediaPlayer = null
         isPlaying = false
         currentMetadata?.coverArt?.recycle()
-        previousCoverArt?.recycle()
         currentMetadata = null
-        previousCoverArt = null
         stopProgressUpdates()
         updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
         broadcastState()
@@ -421,8 +418,7 @@ class MusicService : MediaBrowserServiceCompat() {
             startProgressUpdates()
             artVersion++
             val metadata = extractMetadata(song)
-            previousCoverArt?.recycle()
-            previousCoverArt = currentMetadata?.coverArt
+            val oldCoverArt = currentMetadata?.coverArt
             currentMetadata = metadata
             updateMediaSessionMetadata(metadata)
             playlistManager.selectNextQueueSong()
@@ -435,6 +431,8 @@ class MusicService : MediaBrowserServiceCompat() {
             startForegroundCompat(buildNotification())
             broadcastState()
             overlayToastManager.showSong(metadata)
+            // Recycle old cover art after the overlay's dismiss() has run (FIFO handler ordering)
+            handler.post { oldCoverArt?.takeIf { !it.isRecycled }?.recycle() }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start playing ${song.displayName}", e)
         }
@@ -534,7 +532,9 @@ class MusicService : MediaBrowserServiceCompat() {
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, metadata.album)
         if (metadata.coverArt != null) {
             try {
-                val scaledLarge = centerCropToSquare(scaleBitmapForSession(metadata.coverArt, maxPx = 512))
+                val intermediateLarge = scaleBitmapForSession(metadata.coverArt, maxPx = 512)
+                val scaledLarge = centerCropToSquare(intermediateLarge)
+                if (intermediateLarge !== scaledLarge) intermediateLarge.recycle()
                 val uri = saveArtToFile(scaledLarge, "current_art.jpg")
                 scaledLarge.recycle()
                 if (uri != null) {
@@ -545,7 +545,9 @@ class MusicService : MediaBrowserServiceCompat() {
                 }
                 // Fallback bitmap for clients that do not load URIs (e.g. older lock screens).
                 // Kept at 256px to stay safely within Binder's ~1 MB IPC transaction limit.
-                val scaledSmall = centerCropToSquare(scaleBitmapForSession(metadata.coverArt, maxPx = 256))
+                val intermediateSmall = scaleBitmapForSession(metadata.coverArt, maxPx = 256)
+                val scaledSmall = centerCropToSquare(intermediateSmall)
+                if (intermediateSmall !== scaledSmall) intermediateSmall.recycle()
                 builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, scaledSmall)
                 builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, scaledSmall)
                 scaledSmall.recycle()
@@ -597,7 +599,9 @@ class MusicService : MediaBrowserServiceCompat() {
             val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
             val artUri = retriever.embeddedPicture?.let { bytes ->
                 decodeBitmapWithSampling(bytes)?.let { original ->
-                    val scaled = centerCropToSquare(scaleBitmapForSession(original, maxPx = 512))
+                    val intermediate = scaleBitmapForSession(original, maxPx = 512)
+                    val scaled = centerCropToSquare(intermediate)
+                    if (intermediate !== scaled) intermediate.recycle()
                     val uri = saveArtToFile(scaled, artFilename)
                     original.recycle()
                     scaled.recycle()
@@ -747,6 +751,7 @@ class MusicService : MediaBrowserServiceCompat() {
                 Log.e(TAG, "Failed to scan folder", e)
             } finally {
                 handler.post {
+                    if (isServiceDestroyed) return@post
                     isScanning = false
                     playlistManager.selectNextQueueSong()
                     try {
@@ -767,13 +772,12 @@ class MusicService : MediaBrowserServiceCompat() {
 
     override fun onDestroy() {
         super.onDestroy()
+        isServiceDestroyed = true
         stopProgressUpdates()
         mediaPlayer?.release()
         mediaPlayer = null
         currentMetadata?.coverArt?.recycle()
-        previousCoverArt?.recycle()
         currentMetadata = null
-        previousCoverArt = null
         mediaSession.release()
         overlayToastManager.dismiss()
         audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
