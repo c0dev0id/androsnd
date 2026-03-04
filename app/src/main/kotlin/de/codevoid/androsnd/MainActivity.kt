@@ -489,6 +489,16 @@ class MainActivity : AppCompatActivity() {
             startRemoteCapture()
         }
 
+        // Show Demo Popup toggle
+        val toggleDemo = settingsPanel.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.toggle_demo_popup)
+        toggleDemo.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                musicService?.showOverlayDemo()
+            } else {
+                musicService?.dismissOverlayDemo()
+            }
+        }
+
         updateFocusVisual()
     }
 
@@ -497,11 +507,14 @@ class MainActivity : AppCompatActivity() {
         if (settingsVisible) {
             contentArea.visibility = View.GONE
             settingsPanel.visibility = View.VISIBLE
-            musicService?.showOverlayDemo()
         } else {
             settingsPanel.visibility = View.GONE
             contentArea.visibility = View.VISIBLE
-            musicService?.dismissOverlayDemo()
+            val toggleDemo = settingsPanel.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.toggle_demo_popup)
+            if (toggleDemo.isChecked) {
+                musicService?.dismissOverlayDemo()
+                toggleDemo.isChecked = false
+            }
             navZone = NavZone.Playlist
         }
         updateButtonStates()

@@ -24,6 +24,7 @@
     <string name="overlay_demo_artist">Drag me and I\'ll remember</string>
     <string name="overlay_demo_album">Pinch me and I will resize :)</string>
     <string name="accent_color">Accent Color</string>
+    <string name="settings_show_demo_popup">Show Demo Popup</string>
 
     <!-- Remote Control -->
     <string name="remote_control_label">Remote Control</string>
