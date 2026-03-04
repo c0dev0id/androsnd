@@ -21,8 +21,8 @@
         <item name="android:backgroundTint">#F57C00</item>
         <item name="android:textColor">#FFFFFF</item>
         <item name="iconTint">#FFFFFF</item>
-        <item name="android:textSize">16sp</item>
-        <item name="android:textStyle">bold</item>
+        <item name="iconSize">32dp</item>
+        <item name="iconGravity">textStart</item>
         <item name="cornerRadius">8dp</item>
     </style>
 
@@ -30,8 +30,8 @@
         <item name="android:backgroundTint">#444444</item>
         <item name="android:textColor">#FFFFFF</item>
         <item name="iconTint">#FFFFFF</item>
-        <item name="android:textSize">16sp</item>
-        <item name="android:textStyle">bold</item>
+        <item name="iconSize">32dp</item>
+        <item name="iconGravity">textStart</item>
         <item name="cornerRadius">8dp</item>
     </style>
 
@@ -39,8 +39,8 @@
         <item name="android:textColor">#FFFFFF</item>
         <item name="iconTint">#FFFFFF</item>
         <item name="strokeColor">#F57C00</item>
-        <item name="android:textSize">16sp</item>
-        <item name="android:textStyle">bold</item>
+        <item name="iconSize">32dp</item>
+        <item name="iconGravity">textStart</item>
         <item name="cornerRadius">8dp</item>
     </style>
 
