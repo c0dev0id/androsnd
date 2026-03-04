@@ -89,6 +89,7 @@ class MusicService : MediaBrowserServiceCompat() {
     private var previousCoverArt: android.graphics.Bitmap? = null
 
     private var artVersion = 0L
+    private var isDucking = false
 
     private lateinit var overlayToastManager: OverlayToastManager
     private lateinit var broadcastManager: LocalBroadcastManager
@@ -338,6 +339,7 @@ class MusicService : MediaBrowserServiceCompat() {
             startPlayingSong(song)
         } else {
             if (!isPlaying) {
+                requestAudioFocus()
                 mediaPlayer?.start()
                 applyAppVolume()
                 isPlaying = true
@@ -467,22 +469,29 @@ class MusicService : MediaBrowserServiceCompat() {
             }
             isPlaying = true
             startProgressUpdates()
-            artVersion++
-            val metadata = extractMetadata(song)
-            previousCoverArt?.recycle()
-            previousCoverArt = currentMetadata?.coverArt
-            currentMetadata = metadata
-            updateMediaSessionMetadata(metadata)
-            playlistManager.selectNextQueueSong()
-            try {
-                updateMediaSessionQueue()
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to update media session queue", e)
-            }
             updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
             startForegroundCompat(buildNotification())
             broadcastState()
-            overlayToastManager.showSong(metadata)
+            playlistManager.selectNextQueueSong()
+            val capturedArtVersion = ++artVersion
+            val curIdx = playlistManager.currentIndex
+            val nextIdx = playlistManager.nextQueueIndex
+            val nextSong = if (nextIdx >= 0) playlistManager.songs.getOrNull(nextIdx) else null
+            scanExecutor.execute {
+                val metadata = extractMetadata(song)
+                val queue = buildQueueItems(capturedArtVersion, curIdx, nextIdx, song, nextSong, metadata)
+                handler.post {
+                    previousCoverArt?.recycle()
+                    previousCoverArt = currentMetadata?.coverArt
+                    currentMetadata = metadata
+                    updateMediaSessionMetadata(metadata)
+                    mediaSession.setQueue(queue)
+                    mediaSession.setQueueTitle(getString(R.string.app_name))
+                    updateNotification()
+                    overlayToastManager.showSong(metadata)
+                    broadcastState()
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start playing ${song.displayName}", e)
         }
@@ -505,7 +514,19 @@ class MusicService : MediaBrowserServiceCompat() {
                 when (focusChange) {
                     AudioManager.AUDIOFOCUS_LOSS -> pause()
                     AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> pause()
-                    AudioManager.AUDIOFOCUS_GAIN -> play()
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                        isDucking = true
+                        val duckedVol = getAppVolumeFloat() * 0.2f
+                        mediaPlayer?.setVolume(duckedVol, duckedVol)
+                    }
+                    AudioManager.AUDIOFOCUS_GAIN -> {
+                        if (isDucking) {
+                            isDucking = false
+                            applyAppVolume()
+                        } else {
+                            play()
+                        }
+                    }
                 }
             }
             .build()
@@ -607,7 +628,8 @@ class MusicService : MediaBrowserServiceCompat() {
                 PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or
                 PlaybackStateCompat.ACTION_PREPARE or
                 PlaybackStateCompat.ACTION_SKIP_TO_QUEUE_ITEM or
-                PlaybackStateCompat.ACTION_PLAY_FROM_URI
+                PlaybackStateCompat.ACTION_PLAY_FROM_URI or
+                PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID
             )
             .build()
         mediaSession.setPlaybackState(playbackState)
@@ -642,6 +664,40 @@ class MusicService : MediaBrowserServiceCompat() {
         } finally {
             retriever.release()
         }
+    }
+
+    private fun buildQueueItems(
+        artVersion: Long,
+        curIdx: Int,
+        nextIdx: Int,
+        curSong: Song,
+        nextSong: Song?,
+        metadata: SongMetadata
+    ): List<MediaSessionCompat.QueueItem> {
+        val curArtUri = Uri.parse("content://de.codevoid.androsnd.albumart/current_art.jpg?v=$artVersion")
+            .takeIf { java.io.File(cacheDir, "album_art/current_art.jpg").exists() }
+        val curDesc = MediaDescriptionCompat.Builder()
+            .setMediaId(curIdx.toString())
+            .setTitle(metadata.title)
+            .setSubtitle(metadata.artist)
+            .setDescription(metadata.album)
+            .setMediaUri(curSong.uri)
+            .apply { if (curArtUri != null) setIconUri(curArtUri) }
+            .build()
+        val queue = mutableListOf(MediaSessionCompat.QueueItem(curDesc, curIdx.toLong()))
+        if (nextSong != null) {
+            val nextInfo = extractNeighborInfo(nextSong, "next_art.jpg")
+            val nextDesc = MediaDescriptionCompat.Builder()
+                .setMediaId(nextIdx.toString())
+                .setTitle(nextInfo.title)
+                .setSubtitle(nextInfo.artist)
+                .setDescription(nextInfo.album)
+                .setMediaUri(nextSong.uri)
+                .apply { if (nextInfo.artUri != null) setIconUri(nextInfo.artUri) }
+                .build()
+            queue.add(MediaSessionCompat.QueueItem(nextDesc, nextIdx.toLong()))
+        }
+        return queue
     }
 
     private fun updateMediaSessionQueue() {
