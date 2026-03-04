@@ -20,7 +20,7 @@
     <string name="settings_app_volume">App Volume</string>
     <string name="settings_overlay_opacity">Now-Playing Popup Opacity</string>
     <string name="settings_overlay_size">Now-Playing Popup Size</string>
-    <string name="overlay_demo_title">Overlay Settings</string>
+    <string name="overlay_demo_title">Now-Playing Popup</string>
     <string name="overlay_demo_artist">Drag me and I\'ll remember</string>
     <string name="overlay_demo_album">Pinch me and I will resize :)</string>
     <string name="accent_color">Accent Color</string>
