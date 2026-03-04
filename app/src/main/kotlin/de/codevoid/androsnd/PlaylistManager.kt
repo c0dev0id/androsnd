@@ -2,8 +2,10 @@ package de.codevoid.androsnd
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.util.Log
 import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 
@@ -109,12 +111,14 @@ class PlaylistManager(private val context: Context) {
             for ((docId, name) in audioFiles) {
                 val songIndex = _songs.size
                 val songUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+                val duration = extractDuration(songUri)
                 _songs.add(
                     Song(
                         uri = songUri,
                         displayName = name ?: "Unknown",
                         folderPath = parentPath,
-                        folderName = folderDisplayName
+                        folderName = folderDisplayName,
+                        duration = duration
                     )
                 )
                 folder.songs.add(songIndex)
@@ -130,6 +134,20 @@ class PlaylistManager(private val context: Context) {
     private fun isAudioFile(name: String): Boolean {
         val ext = name.substringAfterLast('.', "").lowercase()
         return ext in AUDIO_EXTENSIONS
+    }
+
+    private fun extractDuration(uri: Uri): Long {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: 0L
+        } catch (e: Exception) {
+            Log.w("PlaylistManager", "Failed to extract duration for $uri", e)
+            0L
+        } finally {
+            retriever.release()
+        }
     }
 
     fun getCurrentSong(): Song? = songs.getOrNull(currentIndex)

@@ -6,5 +6,6 @@ data class Song(
     val uri: Uri,
     val displayName: String,
     val folderPath: String,
-    val folderName: String
+    val folderName: String,
+    val duration: Long = 0L
 )
