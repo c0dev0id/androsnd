@@ -15,6 +15,17 @@
         android:orientation="vertical"
         android:paddingEnd="8dp">
 
+        <!-- Load Music Folder -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_folder"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginBottom="16dp"
+            android:text="@string/select_folder"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            style="@style/Widget.Androsnd.Button.Outlined" />
+
         <!-- Accent Color -->
         <TextView
             android:layout_width="wrap_content"
@@ -61,17 +72,6 @@
                 style="@style/Widget.Material3.Button.OutlinedButton" />
 
         </com.google.android.material.button.MaterialButtonToggleGroup>
-
-        <!-- Select Folder -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_folder"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="8dp"
-            android:text="@string/select_folder"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            style="@style/Widget.Androsnd.Button.Outlined" />
 
         <!-- Remote Control -->
         <TextView
@@ -132,7 +132,7 @@
         android:layout_weight="1"
         android:orientation="vertical"
         android:paddingStart="8dp"
-        android:gravity="center_vertical">
+        android:gravity="top">
 
         <!-- App Volume -->
         <TextView

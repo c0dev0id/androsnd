@@ -8,7 +8,7 @@
     <string name="next_folder">Next Folder</string>
     <string name="prev_song">Previous Song</string>
     <string name="prev_folder">Previous Folder</string>
-    <string name="select_folder">Select Folder</string>
+    <string name="select_folder">Load Music Folder</string>
     <string name="notification_channel_name">Music Playback</string>
     <string name="notification_channel_description">Music playback controls</string>
     <string name="notification_action_pause">Pause</string>
@@ -27,7 +27,7 @@
 
     <!-- Remote Control -->
     <string name="remote_control_label">Remote Control</string>
-    <string name="btn_map_remote">Map Remote…</string>
+    <string name="btn_map_remote">Key Mapping Wizard</string>
 
     <!-- Remote Key Mapping Wizard -->
     <string name="wizard_title">Remote Key Mapping</string>
