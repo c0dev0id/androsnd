@@ -215,12 +215,11 @@
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:layout_margin="4dp"
-                android:textSize="16sp"
-                android:textStyle="bold"
+                android:contentDescription="Previous"
                 app:icon="@drawable/ic_previous"
                 app:iconGravity="textStart"
+                app:iconSize="32dp"
                 app:iconTint="@android:color/white"
-                android:text="Prev"
                 style="@style/Widget.Androsnd.Button.Dark" />
 
             <com.google.android.material.button.MaterialButton
@@ -229,12 +228,11 @@
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:layout_margin="4dp"
-                android:textSize="16sp"
-                android:textStyle="bold"
+                android:contentDescription="Play"
                 app:icon="@drawable/ic_play"
                 app:iconGravity="textStart"
+                app:iconSize="32dp"
                 app:iconTint="@android:color/white"
-                android:text="Play"
                 style="@style/Widget.Androsnd.Button.Dark" />
 
             <com.google.android.material.button.MaterialButton
@@ -243,12 +241,11 @@
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:layout_margin="4dp"
-                android:textSize="16sp"
-                android:textStyle="bold"
+                android:contentDescription="Next"
                 app:icon="@drawable/ic_next"
                 app:iconGravity="textStart"
+                app:iconSize="32dp"
                 app:iconTint="@android:color/white"
-                android:text="Next"
                 style="@style/Widget.Androsnd.Button.Dark" />
 
         </LinearLayout>
@@ -266,12 +263,11 @@
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:layout_margin="4dp"
-                android:textSize="16sp"
-                android:textStyle="bold"
+                android:contentDescription="Stop"
                 app:icon="@drawable/ic_stop"
                 app:iconGravity="textStart"
+                app:iconSize="32dp"
                 app:iconTint="@android:color/white"
-                android:text="Stop"
                 style="@style/Widget.Androsnd.Button.Dark" />
 
             <com.google.android.material.button.MaterialButton
@@ -280,12 +276,11 @@
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:layout_margin="4dp"
-                android:textSize="16sp"
-                android:textStyle="bold"
+                android:contentDescription="Shuffle"
                 app:icon="@drawable/ic_shuffle"
                 app:iconGravity="textStart"
+                app:iconSize="32dp"
                 app:iconTint="@android:color/white"
-                android:text="Shuffle"
                 style="@style/Widget.Androsnd.Button.Dark" />
 
             <com.google.android.material.button.MaterialButton
@@ -294,12 +289,11 @@
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:layout_margin="4dp"
-                android:textSize="16sp"
-                android:textStyle="bold"
+                android:contentDescription="Settings"
                 app:icon="@drawable/ic_settings"
                 app:iconGravity="textStart"
+                app:iconSize="32dp"
                 app:iconTint="@android:color/white"
-                android:text="@string/settings"
                 style="@style/Widget.Androsnd.Button.Outlined" />
 
         </LinearLayout>
