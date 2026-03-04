@@ -198,6 +198,9 @@ class MusicService : MediaBrowserServiceCompat() {
                     val song = Song(uri = uri, displayName = uri.lastPathSegment ?: "Unknown", folderPath = "", folderName = "")
                     playSong(song)
                 }
+                override fun onPlayFromSearch(query: String?, extras: Bundle?) {
+                    play()
+                }
                 override fun onPrepare() {
                     if (playlistManager.songs.isEmpty()) return
                     val song = playlistManager.getCurrentSong() ?: return
