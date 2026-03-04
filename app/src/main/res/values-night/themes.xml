@@ -13,6 +13,8 @@
         <item name="android:statusBarColor">#1A1A1A</item>
         <item name="android:navigationBarColor">#1A1A1A</item>
         <item name="materialAlertDialogTheme">@style/ThemeOverlay.Androsnd.AlertDialog</item>
+        <item name="fontFamily">@font/apotek</item>
+        <item name="android:fontFamily">@font/apotek</item>
     </style>
 
     <style name="Widget.Androsnd.Button.Orange" parent="Widget.Material3.Button">
