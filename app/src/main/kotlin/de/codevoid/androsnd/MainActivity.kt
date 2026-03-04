@@ -307,7 +307,8 @@ class MainActivity : AppCompatActivity() {
             onFolderClick = { /* toggle expand */ },
             onSongClick = { index ->
                 musicService?.playSongAtIndex(index)
-            }
+            },
+            extractMetadata = { song -> musicService?.extractMetadata(song) }
         )
         playlistRecycler.layoutManager = LinearLayoutManager(this)
         playlistRecycler.adapter = playlistAdapter
@@ -1022,7 +1023,8 @@ class MainActivity : AppCompatActivity() {
 
     class PlaylistAdapter(
         private val onFolderClick: (Int) -> Unit,
-        private val onSongClick: (Int) -> Unit
+        private val onSongClick: (Int) -> Unit,
+        private val extractMetadata: (Song) -> SongMetadata?
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
         companion object {
@@ -1123,7 +1125,7 @@ class MainActivity : AppCompatActivity() {
                         if (song != null) {
                             val idx = item.songIndex
                             executor.execute {
-                                val meta = musicService?.extractMetadata(song)
+                                val meta = extractMetadata(song)
                                     ?: SongMetadata(song.displayName, "", "", 0L, null)
                                 mainHandler.post {
                                     metadataCache.put(idx, meta)
