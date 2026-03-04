@@ -33,6 +33,9 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
+import de.codevoid.androsnd.model.SongMetadata
+import android.util.SparseArray
+import java.util.concurrent.Executors
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.slider.Slider
@@ -1036,6 +1039,10 @@ class MainActivity : AppCompatActivity() {
 
         private val items = mutableListOf<ListItem>()
         private var currentSongIndex = -1
+        private var songs: List<Song> = emptyList()
+        private val metadataCache = SparseArray<SongMetadata>()
+        private val executor = Executors.newCachedThreadPool()
+        private val mainHandler = Handler(Looper.getMainLooper())
         var accentColor: Int = Color.parseColor("#F57C00")
         var focusedPos: Int = -1
             set(newPos) {
@@ -1068,6 +1075,8 @@ class MainActivity : AppCompatActivity() {
 
         fun submitData(folders: List<PlaylistFolder>, songs: List<Song>, currentIdx: Int) {
             items.clear()
+            this.songs = songs
+            metadataCache.clear()
             currentSongIndex = currentIdx
             for ((fi, folder) in folders.withIndex()) {
                 items.add(ListItem(TYPE_FOLDER, folderIndex = fi, displayName = folder.name))
@@ -1103,7 +1112,27 @@ class MainActivity : AppCompatActivity() {
                     holder.itemView.setOnClickListener { onFolderClick(item.folderIndex) }
                 }
                 is SongViewHolder -> {
-                    holder.name.text = item.displayName
+                    val cached = metadataCache[item.songIndex]
+                    if (cached != null) {
+                        bindSongMetadata(holder, cached)
+                    } else {
+                        holder.name.text = item.displayName
+                        holder.subtitle.text = ""
+                        holder.cover.setImageBitmap(null)
+                        val song = songs.getOrNull(item.songIndex)
+                        if (song != null) {
+                            val idx = item.songIndex
+                            executor.execute {
+                                val meta = musicService?.extractMetadata(song)
+                                    ?: SongMetadata(song.displayName, "", "", 0L, null)
+                                mainHandler.post {
+                                    metadataCache.put(idx, meta)
+                                    val pos = items.indexOfFirst { it.songIndex == idx }
+                                    if (pos >= 0) notifyItemChanged(pos)
+                                }
+                            }
+                        }
+                    }
                     val isSelected = item.songIndex == currentSongIndex
                     holder.itemView.isSelected = isSelected
                     holder.itemView.setBackgroundColor(when {
@@ -1115,6 +1144,24 @@ class MainActivity : AppCompatActivity() {
                     holder.itemView.setOnClickListener { onSongClick(item.songIndex) }
                 }
             }
+        }
+
+        private fun bindSongMetadata(holder: SongViewHolder, meta: SongMetadata) {
+            holder.name.text = if (meta.artist.isNotEmpty()) "${meta.artist} - ${meta.title}" else meta.title
+            val dur = formatDuration(meta.duration)
+            holder.subtitle.text = listOfNotNull(
+                meta.album.takeIf { it.isNotEmpty() },
+                dur.takeIf { it.isNotEmpty() }
+            ).joinToString("  •  ")
+            holder.cover.setImageBitmap(meta.coverArt)
+        }
+
+        private fun formatDuration(ms: Long): String {
+            if (ms <= 0L) return ""
+            val totalSec = ms / 1000
+            val min = totalSec / 60
+            val sec = totalSec % 60
+            return "%d:%02d".format(min, sec)
         }
 
         private fun makeFocusRingFor(view: View): GradientDrawable {
@@ -1133,6 +1180,8 @@ class MainActivity : AppCompatActivity() {
 
         class SongViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val name: TextView = view.findViewById(R.id.song_name)
+            val subtitle: TextView = view.findViewById(R.id.song_subtitle)
+            val cover: ImageView = view.findViewById(R.id.song_cover)
         }
     }
 }
