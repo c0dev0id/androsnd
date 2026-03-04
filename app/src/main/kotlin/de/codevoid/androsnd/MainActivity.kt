@@ -876,8 +876,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateMapRemoteButton() {
-        settingsPanel.findViewById<MaterialButton>(R.id.btn_map_remote)?.visibility =
-            if (presetManager.isCustomActive()) View.VISIBLE else View.GONE
+        val btn = settingsPanel.findViewById<MaterialButton>(R.id.btn_map_remote) ?: return
+        val customActive = presetManager.isCustomActive()
+        btn.visibility = if (customActive) View.VISIBLE else View.GONE
+        btn.isEnabled = customActive
     }
 
     private fun adjustSlider(id: Int, delta: Float) {
