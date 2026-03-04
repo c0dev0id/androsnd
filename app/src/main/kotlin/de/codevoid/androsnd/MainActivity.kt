@@ -41,6 +41,8 @@ import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.slider.Slider
 import android.graphics.drawable.GradientDrawable
 import android.view.KeyEvent
+import android.widget.LinearLayout
+import android.view.Gravity
 import android.widget.Toast
 
 class MainActivity : AppCompatActivity() {
@@ -477,6 +479,7 @@ class MainActivity : AppCompatActivity() {
                 presetManager.setCustomActive(useCustom)
                 activePreset = presetManager.getActivePreset()
                 updateMapRemoteButton()
+                updateKeyAssignmentTable()
             }
         }
         toggleRemote.check(
@@ -880,6 +883,42 @@ class MainActivity : AppCompatActivity() {
             if (presetManager.isCustomActive()) View.VISIBLE else View.GONE
     }
 
+    private fun keyDisplayName(keycode: Int): String =
+        if (keycode == KeyEvent.KEYCODE_UNKNOWN) "—"
+        else KeyEvent.keyCodeToString(keycode).removePrefix("KEYCODE_")
+
+    private fun updateKeyAssignmentTable() {
+        val container = settingsPanel.findViewById<LinearLayout>(R.id.remote_key_table) ?: return
+        container.removeAllViews()
+        val colorLabel = ContextCompat.getColor(this, R.color.text_secondary)
+        val colorValue = ContextCompat.getColor(this, R.color.text_primary)
+        for (i in 0 until RemoteKeyPreset.ACTION_COUNT) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).also { it.topMargin = dpToPx(2) }
+            }
+            val actionView = TextView(this).apply {
+                text = RemoteKeyPreset.ACTION_NAMES[i]
+                setTextColor(colorLabel)
+                textSize = 13f
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val keyView = TextView(this).apply {
+                text = keyDisplayName(activePreset.keycodes[i])
+                setTextColor(colorValue)
+                textSize = 13f
+                gravity = Gravity.END
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            row.addView(actionView)
+            row.addView(keyView)
+            container.addView(row)
+        }
+    }
+
     private fun adjustSlider(id: Int, delta: Float) {
         val slider = settingsPanel.findViewById<Slider>(id) ?: return
         if (!slider.isEnabled) return
@@ -946,6 +985,7 @@ class MainActivity : AppCompatActivity() {
         contentArea.visibility = View.GONE
         musicService?.showOverlayDemo()
         navZone = NavZone.Playlist
+        updateKeyAssignmentTable()
         updateFocusVisual()
         updateButtonStates()
     }
