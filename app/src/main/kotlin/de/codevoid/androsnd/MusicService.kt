@@ -533,17 +533,19 @@ class MusicService : MediaBrowserServiceCompat() {
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, metadata.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, metadata.album)
         if (metadata.coverArt != null) {
-            val scaled = centerCropToSquare(scaleBitmapForSession(metadata.coverArt))
-            val uri = saveArtToFile(scaled, "current_art.jpg")
+            val scaledLarge = centerCropToSquare(scaleBitmapForSession(metadata.coverArt, maxPx = 512))
+            val uri = saveArtToFile(scaledLarge, "current_art.jpg")
             if (uri != null) {
                 val uriStr = uri.toString()
                 builder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, uriStr)
                 builder.putString(MediaMetadataCompat.METADATA_KEY_ART_URI, uriStr)
                 builder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, uriStr)
             }
-            // Fallback bitmap for clients that do not load URIs (e.g. older lock screens)
-            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, scaled)
-            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, scaled)
+            // Fallback bitmap for clients that do not load URIs (e.g. older lock screens).
+            // Kept at 256px to stay safely within Binder's ~1 MB IPC transaction limit.
+            val scaledSmall = centerCropToSquare(scaleBitmapForSession(metadata.coverArt, maxPx = 256))
+            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, scaledSmall)
+            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, scaledSmall)
         }
         mediaSession.setMetadata(builder.build())
     }
@@ -589,7 +591,7 @@ class MusicService : MediaBrowserServiceCompat() {
             val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
             val artUri = retriever.embeddedPicture?.let { bytes ->
                 decodeBitmapWithSampling(bytes)?.let { original ->
-                    val scaled = centerCropToSquare(scaleBitmapForSession(original))
+                    val scaled = centerCropToSquare(scaleBitmapForSession(original, maxPx = 512))
                     val uri = saveArtToFile(scaled, artFilename)
                     original.recycle()
                     scaled.recycle()
