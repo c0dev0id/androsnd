@@ -278,6 +278,12 @@ class MusicService : MediaBrowserServiceCompat() {
         return BrowserRoot(MEDIA_ROOT_ID, null)
     }
 
+    private fun buildSongExtras(song: Song): Bundle {
+        return Bundle().apply {
+            putLong(MediaMetadataCompat.METADATA_KEY_DURATION, song.duration)
+        }
+    }
+
     override fun onLoadChildren(
         parentId: String,
         result: Result<MutableList<MediaBrowserCompat.MediaItem>>
@@ -293,6 +299,7 @@ class MusicService : MediaBrowserServiceCompat() {
                             .setTitle(song.displayName)
                             .setSubtitle(song.folderName)
                             .setMediaUri(song.uri)
+                            .setExtras(buildSongExtras(song))
                             .build()
                         MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE)
                     }.toMutableList()
@@ -322,6 +329,7 @@ class MusicService : MediaBrowserServiceCompat() {
                         .setMediaId("$MEDIA_SONG_PREFIX$songIndex")
                         .setTitle(song.displayName)
                         .setMediaUri(song.uri)
+                        .setExtras(buildSongExtras(song))
                         .build()
                     MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE)
                 }.toMutableList()
