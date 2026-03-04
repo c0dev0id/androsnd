@@ -499,6 +499,14 @@ class MusicService : MediaBrowserServiceCompat() {
         )
     }
 
+    private fun centerCropToSquare(bitmap: android.graphics.Bitmap): android.graphics.Bitmap {
+        val size = minOf(bitmap.width, bitmap.height)
+        if (bitmap.width == bitmap.height) return bitmap
+        val left = (bitmap.width - size) / 2
+        val top = (bitmap.height - size) / 2
+        return android.graphics.Bitmap.createBitmap(bitmap, left, top, size, size)
+    }
+
     private fun saveArtToFile(bitmap: android.graphics.Bitmap, filename: String): Uri? {
         return try {
             val dir = java.io.File(cacheDir, "album_art").also { it.mkdirs() }
@@ -525,7 +533,7 @@ class MusicService : MediaBrowserServiceCompat() {
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, metadata.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, metadata.album)
         if (metadata.coverArt != null) {
-            val scaled = scaleBitmapForSession(metadata.coverArt)
+            val scaled = centerCropToSquare(scaleBitmapForSession(metadata.coverArt))
             val uri = saveArtToFile(scaled, "current_art.jpg")
             if (uri != null) {
                 val uriStr = uri.toString()
@@ -581,7 +589,7 @@ class MusicService : MediaBrowserServiceCompat() {
             val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
             val artUri = retriever.embeddedPicture?.let { bytes ->
                 decodeBitmapWithSampling(bytes)?.let { original ->
-                    val scaled = scaleBitmapForSession(original)
+                    val scaled = centerCropToSquare(scaleBitmapForSession(original))
                     val uri = saveArtToFile(scaled, artFilename)
                     original.recycle()
                     scaled.recycle()
