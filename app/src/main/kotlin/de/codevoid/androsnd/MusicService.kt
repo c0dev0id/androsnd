@@ -533,19 +533,25 @@ class MusicService : MediaBrowserServiceCompat() {
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, metadata.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, metadata.album)
         if (metadata.coverArt != null) {
-            val scaledLarge = centerCropToSquare(scaleBitmapForSession(metadata.coverArt, maxPx = 512))
-            val uri = saveArtToFile(scaledLarge, "current_art.jpg")
-            if (uri != null) {
-                val uriStr = uri.toString()
-                builder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, uriStr)
-                builder.putString(MediaMetadataCompat.METADATA_KEY_ART_URI, uriStr)
-                builder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, uriStr)
+            try {
+                val scaledLarge = centerCropToSquare(scaleBitmapForSession(metadata.coverArt, maxPx = 512))
+                val uri = saveArtToFile(scaledLarge, "current_art.jpg")
+                scaledLarge.recycle()
+                if (uri != null) {
+                    val uriStr = uri.toString()
+                    builder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, uriStr)
+                    builder.putString(MediaMetadataCompat.METADATA_KEY_ART_URI, uriStr)
+                    builder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, uriStr)
+                }
+                // Fallback bitmap for clients that do not load URIs (e.g. older lock screens).
+                // Kept at 256px to stay safely within Binder's ~1 MB IPC transaction limit.
+                val scaledSmall = centerCropToSquare(scaleBitmapForSession(metadata.coverArt, maxPx = 256))
+                builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, scaledSmall)
+                builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, scaledSmall)
+                scaledSmall.recycle()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to prepare cover art for MediaSession", e)
             }
-            // Fallback bitmap for clients that do not load URIs (e.g. older lock screens).
-            // Kept at 256px to stay safely within Binder's ~1 MB IPC transaction limit.
-            val scaledSmall = centerCropToSquare(scaleBitmapForSession(metadata.coverArt, maxPx = 256))
-            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, scaledSmall)
-            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, scaledSmall)
         }
         mediaSession.setMetadata(builder.build())
     }
