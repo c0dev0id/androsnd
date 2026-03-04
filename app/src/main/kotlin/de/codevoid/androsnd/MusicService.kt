@@ -499,6 +499,14 @@ class MusicService : MediaBrowserServiceCompat() {
         )
     }
 
+    private fun centerCropToSquare(bitmap: android.graphics.Bitmap): android.graphics.Bitmap {
+        val size = minOf(bitmap.width, bitmap.height)
+        if (bitmap.width == bitmap.height) return bitmap
+        val left = (bitmap.width - size) / 2
+        val top = (bitmap.height - size) / 2
+        return android.graphics.Bitmap.createBitmap(bitmap, left, top, size, size)
+    }
+
     private fun saveArtToFile(bitmap: android.graphics.Bitmap, filename: String): Uri? {
         return try {
             val dir = java.io.File(cacheDir, "album_art").also { it.mkdirs() }
@@ -525,17 +533,25 @@ class MusicService : MediaBrowserServiceCompat() {
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, metadata.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, metadata.album)
         if (metadata.coverArt != null) {
-            val scaled = scaleBitmapForSession(metadata.coverArt)
-            val uri = saveArtToFile(scaled, "current_art.jpg")
-            if (uri != null) {
-                val uriStr = uri.toString()
-                builder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, uriStr)
-                builder.putString(MediaMetadataCompat.METADATA_KEY_ART_URI, uriStr)
-                builder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, uriStr)
+            try {
+                val scaledLarge = centerCropToSquare(scaleBitmapForSession(metadata.coverArt, maxPx = 512))
+                val uri = saveArtToFile(scaledLarge, "current_art.jpg")
+                scaledLarge.recycle()
+                if (uri != null) {
+                    val uriStr = uri.toString()
+                    builder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, uriStr)
+                    builder.putString(MediaMetadataCompat.METADATA_KEY_ART_URI, uriStr)
+                    builder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, uriStr)
+                }
+                // Fallback bitmap for clients that do not load URIs (e.g. older lock screens).
+                // Kept at 256px to stay safely within Binder's ~1 MB IPC transaction limit.
+                val scaledSmall = centerCropToSquare(scaleBitmapForSession(metadata.coverArt, maxPx = 256))
+                builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, scaledSmall)
+                builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, scaledSmall)
+                scaledSmall.recycle()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to prepare cover art for MediaSession", e)
             }
-            // Fallback bitmap for clients that do not load URIs (e.g. older lock screens)
-            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, scaled)
-            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, scaled)
         }
         mediaSession.setMetadata(builder.build())
     }
@@ -581,7 +597,7 @@ class MusicService : MediaBrowserServiceCompat() {
             val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
             val artUri = retriever.embeddedPicture?.let { bytes ->
                 decodeBitmapWithSampling(bytes)?.let { original ->
-                    val scaled = scaleBitmapForSession(original)
+                    val scaled = centerCropToSquare(scaleBitmapForSession(original, maxPx = 512))
                     val uri = saveArtToFile(scaled, artFilename)
                     original.recycle()
                     scaled.recycle()
