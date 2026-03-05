@@ -1,20 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="horizontal"
     android:background="@color/surface_dark"
-    android:padding="24dp"
-    android:requiresFadingEdge="vertical"
-    android:fadingEdgeLength="32dp"
-    android:scrollbars="vertical"
-    android:fadeScrollbars="false"
-    android:scrollbarThumbVertical="@drawable/scrollbar_thumb">
+    android:padding="24dp">
 
+    <!-- LEFT PANE: Toggles and buttons -->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:paddingEnd="8dp">
+
+        <!-- Load Music Folder -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_folder"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginBottom="16dp"
+            android:text="@string/select_folder"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            style="@style/Widget.Androsnd.Button.Outlined" />
 
         <!-- Accent Color -->
         <TextView
@@ -63,139 +73,6 @@
 
         </com.google.android.material.button.MaterialButtonToggleGroup>
 
-        <!-- App Volume -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_app_volume"
-            android:textColor="@color/text_primary"
-            android:textStyle="bold"
-            android:textSize="16sp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <com.google.android.material.slider.Slider
-                android:id="@+id/slider_volume"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minHeight="56dp"
-                android:valueFrom="0"
-                android:valueTo="100"
-                android:stepSize="1"
-                app:trackColorActive="@color/colorPrimary"
-                app:trackColorInactive="@color/seekbar_track_bg"
-                app:thumbColor="@color/colorPrimary"
-                app:thumbRadius="16dp"
-                app:labelBehavior="gone" />
-
-            <TextView
-                android:id="@+id/label_volume"
-                android:layout_width="56dp"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/colorPrimary"
-                android:textStyle="bold"
-                android:textSize="16sp" />
-        </LinearLayout>
-
-        <!-- Overlay Opacity -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_overlay_opacity"
-            android:textColor="@color/text_primary"
-            android:textStyle="bold"
-            android:textSize="16sp"
-            android:layout_marginTop="16dp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <com.google.android.material.slider.Slider
-                android:id="@+id/slider_opacity"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minHeight="56dp"
-                android:valueFrom="0"
-                android:valueTo="100"
-                android:stepSize="1"
-                app:trackColorActive="@color/colorPrimary"
-                app:trackColorInactive="@color/seekbar_track_bg"
-                app:thumbColor="@color/colorPrimary"
-                app:thumbRadius="16dp"
-                app:labelBehavior="gone" />
-
-            <TextView
-                android:id="@+id/label_opacity"
-                android:layout_width="56dp"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/colorPrimary"
-                android:textStyle="bold"
-                android:textSize="16sp" />
-        </LinearLayout>
-
-        <!-- Overlay Size -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_overlay_size"
-            android:textColor="@color/text_primary"
-            android:textStyle="bold"
-            android:textSize="16sp"
-            android:layout_marginTop="16dp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <com.google.android.material.slider.Slider
-                android:id="@+id/slider_overlay_size"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minHeight="56dp"
-                android:valueFrom="0.5"
-                android:valueTo="3.0"
-                android:stepSize="0.1"
-                app:trackColorActive="@color/colorPrimary"
-                app:trackColorInactive="@color/seekbar_track_bg"
-                app:thumbColor="@color/colorPrimary"
-                app:thumbRadius="16dp"
-                app:labelBehavior="gone" />
-
-            <TextView
-                android:id="@+id/label_overlay_size"
-                android:layout_width="56dp"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/colorPrimary"
-                android:textStyle="bold"
-                android:textSize="16sp" />
-        </LinearLayout>
-
-        <!-- Select Folder -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_folder"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="24dp"
-            android:text="@string/select_folder"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            style="@style/Widget.Androsnd.Button.Outlined" />
-
         <!-- Remote Control -->
         <TextView
             android:layout_width="wrap_content"
@@ -204,7 +81,7 @@
             android:textColor="@color/text_primary"
             android:textStyle="bold"
             android:textSize="16sp"
-            android:layout_marginTop="24dp" />
+            android:layout_marginTop="16dp" />
 
         <com.google.android.material.button.MaterialButtonToggleGroup
             android:id="@+id/toggle_remote_preset"
@@ -279,4 +156,141 @@
         </LinearLayout>
 
     </LinearLayout>
-</ScrollView>
+
+    <!-- RIGHT PANE: Sliders -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:paddingStart="8dp"
+        android:gravity="top">
+
+        <!-- App Volume -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_app_volume"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold"
+            android:textSize="16sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/slider_volume"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="56dp"
+                android:valueFrom="0"
+                android:valueTo="100"
+                android:stepSize="1"
+                app:trackColorActive="@color/colorPrimary"
+                app:trackColorInactive="@color/seekbar_track_bg"
+                app:thumbColor="@color/colorPrimary"
+                app:thumbRadius="16dp"
+                app:labelBehavior="gone" />
+
+            <TextView
+                android:id="@+id/label_volume"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:textColor="@color/colorPrimary"
+                android:textStyle="bold"
+                android:textSize="16sp" />
+
+        </LinearLayout>
+
+        <!-- Now-Playing Popup Opacity -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_overlay_opacity"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:layout_marginTop="16dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/slider_opacity"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="56dp"
+                android:valueFrom="0"
+                android:valueTo="100"
+                android:stepSize="1"
+                app:trackColorActive="@color/colorPrimary"
+                app:trackColorInactive="@color/seekbar_track_bg"
+                app:thumbColor="@color/colorPrimary"
+                app:thumbRadius="16dp"
+                app:labelBehavior="gone" />
+
+            <TextView
+                android:id="@+id/label_opacity"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:textColor="@color/colorPrimary"
+                android:textStyle="bold"
+                android:textSize="16sp" />
+
+        </LinearLayout>
+
+        <!-- Now-Playing Popup Size -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_overlay_size"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:layout_marginTop="16dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/slider_overlay_size"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="56dp"
+                android:valueFrom="0.5"
+                android:valueTo="3.0"
+                android:stepSize="0.1"
+                app:trackColorActive="@color/colorPrimary"
+                app:trackColorInactive="@color/seekbar_track_bg"
+                app:thumbColor="@color/colorPrimary"
+                app:thumbRadius="16dp"
+                app:labelBehavior="gone" />
+
+            <TextView
+                android:id="@+id/label_overlay_size"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:textColor="@color/colorPrimary"
+                android:textStyle="bold"
+                android:textSize="16sp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</LinearLayout>
