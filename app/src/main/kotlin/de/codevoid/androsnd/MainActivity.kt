@@ -907,7 +907,7 @@ class MainActivity : AppCompatActivity() {
         container.removeAllViews()
         val colorLabel = ContextCompat.getColor(this, R.color.text_secondary)
         val colorValue = ContextCompat.getColor(this, R.color.text_primary)
-        for (i in 0 until RemoteKeyPreset.ACTION_COUNT) {
+        for (actionIdx in RemoteKeyPreset.WIZARD_ORDER) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
@@ -916,13 +916,13 @@ class MainActivity : AppCompatActivity() {
                 ).also { it.topMargin = dpToPx(2) }
             }
             val actionView = TextView(this).apply {
-                text = RemoteKeyPreset.ACTION_NAMES[i]
+                text = RemoteKeyPreset.ACTION_NAMES[actionIdx]
                 setTextColor(colorLabel)
                 textSize = 13f
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             val keyView = TextView(this).apply {
-                text = keyDisplayName(activePreset.keycodes[i])
+                text = keyDisplayName(activePreset.keycodes[actionIdx])
                 setTextColor(colorValue)
                 textSize = 13f
                 gravity = Gravity.END
