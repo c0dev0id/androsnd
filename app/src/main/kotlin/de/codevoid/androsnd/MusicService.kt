@@ -300,16 +300,19 @@ class MusicService : MediaBrowserServiceCompat() {
                             .setSubtitle(song.folderName)
                             .setMediaUri(song.uri)
                             .setExtras(buildSongExtras(song))
+                            .apply { songArtUri(index)?.let { setIconUri(it) } }
                             .build()
                         MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE)
                     }.toMutableList()
                     result.sendResult(items)
                 } else {
                     val items = folders.mapIndexed { index, folder ->
+                        val firstSongArtUri = folder.songs.firstOrNull()?.let { songArtUri(it) }
                         val desc = MediaDescriptionCompat.Builder()
                             .setMediaId("$MEDIA_FOLDER_PREFIX$index")
                             .setTitle(folder.name)
                             .setSubtitle("${folder.songs.size} tracks")
+                            .apply { firstSongArtUri?.let { setIconUri(it) } }
                             .build()
                         MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_BROWSABLE)
                     }.toMutableList()
@@ -330,6 +333,7 @@ class MusicService : MediaBrowserServiceCompat() {
                         .setTitle(song.displayName)
                         .setMediaUri(song.uri)
                         .setExtras(buildSongExtras(song))
+                        .apply { songArtUri(songIndex)?.let { setIconUri(it) } }
                         .build()
                     MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE)
                 }.toMutableList()
@@ -596,6 +600,44 @@ class MusicService : MediaBrowserServiceCompat() {
         }
     }
 
+    private fun songArtFile(index: Int): java.io.File =
+        java.io.File(cacheDir, "album_art/song_art_$index.jpg")
+
+    private fun songArtUri(index: Int): Uri? {
+        val f = songArtFile(index)
+        return if (f.exists())
+            Uri.parse("content://de.codevoid.androsnd.albumart/song_art_$index.jpg?v=$artVersion")
+        else null
+    }
+
+    private fun cacheSongArtIfNeeded(index: Int, song: Song) {
+        val file = songArtFile(index)
+        if (file.exists()) return
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(applicationContext, song.uri)
+            val bytes = retriever.embeddedPicture ?: return
+            val original = decodeBitmapWithSampling(bytes) ?: return
+            val scaled = scaleBitmapForSession(original)
+            original.recycle()
+            saveArtToFile(scaled, "song_art_$index.jpg")
+            scaled.recycle()
+        } catch (_: Exception) {
+        } finally {
+            retriever.release()
+        }
+    }
+
+    private fun preCacheSongArt() {
+        val artCacheExecutor = Executors.newSingleThreadExecutor()
+        artCacheExecutor.submit {
+            playlistManager.songs.forEachIndexed { index, song ->
+                cacheSongArtIfNeeded(index, song)
+            }
+            artCacheExecutor.shutdown()
+        }
+    }
+
     private fun updateMediaSessionMetadata(metadata: SongMetadata) {
         val builder = MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, playlistManager.currentIndex.toString())
@@ -759,6 +801,7 @@ class MusicService : MediaBrowserServiceCompat() {
                         .setMediaId(idx.toString())
                         .setTitle(song.displayName)
                         .setMediaUri(song.uri)
+                        .apply { songArtUri(idx)?.let { setIconUri(it) } }
                         .build()
                     MediaSessionCompat.QueueItem(desc, idx.toLong())
                 }
@@ -878,6 +921,7 @@ class MusicService : MediaBrowserServiceCompat() {
                         Log.w(TAG, "Failed to update media session queue", e)
                     }
                     notifyChildrenChanged("androsnd_root")
+                    preCacheSongArt()
                     broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
                     broadcastState()
                 }
