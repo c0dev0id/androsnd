@@ -17,6 +17,8 @@
     <color name="destructive">#D32F2F</color>
     <color name="orange_border">#F57C00</color>
     <color name="seekbar_track_bg">#555555</color>
+    <color name="overlay_bg">#CC000000</color>
+    <color name="scrollbar_thumb_color">#80FFFFFF</color>
 
     <!-- Accent color options -->
     <color name="accent_orange">#F57C00</color>

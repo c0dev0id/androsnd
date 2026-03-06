@@ -8,22 +8,22 @@
 
     <ImageView
         android:id="@+id/overlay_cover"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
+        android:layout_width="@dimen/overlay_cover_size"
+        android:layout_height="@dimen/overlay_cover_size"
         android:scaleType="centerCrop" />
 
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_marginStart="12dp">
+        android:layout_marginStart="@dimen/spacing_lg">
 
         <TextView
             android:id="@+id/overlay_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
+            android:textColor="@color/text_primary"
+            android:textSize="@dimen/text_size_xl"
             android:textStyle="bold"
             android:maxLines="1"
             android:ellipsize="end" />
@@ -32,8 +32,8 @@
             android:id="@+id/overlay_artist"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#DDDDDD"
-            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            android:textSize="@dimen/text_size_body"
             android:maxLines="1"
             android:ellipsize="end" />
 
@@ -41,8 +41,8 @@
             android:id="@+id/overlay_album"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#BBBBBB"
-            android:textSize="13sp"
+            android:textColor="@color/text_tertiary"
+            android:textSize="@dimen/text_size_sm"
             android:maxLines="1"
             android:ellipsize="end" />
 
