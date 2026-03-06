@@ -24,13 +24,13 @@ class PlaylistManager(private val context: Context) {
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private val _songs = mutableListOf<Song>()
+    private var _songs = mutableListOf<Song>()
     val songs: List<Song> get() = _songs
 
-    private val _folders = mutableListOf<PlaylistFolder>()
+    private var _folders = mutableListOf<PlaylistFolder>()
     val folders: List<PlaylistFolder> get() = _folders
 
-    private val _foldersByPath = HashMap<String, PlaylistFolder>()
+    private var _foldersByPath = HashMap<String, PlaylistFolder>()
     val foldersByPath: Map<String, PlaylistFolder> get() = _foldersByPath
 
     var currentIndex: Int = 0
@@ -47,33 +47,39 @@ class PlaylistManager(private val context: Context) {
 
     fun scanFolder(treeUri: Uri) {
         prefs.edit().putString(KEY_FOLDER_URI, treeUri.toString()).apply()
-        _songs.clear()
-        _folders.clear()
-        _foldersByPath.clear()
+
+        // Build into local collections so any thread holding the old _songs/_folders
+        // reference continues to see a consistent, complete list until we atomically swap.
+        val newSongs = mutableListOf<Song>()
+        val newFolders = mutableListOf<PlaylistFolder>()
+        val newFoldersByPath = HashMap<String, PlaylistFolder>()
 
         val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
         val rootName = queryDisplayName(treeUri, rootDocId) ?: "Music"
-        scanTree(treeUri, rootDocId, rootName, rootName)
+        scanTree(treeUri, rootDocId, rootName, rootName, newSongs, newFolders, newFoldersByPath)
 
-        _folders.sortBy { it.name }
-        _folders.forEach { folder ->
-            folder.songs.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { _songs[it].displayName })
+        newFolders.sortBy { it.name }
+        newFolders.forEach { folder ->
+            folder.songs.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { newSongs[it].displayName })
         }
 
-        // Rebuild _songs in display order so index-based navigation follows display order
+        // Rebuild newSongs in display order so index-based navigation follows display order
         val reorderedSongs = mutableListOf<Song>()
-        for (folder in _folders) {
+        for (folder in newFolders) {
             val newIndices = mutableListOf<Int>()
             for (oldIndex in folder.songs) {
                 newIndices.add(reorderedSongs.size)
-                reorderedSongs.add(_songs[oldIndex])
+                reorderedSongs.add(newSongs[oldIndex])
             }
             folder.songs.clear()
             folder.songs.addAll(newIndices)
         }
-        _songs.clear()
-        _songs.addAll(reorderedSongs)
 
+        // Atomically publish — JVM guarantees reference assignments are atomic, so any
+        // thread that already captured the old _songs reference keeps seeing intact data.
+        _songs = reorderedSongs
+        _folders = newFolders
+        _foldersByPath = newFoldersByPath
         currentIndex = 0
     }
 
@@ -86,7 +92,15 @@ class PlaylistManager(private val context: Context) {
         return null
     }
 
-    private fun scanTree(treeUri: Uri, parentDocId: String, folderDisplayName: String, parentPath: String) {
+    private fun scanTree(
+        treeUri: Uri,
+        parentDocId: String,
+        folderDisplayName: String,
+        parentPath: String,
+        outSongs: MutableList<Song>,
+        outFolders: MutableList<PlaylistFolder>,
+        outFoldersByPath: HashMap<String, PlaylistFolder>
+    ) {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -120,13 +134,13 @@ class PlaylistManager(private val context: Context) {
         if (audioFiles.isNotEmpty()) {
             val coverUri = coverDocId?.let { DocumentsContract.buildDocumentUriUsingTree(treeUri, it) }
             val folder = PlaylistFolder(name = folderDisplayName, path = parentPath, coverUri = coverUri)
-            _folders.add(folder)
-            _foldersByPath[parentPath] = folder
+            outFolders.add(folder)
+            outFoldersByPath[parentPath] = folder
 
             for ((docId, name, lastMod) in audioFiles) {
-                val songIndex = _songs.size
+                val songIndex = outSongs.size
                 val songUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
-                _songs.add(
+                outSongs.add(
                     Song(
                         uri = songUri,
                         displayName = name,
@@ -142,7 +156,7 @@ class PlaylistManager(private val context: Context) {
 
         for ((docId, name) in subDirs) {
             val subPath = "$parentPath/$name"
-            scanTree(treeUri, docId, name, subPath)
+            scanTree(treeUri, docId, name, subPath, outSongs, outFolders, outFoldersByPath)
         }
     }
 
