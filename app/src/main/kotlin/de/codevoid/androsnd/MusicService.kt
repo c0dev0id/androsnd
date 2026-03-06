@@ -92,8 +92,6 @@ class MusicService : MediaBrowserServiceCompat() {
         private set
     var currentMetadata: SongMetadata? = null
         private set
-    private var previousCoverArt: android.graphics.Bitmap? = null
-
     private var artVersion = 0L
     private var isDucking = false
 
@@ -399,10 +397,7 @@ class MusicService : MediaBrowserServiceCompat() {
         }
         mediaPlayer = null
         isPlaying = false
-        currentMetadata?.coverArt?.recycle()
-        previousCoverArt?.recycle()
         currentMetadata = null
-        previousCoverArt = null
         stopProgressUpdates()
         updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
         broadcastState()
@@ -504,8 +499,6 @@ class MusicService : MediaBrowserServiceCompat() {
                     buildQueueItems(capturedArtVersion, curIdx, nextIdx, song, nextSong, metadata)
                 } else null
                 handler.post {
-                    previousCoverArt?.recycle()
-                    previousCoverArt = currentMetadata?.coverArt
                     currentMetadata = metadata
                     updateMediaSessionMetadata(metadata)
                     if (queue != null) {
@@ -719,8 +712,6 @@ class MusicService : MediaBrowserServiceCompat() {
 
         handler.post {
             if (isCurrentSong && currentMetadata == null) {
-                previousCoverArt?.recycle()
-                previousCoverArt = currentMetadata?.coverArt
                 currentMetadata = metadata
                 updateMediaSessionMetadata(metadata)
                 updateNotification()
@@ -1036,10 +1027,7 @@ class MusicService : MediaBrowserServiceCompat() {
         stopProgressUpdates()
         mediaPlayer?.release()
         mediaPlayer = null
-        currentMetadata?.coverArt?.recycle()
-        previousCoverArt?.recycle()
         currentMetadata = null
-        previousCoverArt = null
         mediaSession.release()
         overlayToastManager.dismiss()
         audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
