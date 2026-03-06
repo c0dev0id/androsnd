@@ -9,10 +9,10 @@
     android:gravity="center_vertical">
 
     <ImageView
-        android:layout_width="28dp"
-        android:layout_height="28dp"
-        android:src="@android:drawable/ic_menu_agenda"
-        android:layout_marginEnd="8dp" />
+        android:layout_width="@dimen/playlist_folder_icon_size"
+        android:layout_height="@dimen/playlist_folder_icon_size"
+        android:src="@drawable/ic_folder"
+        android:layout_marginEnd="@dimen/spacing_md" />
 
     <TextView
         android:id="@+id/folder_name"
