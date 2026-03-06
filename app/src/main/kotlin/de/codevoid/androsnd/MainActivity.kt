@@ -683,6 +683,8 @@ class MainActivity : AppCompatActivity() {
             lastKnownPlaylistIndex = pm.currentIndex
             lastKnownSongCount = pm.songs.size
             playlistAdapter.submitData(pm.folders, pm.songs, pm.currentIndex)
+            val maxPos = (playlistAdapter.itemCount - 1).coerceAtLeast(0)
+            if (playlistFocusPos > maxPos) playlistFocusPos = maxPos
         }
     }
 
@@ -1173,7 +1175,7 @@ class MainActivity : AppCompatActivity() {
 
         fun submitData(folders: List<PlaylistFolder>, songs: List<Song>, currentIdx: Int) {
             items.clear()
-            this.songs = songs
+            this.songs = songs.toList()   // defensive copy — adapter owns its own snapshot
             metadataCache.clear()
             currentSongIndex = currentIdx
             for ((fi, folder) in folders.withIndex()) {
@@ -1192,7 +1194,7 @@ class MainActivity : AppCompatActivity() {
             if (pos >= 0) notifyItemChanged(pos)
         }
 
-        override fun getItemViewType(position: Int) = items[position].type
+        override fun getItemViewType(position: Int) = items.getOrNull(position)?.type ?: TYPE_SONG
         override fun getItemCount() = items.size
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
@@ -1207,7 +1209,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            val item = items[position]
+            val item = items.getOrNull(position) ?: return
             val isFocused = position == focusedPos
             when (holder) {
                 is FolderViewHolder -> {
