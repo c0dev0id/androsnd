@@ -13,6 +13,13 @@ class PlaylistManager(private val context: Context) {
         private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_FOLDER_URI = "folder_uri"
         private val AUDIO_EXTENSIONS = setOf("mp3", "ogg", "flac", "aac", "m4a", "opus")
+        private val COVER_IMAGE_NAMES = setOf(
+            "cover.jpg", "cover.jpeg", "cover.png",
+            "folder.jpg", "folder.jpeg", "folder.png",
+            "artwork.jpg", "artwork.jpeg", "artwork.png",
+            "album.jpg", "album.jpeg", "album.png",
+            "front.jpg", "front.jpeg", "front.png"
+        )
     }
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -22,6 +29,9 @@ class PlaylistManager(private val context: Context) {
 
     private val _folders = mutableListOf<PlaylistFolder>()
     val folders: List<PlaylistFolder> get() = _folders
+
+    private val _foldersByPath = HashMap<String, PlaylistFolder>()
+    val foldersByPath: Map<String, PlaylistFolder> get() = _foldersByPath
 
     var currentIndex: Int = 0
         private set
@@ -39,6 +49,7 @@ class PlaylistManager(private val context: Context) {
         prefs.edit().putString(KEY_FOLDER_URI, treeUri.toString()).apply()
         _songs.clear()
         _folders.clear()
+        _foldersByPath.clear()
 
         val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
         val rootName = queryDisplayName(treeUri, rootDocId) ?: "Music"
@@ -80,42 +91,49 @@ class PlaylistManager(private val context: Context) {
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
             DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-            DocumentsContract.Document.COLUMN_MIME_TYPE
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED
         )
 
-        val audioFiles = mutableListOf<Pair<String, String>>() // docId to displayName
+        val audioFiles = mutableListOf<Triple<String, String, Long>>() // docId, displayName, lastModified
         val subDirs = mutableListOf<Pair<String, String>>() // docId to displayName
+        var coverDocId: String? = null
 
         context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
             val idIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
             val nameIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
             val mimeIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+            val lastModIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
             while (cursor.moveToNext()) {
                 val docId = cursor.getString(idIdx) ?: continue
                 val name = cursor.getString(nameIdx) ?: continue
                 val mime = cursor.getString(mimeIdx) ?: ""
-                if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
-                    subDirs.add(docId to name)
-                } else if (isAudioFile(name)) {
-                    audioFiles.add(docId to name)
+                val lastMod = if (lastModIdx >= 0) cursor.getLong(lastModIdx) else 0L
+                when {
+                    mime == DocumentsContract.Document.MIME_TYPE_DIR -> subDirs.add(docId to name)
+                    isAudioFile(name) -> audioFiles.add(Triple(docId, name, lastMod))
+                    isCoverImage(name) -> coverDocId = docId
                 }
             }
         }
 
         if (audioFiles.isNotEmpty()) {
-            val folder = PlaylistFolder(name = folderDisplayName, path = parentPath)
+            val coverUri = coverDocId?.let { DocumentsContract.buildDocumentUriUsingTree(treeUri, it) }
+            val folder = PlaylistFolder(name = folderDisplayName, path = parentPath, coverUri = coverUri)
             _folders.add(folder)
+            _foldersByPath[parentPath] = folder
 
-            for ((docId, name) in audioFiles) {
+            for ((docId, name, lastMod) in audioFiles) {
                 val songIndex = _songs.size
                 val songUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
                 _songs.add(
                     Song(
                         uri = songUri,
-                        displayName = name ?: "Unknown",
+                        displayName = name,
                         folderPath = parentPath,
                         folderName = folderDisplayName,
-                        duration = 0L
+                        duration = 0L,
+                        lastModified = lastMod
                     )
                 )
                 folder.songs.add(songIndex)
@@ -132,6 +150,8 @@ class PlaylistManager(private val context: Context) {
         val ext = name.substringAfterLast('.', "").lowercase()
         return ext in AUDIO_EXTENSIONS
     }
+
+    private fun isCoverImage(name: String): Boolean = name.lowercase() in COVER_IMAGE_NAMES
 
     fun getCurrentSong(): Song? = songs.getOrNull(currentIndex)
 
