@@ -53,6 +53,8 @@ class MusicService : MediaBrowserServiceCompat() {
         const val BROADCAST_STATE_CHANGED = "de.codevoid.androsnd.STATE_CHANGED"
         const val BROADCAST_SCAN_STARTED = "de.codevoid.androsnd.SCAN_STARTED"
         const val BROADCAST_SCAN_COMPLETED = "de.codevoid.androsnd.SCAN_COMPLETED"
+        const val BROADCAST_METADATA_UPDATED = "de.codevoid.androsnd.METADATA_UPDATED"
+        const val EXTRA_METADATA_SONG_INDEX = "song_index"
 
         private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_APP_VOLUME = "app_volume"
@@ -79,6 +81,7 @@ class MusicService : MediaBrowserServiceCompat() {
     private val handler = Handler(Looper.getMainLooper())
     private var progressRunnable: Runnable? = null
     private val scanExecutor = Executors.newSingleThreadExecutor()
+    @Volatile private var metadataExecutor = Executors.newSingleThreadExecutor()
 
     var isPlaying: Boolean = false
         private set
@@ -638,6 +641,43 @@ class MusicService : MediaBrowserServiceCompat() {
         }
     }
 
+    private fun startMetadataEnrichment() {
+        val songs = playlistManager.songs
+        if (songs.isEmpty()) return
+        val currentIdx = playlistManager.currentIndex
+
+        metadataExecutor.execute {
+            // Priority 1: currently playing / selected song
+            enrichSongMetadata(currentIdx, songs, isCurrentSong = true)
+
+            // Priority 2 & 3: all other songs in order
+            songs.indices
+                .filter { it != currentIdx }
+                .forEach { idx -> enrichSongMetadata(idx, songs, isCurrentSong = false) }
+        }
+    }
+
+    private fun enrichSongMetadata(idx: Int, songs: List<Song>, isCurrentSong: Boolean) {
+        val song = songs.getOrNull(idx) ?: return
+        val metadata = extractMetadata(song)
+        cacheSongArtIfNeeded(idx, song)
+
+        handler.post {
+            if (isCurrentSong && currentMetadata == null) {
+                previousCoverArt?.recycle()
+                previousCoverArt = currentMetadata?.coverArt
+                currentMetadata = metadata
+                updateMediaSessionMetadata(metadata)
+                updateNotification()
+                broadcastState()
+            }
+            val intent = Intent(BROADCAST_METADATA_UPDATED).apply {
+                putExtra(EXTRA_METADATA_SONG_INDEX, idx)
+            }
+            broadcastManager.sendBroadcast(intent)
+        }
+    }
+
     private fun updateMediaSessionMetadata(metadata: SongMetadata) {
         val builder = MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, playlistManager.currentIndex.toString())
@@ -904,6 +944,9 @@ class MusicService : MediaBrowserServiceCompat() {
         isPlaying = false
         stopProgressUpdates()
 
+        metadataExecutor.shutdownNow()
+        metadataExecutor = Executors.newSingleThreadExecutor()
+
         isScanning = true
         broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_STARTED))
         scanExecutor.execute {
@@ -921,7 +964,7 @@ class MusicService : MediaBrowserServiceCompat() {
                         Log.w(TAG, "Failed to update media session queue", e)
                     }
                     notifyChildrenChanged("androsnd_root")
-                    preCacheSongArt()
+                    startMetadataEnrichment()
                     broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
                     broadcastState()
                 }
@@ -945,5 +988,6 @@ class MusicService : MediaBrowserServiceCompat() {
         overlayToastManager.dismiss()
         audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         scanExecutor.shutdown()
+        metadataExecutor.shutdown()
     }
 }
