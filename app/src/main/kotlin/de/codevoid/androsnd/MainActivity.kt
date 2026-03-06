@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var timeTotalView: TextView
     private lateinit var playlistRecycler: RecyclerView
     private lateinit var loadingIndicator: View
+    private lateinit var metadataCounterView: TextView
     private lateinit var btnPlay: MaterialButton
     private lateinit var btnPrev: MaterialButton
     private lateinit var btnNext: MaterialButton
@@ -114,6 +115,7 @@ class MainActivity : AppCompatActivity() {
     private var isUserSeekBarTouch = false
     private var lastKnownPlaylistIndex = -1
     private var lastKnownSongCount = -1
+    private var metadataLoadedCount = 0
 
     private var accentColor: Int = Color.parseColor("#F57C00")
     private val inactiveColor: Int = Color.parseColor("#444444")
@@ -172,10 +174,42 @@ class MainActivity : AppCompatActivity() {
     private val scanReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                MusicService.BROADCAST_SCAN_STARTED -> showLoading()
+                MusicService.BROADCAST_SCAN_STARTED -> {
+                    metadataLoadedCount = 0
+                    metadataCounterView.visibility = View.GONE
+                    showLoading()
+                }
                 MusicService.BROADCAST_SCAN_COMPLETED -> {
                     hideLoading()
                     updateUI()
+                    val total = musicService?.playlistManager?.songs?.size ?: 0
+                    if (total > 0) {
+                        metadataLoadedCount = 0
+                        metadataCounterView.text = getString(R.string.files_loaded, 0, total)
+                        metadataCounterView.visibility = View.VISIBLE
+                    }
+                }
+            }
+        }
+    }
+
+    private val metadataReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == MusicService.BROADCAST_METADATA_UPDATED) {
+                val idx = intent.getIntExtra(MusicService.EXTRA_METADATA_SONG_INDEX, -1)
+                if (idx >= 0) {
+                    playlistAdapter.invalidateMetadataForSong(idx)
+                }
+                val svc = musicService ?: return
+                if (idx == svc.playlistManager.currentIndex) {
+                    updateUI()
+                }
+                val total = svc.playlistManager.songs.size
+                metadataLoadedCount = (metadataLoadedCount + 1).coerceAtMost(total)
+                if (metadataLoadedCount >= total) {
+                    metadataCounterView.visibility = View.GONE
+                } else {
+                    metadataCounterView.text = getString(R.string.files_loaded, metadataLoadedCount, total)
                 }
             }
         }
@@ -271,6 +305,11 @@ class MainActivity : AppCompatActivity() {
             addAction(MusicService.BROADCAST_SCAN_COMPLETED)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(scanReceiver, scanFilter)
+
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            metadataReceiver,
+            IntentFilter(MusicService.BROADCAST_METADATA_UPDATED)
+        )
     }
 
     private fun bindViews() {
@@ -283,6 +322,7 @@ class MainActivity : AppCompatActivity() {
         timeTotalView = findViewById(R.id.time_total)
         playlistRecycler = findViewById(R.id.playlist_recycler)
         loadingIndicator = findViewById(R.id.loading_indicator)
+        metadataCounterView = findViewById(R.id.metadata_counter)
         btnPlay = findViewById(R.id.btn_play)
         btnPrev = findViewById(R.id.btn_prev)
         btnNext = findViewById(R.id.btn_next)
@@ -1070,6 +1110,7 @@ class MainActivity : AppCompatActivity() {
         musicService?.dismissOverlayDemo()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(stateReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(scanReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(metadataReceiver)
         if (isBound) {
             unbindService(serviceConnection)
             isBound = false
@@ -1143,6 +1184,12 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             notifyDataSetChanged()
+        }
+
+        fun invalidateMetadataForSong(songIndex: Int) {
+            metadataCache.remove(songIndex)
+            val pos = items.indexOfFirst { it.type == TYPE_SONG && it.songIndex == songIndex }
+            if (pos >= 0) notifyItemChanged(pos)
         }
 
         override fun getItemViewType(position: Int) = items[position].type
