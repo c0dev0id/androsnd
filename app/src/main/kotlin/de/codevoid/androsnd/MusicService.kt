@@ -83,6 +83,9 @@ class MusicService : MediaBrowserServiceCompat() {
     private val scanExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var metadataExecutor = Executors.newSingleThreadExecutor()
 
+    private lateinit var metadataCache: MetadataCache
+    private val folderCoverBitmaps = HashMap<String, android.graphics.Bitmap?>()
+
     var isPlaying: Boolean = false
         private set
     var isScanning: Boolean = false
@@ -131,6 +134,7 @@ class MusicService : MediaBrowserServiceCompat() {
     override fun onCreate() {
         super.onCreate()
         playlistManager = PlaylistManager(this)
+        metadataCache = MetadataCache(this)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         broadcastManager = LocalBroadcastManager.getInstance(this)
         overlayToastManager = OverlayToastManager(this)
@@ -556,6 +560,14 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     fun extractMetadata(song: Song): SongMetadata {
+        val folderCover = getFolderCoverForSong(song)
+        val uriString = song.uri.toString()
+
+        // Return cached text metadata combined with the (possibly cached) folder cover bitmap
+        metadataCache.get(uriString, song.lastModified)?.let { cached ->
+            return SongMetadata(cached.title, cached.artist, cached.album, cached.duration, folderCover)
+        }
+
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(applicationContext, song.uri)
@@ -563,14 +575,35 @@ class MusicService : MediaBrowserServiceCompat() {
             val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
             val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
             val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            val coverArt = retriever.embeddedPicture?.let { decodeBitmapWithSampling(it) }
+            // Only read embedded picture when no folder cover is available
+            val coverArt = folderCover ?: retriever.embeddedPicture?.let { decodeBitmapWithSampling(it) }
+            metadataCache.put(uriString, MetadataCache.Entry(title, artist, album, duration, song.lastModified))
             SongMetadata(title, artist, album, duration, coverArt)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to extract metadata for ${song.displayName}", e)
-            SongMetadata(song.displayName, "", "", 0L, null)
+            SongMetadata(song.displayName, "", "", 0L, folderCover)
         } finally {
             retriever.release()
         }
+    }
+
+    @Synchronized
+    private fun getFolderCoverForSong(song: Song): android.graphics.Bitmap? {
+        val folderPath = song.folderPath
+        if (folderCoverBitmaps.containsKey(folderPath)) return folderCoverBitmaps[folderPath]
+        val coverUri = playlistManager.foldersByPath[folderPath]?.coverUri
+        val bitmap = if (coverUri != null) {
+            try {
+                contentResolver.openInputStream(coverUri)?.use { stream ->
+                    decodeBitmapWithSampling(stream.readBytes())
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load folder cover for $folderPath", e)
+                null
+            }
+        } else null
+        folderCoverBitmaps[folderPath] = bitmap
+        return bitmap
     }
 
     private fun decodeBitmapWithSampling(bytes: ByteArray, maxPx: Int = 512): android.graphics.Bitmap? {
@@ -616,6 +649,20 @@ class MusicService : MediaBrowserServiceCompat() {
     private fun cacheSongArtIfNeeded(index: Int, song: Song) {
         val file = songArtFile(index)
         if (file.exists()) return
+        val coverUri = playlistManager.foldersByPath[song.folderPath]?.coverUri
+        if (coverUri != null) {
+            try {
+                contentResolver.openInputStream(coverUri)?.use { stream ->
+                    val original = decodeBitmapWithSampling(stream.readBytes()) ?: return
+                    val scaled = scaleBitmapForSession(original)
+                    original.recycle()
+                    saveArtToFile(scaled, "song_art_$index.jpg")
+                    scaled.recycle()
+                }
+            } catch (_: Exception) {
+            }
+            return
+        }
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(applicationContext, song.uri)
@@ -647,18 +694,26 @@ class MusicService : MediaBrowserServiceCompat() {
         val currentIdx = playlistManager.currentIndex
 
         metadataExecutor.execute {
+            val usedKeys = mutableSetOf<String>()
+
             // Priority 1: currently playing / selected song
-            enrichSongMetadata(currentIdx, songs, isCurrentSong = true)
+            enrichSongMetadata(currentIdx, songs, isCurrentSong = true, usedKeys)
 
             // Priority 2 & 3: all other songs in order
             songs.indices
                 .filter { it != currentIdx }
-                .forEach { idx -> enrichSongMetadata(idx, songs, isCurrentSong = false) }
+                .forEach { idx -> enrichSongMetadata(idx, songs, isCurrentSong = false, usedKeys) }
+
+            // Remove stale cache entries and persist
+            metadataCache.cleanup(usedKeys)
+            // Clear in-memory folder cover bitmaps to free memory
+            synchronized(this@MusicService) { folderCoverBitmaps.clear() }
         }
     }
 
-    private fun enrichSongMetadata(idx: Int, songs: List<Song>, isCurrentSong: Boolean) {
+    private fun enrichSongMetadata(idx: Int, songs: List<Song>, isCurrentSong: Boolean, usedKeys: MutableSet<String>) {
         val song = songs.getOrNull(idx) ?: return
+        usedKeys.add(song.uri.toString())
         val metadata = extractMetadata(song)
         cacheSongArtIfNeeded(idx, song)
 
@@ -946,6 +1001,7 @@ class MusicService : MediaBrowserServiceCompat() {
 
         metadataExecutor.shutdownNow()
         metadataExecutor = Executors.newSingleThreadExecutor()
+        synchronized(this) { folderCoverBitmaps.clear() }
 
         isScanning = true
         broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_STARTED))
