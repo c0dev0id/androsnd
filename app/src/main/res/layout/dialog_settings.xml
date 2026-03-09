@@ -160,8 +160,19 @@
             android:id="@+id/btn_folder"
             android:layout_width="match_parent"
             android:layout_height="48dp"
-            android:layout_marginBottom="16dp"
+            android:layout_marginBottom="8dp"
             android:text="@string/select_folder"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            style="@style/Widget.Androsnd.Button.Outlined" />
+
+        <!-- Check for Updates -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_check_update"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginBottom="16dp"
+            android:text="@string/update_check_button"
             android:textSize="14sp"
             android:textStyle="bold"
             style="@style/Widget.Androsnd.Button.Outlined" />

@@ -39,4 +39,20 @@
     <string name="wizard_current_key">Currently mapped: keycode %1$d</string>
     <string name="wizard_mapping_saved">Key mapping saved</string>
     <string name="wizard_skip">Skip (keep unmapped)</string>
+
+    <!-- Update checker -->
+    <string name="update_check_button">Check for Updates</string>
+    <string name="update_checking">Checking for updates&#8230;</string>
+    <string name="update_dialog_title">Software Update</string>
+    <string name="update_installed_version">Installed: %1$s</string>
+    <string name="update_available_version">Available: %1$s</string>
+    <string name="update_no_update">You are up to date.</string>
+    <string name="update_available">A new version is available.</string>
+    <string name="update_btn_update">Update</string>
+    <string name="update_btn_cancel">Cancel</string>
+    <string name="update_btn_close">Close</string>
+    <string name="update_allow_dev">Allow development versions</string>
+    <string name="update_downloading">Downloading update&#8230;</string>
+    <string name="update_error">Could not check for updates: %1$s</string>
+    <string name="update_install_unavailable">Please enable \"Install unknown apps\" for this app in Settings.</string>
 </resources>

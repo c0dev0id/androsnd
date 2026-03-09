@@ -44,6 +44,10 @@ import android.view.KeyEvent
 import android.widget.LinearLayout
 import android.view.Gravity
 import android.widget.Toast
+import android.app.AlertDialog
+import android.app.DownloadManager
+import android.widget.CheckBox
+import android.widget.ProgressBar
 
 class MainActivity : AppCompatActivity() {
 
@@ -98,6 +102,8 @@ class MainActivity : AppCompatActivity() {
 
     // Focus frame is hidden until the first remote key is pressed
     private var hasReceivedRemoteKey = false
+
+    private lateinit var updateChecker: UpdateChecker
 
     // Key-repeat state for DPAD navigation (accelerating, used for up/down)
     private val navRepeatHandler = Handler(Looper.getMainLooper())
@@ -279,6 +285,7 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
+        updateChecker = UpdateChecker(this)
         bindViews()
         setupRecyclerView()
         setupButtons()
@@ -511,6 +518,11 @@ class MainActivity : AppCompatActivity() {
             openFolderPicker()
         }
 
+        // Check for Updates
+        settingsPanel.findViewById<MaterialButton>(R.id.btn_check_update).setOnClickListener {
+            showUpdateDialog()
+        }
+
         // Remote Control: preset toggle + map button
         val toggleRemote = settingsPanel.findViewById<MaterialButtonToggleGroup>(R.id.toggle_remote_preset)
         toggleRemote.addOnButtonCheckedListener { _, checkedId, isChecked ->
@@ -540,6 +552,231 @@ class MainActivity : AppCompatActivity() {
         }
 
         updateFocusVisual()
+    }
+
+    // ── Update checker ────────────────────────────────────────────────────────
+
+    private fun showUpdateDialog() {
+        val installedVersion = updateChecker.installedVersion()
+
+        // Show a lightweight "Checking…" dialog while the network call runs
+        val checkingDialog = AlertDialog.Builder(this)
+            .setTitle(R.string.update_dialog_title)
+            .setMessage(R.string.update_checking)
+            .setCancelable(false)
+            .create()
+        checkingDialog.show()
+
+        // We hold the current devMode preference across re-checks
+        val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+        val allowDevInitial = prefs.getBoolean("update_allow_dev", false)
+
+        fun doCheck(includePrerelease: Boolean) {
+            updateChecker.fetchRelease(
+                includePrerelease = includePrerelease,
+                onResult = { release ->
+                    checkingDialog.dismiss()
+                    showUpdateResultDialog(installedVersion, release, includePrerelease)
+                },
+                onError = { errorMsg ->
+                    checkingDialog.dismiss()
+                    AlertDialog.Builder(this)
+                        .setTitle(R.string.update_dialog_title)
+                        .setMessage(getString(R.string.update_error, errorMsg))
+                        .setPositiveButton(R.string.update_btn_close, null)
+                        .show()
+                }
+            )
+        }
+
+        doCheck(allowDevInitial)
+    }
+
+    private fun showUpdateResultDialog(
+        installedVersion: String,
+        release: UpdateChecker.ReleaseInfo,
+        initialDevMode: Boolean
+    ) {
+        val hasUpdate = updateChecker.isNewer(release.tagName, installedVersion)
+        val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+
+        // Build a simple custom view: two status TextViews + a CheckBox
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad * 2, pad, pad * 2, pad / 2)
+        }
+
+        layout.addView(TextView(this).apply {
+            text = if (hasUpdate) getString(R.string.update_available)
+                   else getString(R.string.update_no_update)
+            textSize = 15f
+            setTextColor(if (hasUpdate) accentColor else currentTextColor())
+        })
+
+        layout.addView(TextView(this).apply {
+            text = getString(R.string.update_installed_version, installedVersion)
+            textSize = 14f
+            val topPad = (8 * resources.displayMetrics.density).toInt()
+            setPadding(0, topPad, 0, 0)
+        })
+
+        layout.addView(TextView(this).apply {
+            text = getString(R.string.update_available_version, release.tagName)
+            textSize = 14f
+        })
+
+        val cbDev = CheckBox(this).apply {
+            text = getString(R.string.update_allow_dev)
+            isChecked = initialDevMode
+            val topPad = (12 * resources.displayMetrics.density).toInt()
+            setPadding(0, topPad, 0, 0)
+            layout.addView(this)
+        }
+
+        val builder = AlertDialog.Builder(this)
+            .setTitle(R.string.update_dialog_title)
+            .setView(layout)
+            .setCancelable(true)
+
+        if (hasUpdate && release.apkDownloadUrl != null) {
+            builder.setPositiveButton(R.string.update_btn_update, null)
+        }
+        builder.setNegativeButton(if (hasUpdate) R.string.update_btn_cancel else R.string.update_btn_close, null)
+
+        val dialog = builder.create()
+
+        // We handle the positive button manually to avoid auto-dismiss before we're ready
+        dialog.setOnShowListener {
+            val updateBtn = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            updateBtn?.setOnClickListener {
+                prefs.edit().putBoolean("update_allow_dev", cbDev.isChecked).apply()
+                dialog.dismiss()
+                showDownloadProgressDialog(release)
+            }
+        }
+
+        // When checkbox changes: save preference, dismiss this dialog, re-check
+        cbDev.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("update_allow_dev", isChecked).apply()
+            dialog.dismiss()
+
+            val checkingAgain = AlertDialog.Builder(this)
+                .setTitle(R.string.update_dialog_title)
+                .setMessage(R.string.update_checking)
+                .setCancelable(false)
+                .create()
+            checkingAgain.show()
+
+            updateChecker.fetchRelease(
+                includePrerelease = isChecked,
+                onResult = { newRelease ->
+                    checkingAgain.dismiss()
+                    showUpdateResultDialog(installedVersion, newRelease, isChecked)
+                },
+                onError = { errorMsg ->
+                    checkingAgain.dismiss()
+                    AlertDialog.Builder(this)
+                        .setTitle(R.string.update_dialog_title)
+                        .setMessage(getString(R.string.update_error, errorMsg))
+                        .setPositiveButton(R.string.update_btn_close, null)
+                        .show()
+                }
+            )
+        }
+
+        dialog.show()
+    }
+
+    private fun currentTextColor(): Int {
+        val attrs = intArrayOf(android.R.attr.textColorPrimary)
+        val ta = obtainStyledAttributes(attrs)
+        val color = ta.getColor(0, android.graphics.Color.WHITE)
+        ta.recycle()
+        return color
+    }
+
+    private fun showDownloadProgressDialog(release: UpdateChecker.ReleaseInfo) {
+        val apkUrl = release.apkDownloadUrl ?: return
+        val fileName = "androsnd-${release.tagName}.apk"
+
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad * 2, pad, pad * 2, pad)
+        }
+
+        layout.addView(TextView(this).apply {
+            text = getString(R.string.update_downloading)
+            textSize = 14f
+        })
+
+        val progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = false
+            max = 100
+            progress = 0
+            val topPad = (12 * resources.displayMetrics.density).toInt()
+            setPadding(0, topPad, 0, 0)
+            layout.addView(this)
+        }
+
+        val tvPercent = TextView(this).apply {
+            text = "0%"
+            textSize = 13f
+            gravity = Gravity.END
+            layout.addView(this)
+        }
+
+        var downloadId = -1L
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.update_dialog_title)
+            .setView(layout)
+            .setCancelable(false)
+            .setNegativeButton(R.string.update_btn_cancel) { _, _ ->
+                if (downloadId >= 0) updateChecker.cancelDownload(downloadId)
+            }
+            .create()
+
+        dialog.show()
+
+        // Check install-unknown-apps permission before starting download
+        if (!packageManager.canRequestPackageInstalls()) {
+            dialog.dismiss()
+            AlertDialog.Builder(this)
+                .setTitle(R.string.update_dialog_title)
+                .setMessage(R.string.update_install_unavailable)
+                .setPositiveButton("Open Settings") { _, _ ->
+                    val intent = android.content.Intent(
+                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:${packageName}")
+                    )
+                    startActivity(intent)
+                }
+                .setNegativeButton(R.string.update_btn_cancel, null)
+                .show()
+            return
+        }
+
+        downloadId = updateChecker.downloadApk(
+            url = apkUrl,
+            fileName = fileName,
+            onProgress = { percent ->
+                progressBar.progress = percent
+                tvPercent.text = "$percent%"
+            },
+            onComplete = { id ->
+                dialog.dismiss()
+                updateChecker.installApk(id)
+            },
+            onError = { errorMsg ->
+                dialog.dismiss()
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.update_dialog_title)
+                    .setMessage(getString(R.string.update_error, errorMsg))
+                    .setPositiveButton(R.string.update_btn_close, null)
+                    .show()
+            }
+        )
     }
 
     private fun toggleSettings() {
@@ -580,6 +817,7 @@ class MainActivity : AppCompatActivity() {
                 btn.strokeColor = accentCSL
             }
         settingsPanel.findViewById<MaterialButton>(R.id.btn_folder)?.strokeColor = accentCSL
+        settingsPanel.findViewById<MaterialButton>(R.id.btn_check_update)?.strokeColor = accentCSL
         settingsPanel.findViewById<MaterialButton>(R.id.btn_map_remote)?.strokeColor = accentCSL
         listOf(R.id.btn_preset_dmd, R.id.btn_preset_custom)
             .mapNotNull { settingsPanel.findViewById<MaterialButton>(it) }
