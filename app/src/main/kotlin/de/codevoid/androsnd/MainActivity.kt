@@ -46,7 +46,6 @@ import android.view.Gravity
 import android.widget.Toast
 import android.app.AlertDialog
 import android.app.DownloadManager
-import android.widget.CheckBox
 import android.widget.ProgressBar
 
 class MainActivity : AppCompatActivity() {
@@ -558,6 +557,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showUpdateDialog() {
         val installedVersion = updateChecker.installedVersion()
+        val isDevInstall = updateChecker.isDevVersion()
 
         // Show a lightweight "Checking…" dialog while the network call runs
         val checkingDialog = AlertDialog.Builder(this)
@@ -567,40 +567,30 @@ class MainActivity : AppCompatActivity() {
             .create()
         checkingDialog.show()
 
-        // We hold the current devMode preference across re-checks
-        val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-        val allowDevInitial = prefs.getBoolean("update_allow_dev", false)
-
-        fun doCheck(includePrerelease: Boolean) {
-            updateChecker.fetchRelease(
-                includePrerelease = includePrerelease,
-                onResult = { release ->
-                    checkingDialog.dismiss()
-                    showUpdateResultDialog(installedVersion, release, includePrerelease)
-                },
-                onError = { errorMsg ->
-                    checkingDialog.dismiss()
-                    AlertDialog.Builder(this)
-                        .setTitle(R.string.update_dialog_title)
-                        .setMessage(getString(R.string.update_error, errorMsg))
-                        .setPositiveButton(R.string.update_btn_close, null)
-                        .show()
-                }
-            )
-        }
-
-        doCheck(allowDevInitial)
+        updateChecker.fetchRelease(
+            includePrerelease = isDevInstall,
+            onResult = { release ->
+                checkingDialog.dismiss()
+                showUpdateResultDialog(installedVersion, release)
+            },
+            onError = { errorMsg ->
+                checkingDialog.dismiss()
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.update_dialog_title)
+                    .setMessage(getString(R.string.update_error, errorMsg))
+                    .setPositiveButton(R.string.update_btn_close, null)
+                    .show()
+            }
+        )
     }
 
     private fun showUpdateResultDialog(
         installedVersion: String,
-        release: UpdateChecker.ReleaseInfo,
-        initialDevMode: Boolean
+        release: UpdateChecker.ReleaseInfo
     ) {
-        val hasUpdate = updateChecker.isNewer(release.tagName, installedVersion)
-        val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+        val availableVersion = release.apkVersion ?: release.tagName
+        val hasUpdate = updateChecker.isNewer(availableVersion, installedVersion)
 
-        // Build a simple custom view: two status TextViews + a CheckBox
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val pad = (16 * resources.displayMetrics.density).toInt()
@@ -614,75 +604,39 @@ class MainActivity : AppCompatActivity() {
             setTextColor(if (hasUpdate) accentColor else currentTextColor())
         })
 
-        layout.addView(TextView(this).apply {
-            text = getString(R.string.update_installed_version, installedVersion)
-            textSize = 14f
-            val topPad = (8 * resources.displayMetrics.density).toInt()
-            setPadding(0, topPad, 0, 0)
-        })
-
-        layout.addView(TextView(this).apply {
-            text = getString(R.string.update_available_version, release.tagName)
-            textSize = 14f
-        })
-
-        val cbDev = CheckBox(this).apply {
-            text = getString(R.string.update_allow_dev)
-            isChecked = initialDevMode
-            val topPad = (12 * resources.displayMetrics.density).toInt()
-            setPadding(0, topPad, 0, 0)
-            layout.addView(this)
+        // Only show installed version if it's meaningful (not the default placeholder)
+        if (installedVersion != "1.0" && installedVersion != "dev" && installedVersion != "unknown") {
+            layout.addView(TextView(this).apply {
+                text = getString(R.string.update_installed_version, installedVersion)
+                textSize = 14f
+                val topPad = (8 * resources.displayMetrics.density).toInt()
+                setPadding(0, topPad, 0, 0)
+            })
         }
+
+        layout.addView(TextView(this).apply {
+            text = getString(R.string.update_available_version, availableVersion)
+            textSize = 14f
+        })
 
         val builder = AlertDialog.Builder(this)
             .setTitle(R.string.update_dialog_title)
             .setView(layout)
             .setCancelable(true)
 
-        if (hasUpdate && release.apkDownloadUrl != null) {
+        if (release.apkDownloadUrl != null) {
             builder.setPositiveButton(R.string.update_btn_update, null)
         }
-        builder.setNegativeButton(if (hasUpdate) R.string.update_btn_cancel else R.string.update_btn_close, null)
+        builder.setNegativeButton(R.string.update_btn_close, null)
 
         val dialog = builder.create()
 
-        // We handle the positive button manually to avoid auto-dismiss before we're ready
+        // Handle the positive button manually to avoid auto-dismiss before we're ready
         dialog.setOnShowListener {
-            val updateBtn = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-            updateBtn?.setOnClickListener {
-                prefs.edit().putBoolean("update_allow_dev", cbDev.isChecked).apply()
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setOnClickListener {
                 dialog.dismiss()
                 showDownloadProgressDialog(release)
             }
-        }
-
-        // When checkbox changes: save preference, dismiss this dialog, re-check
-        cbDev.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("update_allow_dev", isChecked).apply()
-            dialog.dismiss()
-
-            val checkingAgain = AlertDialog.Builder(this)
-                .setTitle(R.string.update_dialog_title)
-                .setMessage(R.string.update_checking)
-                .setCancelable(false)
-                .create()
-            checkingAgain.show()
-
-            updateChecker.fetchRelease(
-                includePrerelease = isChecked,
-                onResult = { newRelease ->
-                    checkingAgain.dismiss()
-                    showUpdateResultDialog(installedVersion, newRelease, isChecked)
-                },
-                onError = { errorMsg ->
-                    checkingAgain.dismiss()
-                    AlertDialog.Builder(this)
-                        .setTitle(R.string.update_dialog_title)
-                        .setMessage(getString(R.string.update_error, errorMsg))
-                        .setPositiveButton(R.string.update_btn_close, null)
-                        .show()
-                }
-            )
         }
 
         dialog.show()

@@ -51,8 +51,7 @@
     <string name="update_btn_update">Update</string>
     <string name="update_btn_cancel">Cancel</string>
     <string name="update_btn_close">Close</string>
-    <string name="update_allow_dev">Allow development versions</string>
-    <string name="update_downloading">Downloading update&#8230;</string>
+<string name="update_downloading">Downloading update&#8230;</string>
     <string name="update_error">Could not check for updates: %1$s</string>
     <string name="update_install_unavailable">Please enable \"Install unknown apps\" for this app in Settings.</string>
 </resources>
