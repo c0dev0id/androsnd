@@ -39,7 +39,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug
+        run: |
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          ./gradlew assembleDebug -PappVersionName="dev-${SHORT_SHA}"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

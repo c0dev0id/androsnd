@@ -16,7 +16,8 @@ class UpdateChecker(private val context: Context) {
     data class ReleaseInfo(
         val tagName: String,
         val isPrerelease: Boolean,
-        val apkDownloadUrl: String?
+        val apkDownloadUrl: String?,
+        val apkVersion: String?
     )
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -33,11 +34,14 @@ class UpdateChecker(private val context: Context) {
 
     fun installedVersion(): String {
         return try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "unknown"
         } catch (e: Exception) {
-            "0"
+            "unknown"
         }
     }
+
+    /** Returns true if the installed build is a development (pre-release) version. */
+    fun isDevVersion(): Boolean = installedVersion().startsWith("dev", ignoreCase = true)
 
     /** Returns true when onlineTag represents a strictly newer version than installedVersion. */
     fun isNewer(onlineTag: String, installedVersion: String): Boolean {
@@ -81,8 +85,8 @@ class UpdateChecker(private val context: Context) {
 
                 val tagName = json.optString("tag_name", "")
                 val prerelease = json.optBoolean("prerelease", false)
-                val apkUrl = findApkUrl(json)
-                mainHandler.post { onResult(ReleaseInfo(tagName, prerelease, apkUrl)) }
+                val (apkUrl, apkVersion) = findApkAsset(json)
+                mainHandler.post { onResult(ReleaseInfo(tagName, prerelease, apkUrl, apkVersion)) }
             } catch (e: Exception) {
                 mainHandler.post { onError(e.message ?: "Unknown error") }
             }
@@ -106,16 +110,19 @@ class UpdateChecker(private val context: Context) {
         return null
     }
 
-    private fun findApkUrl(release: JSONObject): String? {
-        val assets = release.optJSONArray("assets") ?: return null
+    /** Returns (downloadUrl, apkVersion) extracted from the first .apk asset, or (null, null). */
+    private fun findApkAsset(release: JSONObject): Pair<String?, String?> {
+        val assets = release.optJSONArray("assets") ?: return Pair(null, null)
         for (i in 0 until assets.length()) {
             val asset = assets.getJSONObject(i)
             val name = asset.optString("name", "")
             if (name.endsWith(".apk")) {
-                return asset.optString("browser_download_url").takeIf { it.isNotEmpty() }
+                val url = asset.optString("browser_download_url").takeIf { it.isNotEmpty() }
+                val version = name.removePrefix("androsnd-").removeSuffix(".apk").takeIf { it.isNotEmpty() }
+                return Pair(url, version)
             }
         }
-        return null
+        return Pair(null, null)
     }
 
     private fun httpGet(urlString: String): String? {
