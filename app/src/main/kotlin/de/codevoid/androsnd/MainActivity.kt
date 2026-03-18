@@ -961,11 +961,12 @@ class MainActivity : AppCompatActivity() {
     // Physical back button on other devices mirrors Button Bottom short-press
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        super.onBackPressed()
         when {
             settingsVisible -> toggleSettings()
             else            -> musicService?.handlePlayPause()
         }
+        // Do not call super — this is an always-foreground automotive app;
+        // back should never finish the activity.
     }
 
     private fun handleUp(): Boolean {
@@ -1096,7 +1097,8 @@ class MainActivity : AppCompatActivity() {
         private var currentSongIndex = -1
         private var songs: List<Song> = emptyList()
         private val metadataCache = SparseArray<SongMetadata>()
-        private val executor = Executors.newCachedThreadPool()
+        private var dataVersion = 0
+        private val executor = Executors.newFixedThreadPool(4)
         private val mainHandler = Handler(Looper.getMainLooper())
         var accentColor: Int = Color.parseColor("#F57C00")
         var focusedPos: Int = -1
@@ -1129,6 +1131,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun submitData(folders: List<PlaylistFolder>, songs: List<Song>, currentIdx: Int) {
+            dataVersion++  // invalidate all in-flight metadata loads from the previous library
             items.clear()
             this.songs = songs.toList()   // defensive copy — adapter owns its own snapshot
             metadataCache.clear()
@@ -1183,10 +1186,12 @@ class MainActivity : AppCompatActivity() {
                         val song = songs.getOrNull(item.songIndex)
                         if (song != null) {
                             val idx = item.songIndex
+                            val capturedVersion = dataVersion
                             executor.execute {
                                 val meta = extractMetadata(song)
                                     ?: SongMetadata(song.displayName, "", "", 0L, null)
                                 mainHandler.post {
+                                    if (dataVersion != capturedVersion) return@post
                                     metadataCache.put(idx, meta)
                                     val pos = items.indexOfFirst { it.songIndex == idx }
                                     if (pos >= 0) notifyItemChanged(pos)

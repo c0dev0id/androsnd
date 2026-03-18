@@ -63,6 +63,10 @@ class MusicService : MediaBrowserServiceCompat() {
         private const val MEDIA_ROOT_ID = "androsnd_root"
         private const val MEDIA_FOLDER_PREFIX = "folder_"
         private const val MEDIA_SONG_PREFIX = "song_"
+
+        private val NOTIFICATION_ACTIONS = setOf(
+            ACTION_PLAY, ACTION_PAUSE, ACTION_STOP, ACTION_NEXT, ACTION_PREVIOUS, ACTION_SHUFFLE
+        )
     }
 
     inner class MusicBinder : Binder() {
@@ -252,9 +256,7 @@ class MusicService : MediaBrowserServiceCompat() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Must call startForeground() promptly to avoid ForegroundServiceDidNotStartInTimeException
-        if (intent?.action == null || intent.action !in listOf(
-                ACTION_PLAY, ACTION_PAUSE, ACTION_STOP, ACTION_NEXT, ACTION_PREVIOUS, ACTION_SHUFFLE
-        )) {
+        if (intent?.action == null || intent.action !in NOTIFICATION_ACTIONS) {
             startForegroundCompat(buildNotification())
         }
         when (intent?.action) {
@@ -668,16 +670,6 @@ class MusicService : MediaBrowserServiceCompat() {
         } catch (_: Exception) {
         } finally {
             retriever.release()
-        }
-    }
-
-    private fun preCacheSongArt() {
-        val artCacheExecutor = Executors.newSingleThreadExecutor()
-        artCacheExecutor.submit {
-            playlistManager.songs.forEachIndexed { index, song ->
-                cacheSongArtIfNeeded(index, song)
-            }
-            artCacheExecutor.shutdown()
         }
     }
 
