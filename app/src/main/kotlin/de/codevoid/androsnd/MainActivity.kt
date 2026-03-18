@@ -854,7 +854,7 @@ class MainActivity : AppCompatActivity() {
 
     // ── Remote control key routing (shared by dispatchKeyEvent + broadcast) ──
 
-    private val remoteKeyCodes = intArrayOf(
+    private val remoteKeyCodes = setOf(
         KeyEvent.KEYCODE_F6, KeyEvent.KEYCODE_F7, KeyEvent.KEYCODE_ESCAPE,
         KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
@@ -870,20 +870,20 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    private fun adjustVolume(delta: Float) {
+        adjustSlider(R.id.slider_volume, delta)
+        startFixedRepeat { adjustSlider(R.id.slider_volume, delta) }
+    }
+
     private fun onRemoteKeyDown(keyCode: Int) {
         if (!hasReceivedRemoteKey) {
             hasReceivedRemoteKey = true
             updateFocusVisual()
         }
         when (keyCode) {
-            KeyEvent.KEYCODE_F6 -> {
-                adjustSlider(R.id.slider_volume, 5f)
-                startFixedRepeat { adjustSlider(R.id.slider_volume, 5f) }
-            }
-            KeyEvent.KEYCODE_F7 -> {
-                adjustSlider(R.id.slider_volume, -5f)
-                startFixedRepeat { adjustSlider(R.id.slider_volume, -5f) }
-            }
+            KeyEvent.KEYCODE_F6 -> adjustVolume(5f)
+            KeyEvent.KEYCODE_F7 -> adjustVolume(-5f)
+            // ESCAPE is handled on key-up only (toggling on release avoids state thrash on hold)
             KeyEvent.KEYCODE_DPAD_UP    -> { handleUp(); startNavRepeat(::handleUp) }
             KeyEvent.KEYCODE_DPAD_DOWN  -> { handleDown(); startNavRepeat(::handleDown) }
             KeyEvent.KEYCODE_DPAD_LEFT  -> { handleLeft(); startFixedRepeat { handleLeft() } }
