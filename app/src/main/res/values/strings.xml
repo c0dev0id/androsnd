@@ -27,19 +27,6 @@
     <string name="accent_color">Accent Color</string>
     <string name="settings_show_demo_popup">Show Demo Popup</string>
 
-    <!-- Remote Control -->
-    <string name="remote_control_label">Remote Control</string>
-    <string name="btn_map_remote">Key Mapping Wizard</string>
-
-    <!-- Remote Key Mapping Wizard -->
-    <string name="wizard_title">Remote Key Mapping</string>
-    <string name="wizard_press_key">Press a key on your remote…</string>
-    <string name="wizard_cancel_hint">Press Back to cancel</string>
-    <string name="wizard_action_of">Action %1$d of %2$d</string>
-    <string name="wizard_current_key">Currently mapped: keycode %1$d</string>
-    <string name="wizard_mapping_saved">Key mapping saved</string>
-    <string name="wizard_skip">Skip (keep unmapped)</string>
-
     <!-- Update checker -->
     <string name="update_check_button">Check for Updates</string>
     <string name="update_checking">Checking for updates&#8230;</string>
