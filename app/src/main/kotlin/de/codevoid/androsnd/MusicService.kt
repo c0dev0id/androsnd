@@ -554,13 +554,17 @@ class MusicService : MediaBrowserServiceCompat() {
         audioManager.requestAudioFocus(focusRequest)
     }
 
-    fun extractMetadata(song: Song): SongMetadata {
+    fun extractMetadata(song: Song, maxBitmapPx: Int = 512): SongMetadata {
+        // folderCoverBitmaps caches at 512px; scale down if caller wants a thumbnail
         val folderCover = getFolderCoverForSong(song)
+        val folderArt = folderCover?.let {
+            if (maxBitmapPx >= 512) it else scaleBitmapForSession(it, maxBitmapPx)
+        }
         val uriString = song.uri.toString()
 
-        // Return cached text metadata combined with the (possibly cached) folder cover bitmap
+        // Return cached text metadata combined with the (possibly scaled) cover bitmap
         metadataCache.get(uriString, song.lastModified)?.let { cached ->
-            return SongMetadata(cached.title, cached.artist, cached.album, cached.duration, folderCover)
+            return SongMetadata(cached.title, cached.artist, cached.album, cached.duration, folderArt)
         }
 
         val retriever = MediaMetadataRetriever()
@@ -570,13 +574,13 @@ class MusicService : MediaBrowserServiceCompat() {
             val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
             val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
             val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            // Only read embedded picture when no folder cover is available
-            val coverArt = folderCover ?: retriever.embeddedPicture?.let { decodeBitmapWithSampling(it) }
+            // Only read embedded picture when no folder cover is available; decode at requested size
+            val coverArt = folderArt ?: retriever.embeddedPicture?.let { decodeBitmapWithSampling(it, maxBitmapPx) }
             metadataCache.put(uriString, MetadataCache.Entry(title, artist, album, duration, song.lastModified))
             SongMetadata(title, artist, album, duration, coverArt)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to extract metadata for ${song.displayName}", e)
-            SongMetadata(song.displayName, "", "", 0L, folderCover)
+            SongMetadata(song.displayName, "", "", 0L, folderArt)
         } finally {
             retriever.release()
         }

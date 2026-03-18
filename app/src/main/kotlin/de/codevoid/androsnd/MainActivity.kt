@@ -34,7 +34,6 @@ import androidx.recyclerview.widget.RecyclerView
 import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 import de.codevoid.androsnd.model.SongMetadata
-import android.util.SparseArray
 import java.util.concurrent.Executors
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
@@ -331,7 +330,7 @@ class MainActivity : AppCompatActivity() {
             onSongClick = { index ->
                 musicService?.playSongAtIndex(index)
             },
-            extractMetadata = { song -> musicService?.extractMetadata(song) }
+            extractMetadata = { song -> musicService?.extractMetadata(song, maxBitmapPx = 128) }
         )
         playlistRecycler.layoutManager = LinearLayoutManager(this)
         playlistRecycler.adapter = playlistAdapter
@@ -1096,7 +1095,7 @@ class MainActivity : AppCompatActivity() {
         private val items = mutableListOf<ListItem>()
         private var currentSongIndex = -1
         private var songs: List<Song> = emptyList()
-        private val metadataCache = SparseArray<SongMetadata>()
+        private val metadataCache = android.util.LruCache<Int, SongMetadata>(500)
         private var dataVersion = 0
         private val executor = Executors.newFixedThreadPool(4)
         private val mainHandler = Handler(Looper.getMainLooper())
@@ -1134,7 +1133,7 @@ class MainActivity : AppCompatActivity() {
             dataVersion++  // invalidate all in-flight metadata loads from the previous library
             items.clear()
             this.songs = songs.toList()   // defensive copy — adapter owns its own snapshot
-            metadataCache.clear()
+            metadataCache.evictAll()
             currentSongIndex = currentIdx
             for ((fi, folder) in folders.withIndex()) {
                 items.add(ListItem(TYPE_FOLDER, folderIndex = fi, displayName = folder.name))
@@ -1176,7 +1175,7 @@ class MainActivity : AppCompatActivity() {
                     holder.itemView.setOnClickListener { onFolderClick(item.folderIndex) }
                 }
                 is SongViewHolder -> {
-                    val cached = metadataCache[item.songIndex]
+                    val cached = metadataCache.get(item.songIndex)
                     if (cached != null) {
                         bindSongMetadata(holder, cached)
                     } else {
