@@ -975,7 +975,7 @@ class MainActivity : AppCompatActivity() {
             return true
         }
 
-        return true  // consume any other unrecognised keys
+        return super.dispatchKeyEvent(event)
     }
 
     /**
