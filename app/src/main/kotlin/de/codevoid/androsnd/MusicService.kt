@@ -8,12 +8,12 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.os.Binder
 import android.os.Build
@@ -21,7 +21,6 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
-import java.util.concurrent.Executors
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -31,6 +30,12 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media.app.NotificationCompat.MediaStyle
 import de.codevoid.androsnd.model.Song
 import de.codevoid.androsnd.model.SongMetadata
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MusicService : Service() {
 
@@ -51,7 +56,14 @@ class MusicService : Service() {
         const val BROADCAST_SCAN_STARTED = "de.codevoid.androsnd.SCAN_STARTED"
         const val BROADCAST_SCAN_COMPLETED = "de.codevoid.androsnd.SCAN_COMPLETED"
         const val BROADCAST_METADATA_UPDATED = "de.codevoid.androsnd.METADATA_UPDATED"
+        const val BROADCAST_ART_UPDATED = "de.codevoid.androsnd.ART_UPDATED"
+
         const val EXTRA_METADATA_SONG_INDEX = "song_index"
+        const val EXTRA_METADATA_TITLE    = "meta_title"
+        const val EXTRA_METADATA_ARTIST   = "meta_artist"
+        const val EXTRA_METADATA_ALBUM    = "meta_album"
+        const val EXTRA_METADATA_DURATION = "meta_duration"
+        const val EXTRA_ART_FOLDER_PATH   = "art_folder_path"
 
         private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_APP_VOLUME = "app_volume"
@@ -69,6 +81,10 @@ class MusicService : Service() {
     private val binder = MusicBinder()
     lateinit var playlistManager: PlaylistManager
         private set
+    lateinit var metadataRepository: MetadataRepository
+        private set
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var mediaPlayer: MediaPlayer? = null
     private lateinit var mediaSession: MediaSessionCompat
@@ -77,19 +93,14 @@ class MusicService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var progressRunnable: Runnable? = null
-    private val scanExecutor = Executors.newSingleThreadExecutor()
-    @Volatile private var metadataExecutor = Executors.newSingleThreadExecutor()
-
-    private lateinit var metadataCache: MetadataCache
-    private val folderCoverBitmaps = HashMap<String, android.graphics.Bitmap?>()
-    private val folderThumbnailBitmaps = HashMap<String, android.graphics.Bitmap?>()
 
     var isPlaying: Boolean = false
         private set
     var isScanning: Boolean = false
         private set
-    var currentMetadata: SongMetadata? = null
+    var currentTextMetadata: SongMetadata? = null
         private set
+    private var currentArtBitmap: Bitmap? = null
     private var isDucking = false
 
     private lateinit var overlayToastManager: OverlayToastManager
@@ -129,7 +140,7 @@ class MusicService : Service() {
     override fun onCreate() {
         super.onCreate()
         playlistManager = PlaylistManager(this)
-        metadataCache = MetadataCache(this)
+        metadataRepository = MetadataRepository(this)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         broadcastManager = LocalBroadcastManager.getInstance(this)
         overlayToastManager = OverlayToastManager(this)
@@ -202,11 +213,14 @@ class MusicService : Service() {
                                 setOnCompletionListener { onTrackComplete() }
                                 setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
                             }
-                            val metadata = extractMetadata(song)
-                            currentMetadata = metadata
-                            updateMediaSessionMetadata(metadata)
                             updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
                             broadcastState()
+                            serviceScope.launch {
+                                val meta = withContext(Dispatchers.IO) { metadataRepository.fetchText(song) }
+                                currentTextMetadata = meta
+                                updateMediaSessionMetadata()
+                                broadcastState()
+                            }
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to prepare ${song.displayName}", e)
                         }
@@ -256,7 +270,7 @@ class MusicService : Service() {
                 applyAppVolume()
                 isPlaying = true
                 startProgressUpdates()
-                currentMetadata?.let { updateMediaSessionMetadata(it) }
+                updateMediaSessionMetadata()
                 updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
                 startForegroundCompat(buildNotification())
                 broadcastState()
@@ -292,7 +306,8 @@ class MusicService : Service() {
         }
         mediaPlayer = null
         isPlaying = false
-        currentMetadata = null
+        currentTextMetadata = null
+        currentArtBitmap = null
         stopProgressUpdates()
         updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
         broadcastState()
@@ -377,15 +392,15 @@ class MusicService : Service() {
             startForegroundCompat(buildNotification())
             broadcastState()
             playlistManager.selectNextQueueSong()
-            scanExecutor.execute {
-                val metadata = extractMetadata(song)
-                handler.post {
-                    currentMetadata = metadata
-                    updateMediaSessionMetadata(metadata)
-                    updateNotification()
-                    overlayToastManager.showSong(metadata)
-                    broadcastState()
-                }
+            serviceScope.launch {
+                val meta = withContext(Dispatchers.IO) { metadataRepository.fetchText(song) }
+                val art  = withContext(Dispatchers.IO) { metadataRepository.loadCurrentArt(song) }
+                currentTextMetadata = meta
+                currentArtBitmap    = art
+                updateMediaSessionMetadata()
+                updateNotification()
+                overlayToastManager.showSong(meta, art)
+                broadcastState()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start playing ${song.displayName}", e)
@@ -429,197 +444,32 @@ class MusicService : Service() {
         audioManager.requestAudioFocus(focusRequest)
     }
 
-    fun extractMetadata(song: Song, maxBitmapPx: Int = 512): SongMetadata {
-        val folderArt = if (maxBitmapPx >= 512) getFolderCoverForSong(song)
-                        else getFolderThumbnailForSong(song, maxBitmapPx)
-        val uriString = song.uri.toString()
+    private fun updateMediaSessionMetadata() {
+        val song = playlistManager.getCurrentSong() ?: return
+        val meta = currentTextMetadata
+        val title    = meta?.title    ?: song.displayName
+        val artist   = meta?.artist   ?: ""
+        val album    = meta?.album    ?: ""
+        val duration = meta?.duration ?: 0L
 
-        // Return cached text metadata combined with the (possibly scaled) cover bitmap
-        metadataCache.get(uriString, song.lastModified)?.let { cached ->
-            return SongMetadata(cached.title, cached.artist, cached.album, cached.duration, folderArt)
-        }
-
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(applicationContext, song.uri)
-            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: song.displayName
-            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
-            val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
-            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            // Only read embedded picture when no folder cover is available; decode at requested size
-            val coverArt = folderArt ?: retriever.embeddedPicture?.let { decodeBitmapWithSampling(it, maxBitmapPx) }
-            metadataCache.put(uriString, MetadataCache.Entry(title, artist, album, duration, song.lastModified))
-            SongMetadata(title, artist, album, duration, coverArt)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to extract metadata for ${song.displayName}", e)
-            SongMetadata(song.displayName, "", "", 0L, folderArt)
-        } finally {
-            retriever.release()
-        }
-    }
-
-    @Synchronized
-    private fun getFolderCoverForSong(song: Song): android.graphics.Bitmap? {
-        val folderPath = song.folderPath
-        if (folderCoverBitmaps.containsKey(folderPath)) return folderCoverBitmaps[folderPath]
-        val coverUri = playlistManager.foldersByPath[folderPath]?.coverUri
-        val bitmap = if (coverUri != null) {
-            try {
-                contentResolver.openInputStream(coverUri)?.use { stream ->
-                    decodeBitmapWithSampling(stream.readBytes())
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to load folder cover for $folderPath", e)
-                null
-            }
-        } else null
-        folderCoverBitmaps[folderPath] = bitmap
-        return bitmap
-    }
-
-    @Synchronized
-    private fun getFolderThumbnailForSong(song: Song, maxPx: Int): android.graphics.Bitmap? {
-        val folderPath = song.folderPath
-        if (folderThumbnailBitmaps.containsKey(folderPath)) return folderThumbnailBitmaps[folderPath]
-        val thumb = getFolderCoverForSong(song)?.let { scaleBitmapForSession(it, maxPx) }
-        folderThumbnailBitmaps[folderPath] = thumb
-        return thumb
-    }
-
-    private fun decodeBitmapWithSampling(bytes: ByteArray, maxPx: Int = 512): android.graphics.Bitmap? {
-        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-        opts.inSampleSize = maxOf(1, maxOf(opts.outWidth, opts.outHeight) / maxPx)
-        opts.inJustDecodeBounds = false
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-    }
-
-    private fun scaleBitmapForSession(bitmap: android.graphics.Bitmap, maxPx: Int = 256): android.graphics.Bitmap {
-        if (bitmap.width <= maxPx && bitmap.height <= maxPx) return bitmap
-        val scale = maxPx.toFloat() / maxOf(bitmap.width, bitmap.height)
-        return android.graphics.Bitmap.createScaledBitmap(
-            bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true
-        )
-    }
-
-    private fun saveArtToFile(bitmap: android.graphics.Bitmap, filename: String): Uri? {
-        return try {
-            val dir = java.io.File(cacheDir, "album_art").also { it.mkdirs() }
-            val file = java.io.File(dir, filename)
-            file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
-            val uri = Uri.parse("content://de.codevoid.androsnd.albumart/$filename")
-            contentResolver.notifyChange(uri, null)
-            uri
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to save album art to cache", e)
-            null
-        }
-    }
-
-    private fun songArtFile(index: Int): java.io.File =
-        java.io.File(cacheDir, "album_art/song_art_$index.jpg")
-
-    private fun cacheSongArtIfNeeded(index: Int, song: Song) {
-        val file = songArtFile(index)
-        if (file.exists()) return
-        val coverUri = playlistManager.foldersByPath[song.folderPath]?.coverUri
-        if (coverUri != null) {
-            try {
-                contentResolver.openInputStream(coverUri)?.use { stream ->
-                    val original = decodeBitmapWithSampling(stream.readBytes()) ?: return
-                    val scaled = scaleBitmapForSession(original)
-                    saveArtToFile(scaled, "song_art_$index.jpg")
-                    if (scaled !== original) original.recycle()
-                    scaled.recycle()
-                }
-            } catch (_: Exception) {
-            }
-            return
-        }
-        val retriever = MediaMetadataRetriever()
-        try {
-            retriever.setDataSource(applicationContext, song.uri)
-            val bytes = retriever.embeddedPicture ?: return
-            val original = decodeBitmapWithSampling(bytes) ?: return
-            val scaled = scaleBitmapForSession(original)
-            saveArtToFile(scaled, "song_art_$index.jpg")
-            if (scaled !== original) original.recycle()
-            scaled.recycle()
-        } catch (_: Exception) {
-        } finally {
-            retriever.release()
-        }
-    }
-
-    private fun startMetadataEnrichment() {
-        val songs = playlistManager.songs
-        if (songs.isEmpty()) return
-        val currentIdx = playlistManager.currentIndex
-
-        metadataExecutor.execute {
-            val usedKeys = mutableSetOf<String>()
-
-            // Priority 1: currently playing / selected song
-            enrichSongMetadata(currentIdx, songs, isCurrentSong = true, usedKeys)
-
-            // Priority 2 & 3: all other songs in order
-            songs.indices
-                .filter { it != currentIdx }
-                .forEach { idx -> enrichSongMetadata(idx, songs, isCurrentSong = false, usedKeys) }
-
-            // Remove stale cache entries and persist
-            metadataCache.cleanup(usedKeys)
-            // Clear in-memory folder cover bitmaps to free memory
-            synchronized(this@MusicService) {
-                folderCoverBitmaps.clear()
-                folderThumbnailBitmaps.clear()
-            }
-        }
-    }
-
-    private fun enrichSongMetadata(idx: Int, songs: List<Song>, isCurrentSong: Boolean, usedKeys: MutableSet<String>) {
-        val song = songs.getOrNull(idx) ?: return
-        usedKeys.add(song.uri.toString())
-        val metadata = extractMetadata(song)
-        cacheSongArtIfNeeded(idx, song)
-
-        handler.post {
-            if (isCurrentSong && currentMetadata == null) {
-                currentMetadata = metadata
-                updateMediaSessionMetadata(metadata)
-                updateNotification()
-                broadcastState()
-            }
-            val intent = Intent(BROADCAST_METADATA_UPDATED).apply {
-                putExtra(EXTRA_METADATA_SONG_INDEX, idx)
-            }
-            broadcastManager.sendBroadcast(intent)
-        }
-    }
-
-    private fun updateMediaSessionMetadata(metadata: SongMetadata) {
         val builder = MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, playlistManager.currentIndex.toString())
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, metadata.title)
-            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, metadata.artist)
-            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, metadata.album)
-            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, metadata.duration)
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, album)
+            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
             .putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, playlistManager.songs.size.toLong())
-            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, metadata.title)
-            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, metadata.artist)
-            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, metadata.album)
-        if (metadata.coverArt != null) {
-            val scaled = scaleBitmapForSession(metadata.coverArt)
-            val uri = saveArtToFile(scaled, "current_art.jpg")
-            if (uri != null) {
-                val uriStr = uri.toString()
-                builder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, uriStr)
-                builder.putString(MediaMetadataCompat.METADATA_KEY_ART_URI, uriStr)
-                builder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, uriStr)
-            }
-            // Fallback bitmap for clients that do not load URIs (e.g. older lock screens)
-            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, scaled)
-            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, scaled)
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title)
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, artist)
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, album)
+        val art = currentArtBitmap
+        if (art != null) {
+            val uriStr = "content://de.codevoid.androsnd.albumart/current_art.jpg"
+            builder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, uriStr)
+            builder.putString(MediaMetadataCompat.METADATA_KEY_ART_URI, uriStr)
+            builder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, uriStr)
+            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, art)
+            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, art)
         }
         mediaSession.setMetadata(builder.build())
     }
@@ -648,7 +498,7 @@ class MusicService : Service() {
 
     private fun buildNotification(): Notification {
         val song = playlistManager.getCurrentSong()
-        val contentTitle = currentMetadata?.title ?: song?.displayName ?: getString(R.string.app_name)
+        val contentTitle = currentTextMetadata?.title ?: song?.displayName ?: getString(R.string.app_name)
 
         val playPauseAction = if (isPlaying) {
             NotificationCompat.Action(
@@ -678,7 +528,7 @@ class MusicService : Service() {
             .setContentTitle(contentTitle)
             .setContentText(getString(R.string.app_name))
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setLargeIcon(currentMetadata?.coverArt)
+            .setLargeIcon(currentArtBitmap)
             .setContentIntent(mainIntent)
             .addAction(
                 android.R.drawable.ic_media_previous, getString(R.string.notification_action_previous),
@@ -737,27 +587,55 @@ class MusicService : Service() {
         mediaPlayer = null
         isPlaying = false
         stopProgressUpdates()
-
-        metadataExecutor.shutdownNow()
-        metadataExecutor = Executors.newSingleThreadExecutor()
-        synchronized(this) { folderCoverBitmaps.clear() }
+        metadataRepository.cancelEnrichment()
 
         isScanning = true
         broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_STARTED))
-        scanExecutor.execute {
-            try {
-                playlistManager.scanFolder(uri)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to scan folder", e)
-            } finally {
-                handler.post {
-                    isScanning = false
-                    playlistManager.selectNextQueueSong()
-                    startMetadataEnrichment()
-                    broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
-                    broadcastState()
-                }
+
+        serviceScope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { playlistManager.scanFolder(uri) }
+                    .onFailure { Log.e(TAG, "Scan failed", it) }
             }
+            isScanning = false
+            playlistManager.selectNextQueueSong()
+            broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
+            broadcastState()
+
+            metadataRepository.startEnrichment(
+                scope         = serviceScope,
+                songs         = playlistManager.songs,
+                foldersByPath = playlistManager.foldersByPath,
+                currentIdx    = playlistManager.currentIndex,
+                onTextReady   = { idx, meta ->
+                    if (idx == playlistManager.currentIndex && currentTextMetadata == null) {
+                        currentTextMetadata = meta
+                        broadcastState()
+                    }
+                    broadcastManager.sendBroadcast(Intent(BROADCAST_METADATA_UPDATED).apply {
+                        putExtra(EXTRA_METADATA_SONG_INDEX, idx)
+                        putExtra(EXTRA_METADATA_TITLE,    meta.title)
+                        putExtra(EXTRA_METADATA_ARTIST,   meta.artist)
+                        putExtra(EXTRA_METADATA_ALBUM,    meta.album)
+                        putExtra(EXTRA_METADATA_DURATION, meta.duration)
+                    })
+                },
+                onArtReady = { folderPath ->
+                    if (playlistManager.getCurrentSong()?.folderPath == folderPath) {
+                        serviceScope.launch {
+                            currentArtBitmap = withContext(Dispatchers.IO) {
+                                BitmapFactory.decodeFile(
+                                    metadataRepository.artFileForFolder(folderPath).absolutePath)
+                            }
+                            updateNotification()
+                            updateMediaSessionMetadata()
+                        }
+                    }
+                    broadcastManager.sendBroadcast(Intent(BROADCAST_ART_UPDATED).apply {
+                        putExtra(EXTRA_ART_FOLDER_PATH, folderPath)
+                    })
+                }
+            )
         }
     }
 
@@ -769,15 +647,12 @@ class MusicService : Service() {
         stopProgressUpdates()
         mediaPlayer?.release()
         mediaPlayer = null
-        currentMetadata = null
+        currentTextMetadata = null
+        currentArtBitmap = null
         mediaSession.release()
         overlayToastManager.dismiss()
         audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
-        scanExecutor.shutdown()
-        metadataExecutor.shutdown()
-        synchronized(this) {
-            folderCoverBitmaps.clear()
-            folderThumbnailBitmaps.clear()
-        }
+        serviceScope.cancel()
+        metadataRepository.close()
     }
 }

@@ -32,11 +32,19 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import android.graphics.BitmapFactory
 import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 import de.codevoid.androsnd.model.SongMetadata
-import java.util.concurrent.Executors
 import com.google.android.material.button.MaterialButton
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.slider.Slider
 import android.graphics.drawable.GradientDrawable
@@ -188,17 +196,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     private val metadataReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == MusicService.BROADCAST_METADATA_UPDATED) {
-                val idx = intent.getIntExtra(MusicService.EXTRA_METADATA_SONG_INDEX, -1)
-                if (idx >= 0) {
-                    playlistAdapter.invalidateMetadataForSong(idx)
-                }
+                val idx      = intent.getIntExtra(MusicService.EXTRA_METADATA_SONG_INDEX, -1)
+                val title    = intent.getStringExtra(MusicService.EXTRA_METADATA_TITLE)   ?: return
+                val artist   = intent.getStringExtra(MusicService.EXTRA_METADATA_ARTIST)  ?: ""
+                val album    = intent.getStringExtra(MusicService.EXTRA_METADATA_ALBUM)   ?: ""
+                val duration = intent.getLongExtra(MusicService.EXTRA_METADATA_DURATION,  0L)
+                if (idx >= 0) playlistAdapter.applyTextMetadata(idx, SongMetadata(title, artist, album, duration))
                 val svc = musicService ?: return
-                if (idx == svc.playlistManager.currentIndex) {
-                    updateUI()
-                }
+                if (idx == svc.playlistManager.currentIndex) updateUI()
                 val total = svc.playlistManager.songs.size
                 metadataLoadedCount = (metadataLoadedCount + 1).coerceAtMost(total)
                 if (metadataLoadedCount >= total) {
@@ -207,6 +217,15 @@ class MainActivity : AppCompatActivity() {
                     metadataCounterView.text = getString(R.string.files_loaded, metadataLoadedCount, total)
                 }
             }
+        }
+    }
+
+    private val artReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val folderPath = intent.getStringExtra(MusicService.EXTRA_ART_FOLDER_PATH) ?: return
+            playlistAdapter.invalidateArtForFolder(folderPath)
+            val cur = musicService?.playlistManager?.getCurrentSong() ?: return
+            if (cur.folderPath == folderPath) updateNowPlayingArt(folderPath)
         }
     }
 
@@ -293,6 +312,10 @@ class MainActivity : AppCompatActivity() {
             metadataReceiver,
             IntentFilter(MusicService.BROADCAST_METADATA_UPDATED)
         )
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            artReceiver,
+            IntentFilter(MusicService.BROADCAST_ART_UPDATED)
+        )
     }
 
     private fun bindViews() {
@@ -325,9 +348,14 @@ class MainActivity : AppCompatActivity() {
             onFolderClick = { /* toggle expand */ },
             onSongClick = { index ->
                 musicService?.playSongAtIndex(index)
-            },
-            extractMetadata = { song -> musicService?.extractMetadata(song, maxBitmapPx = 128) }
+            }
         )
+        playlistAdapter.getTextMetadata = { song ->
+            musicService?.metadataRepository?.db?.get(song.uri.toString(), song.lastModified)
+        }
+        playlistAdapter.getArtFile = { song ->
+            musicService?.metadataRepository?.artFileForFolder(song.folderPath)
+        }
         playlistRecycler.layoutManager = LinearLayoutManager(this)
         playlistRecycler.adapter = playlistAdapter
     }
@@ -781,18 +809,13 @@ class MainActivity : AppCompatActivity() {
         updateButtonStates()
 
         if (song != null) {
-            val metadata = svc.currentMetadata
+            val metadata = svc.currentTextMetadata
             if (metadata != null) {
                 songTitle.text = metadata.title
                 songArtist.text = metadata.artist
                 songAlbum.text = metadata.album
-
-                if (metadata.coverArt != null) {
-                    coverArt.setImageBitmap(metadata.coverArt)
-                } else {
-                    coverArt.setImageResource(android.R.drawable.ic_media_play)
-                }
             }
+            updateNowPlayingArt(song.folderPath)
         } else {
             songTitle.text = getString(R.string.no_song)
             songArtist.text = ""
@@ -810,6 +833,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         updatePlaylist()
+    }
+
+    private fun updateNowPlayingArt(folderPath: String) {
+        activityScope.launch {
+            val bmp = withContext(Dispatchers.IO) {
+                musicService?.metadataRepository?.artFileForFolder(folderPath)
+                    ?.takeIf { it.exists() }
+                    ?.let { BitmapFactory.decodeFile(it.absolutePath) }
+            }
+            if (bmp != null) coverArt.setImageBitmap(bmp)
+            else coverArt.setImageResource(android.R.drawable.ic_media_play)
+        }
     }
 
     private fun updatePlaylist() {
@@ -1076,9 +1111,11 @@ class MainActivity : AppCompatActivity() {
         playlistAdapter.release()
         musicService?.setOnOverlayScaleChangedListener(null)
         musicService?.dismissOverlayDemo()
+        activityScope.cancel()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(stateReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(scanReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(metadataReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(artReceiver)
         if (isBound) {
             unbindService(serviceConnection)
             isBound = false
@@ -1087,8 +1124,7 @@ class MainActivity : AppCompatActivity() {
 
     class PlaylistAdapter(
         private val onFolderClick: (Int) -> Unit,
-        private val onSongClick: (Int) -> Unit,
-        private val extractMetadata: (Song) -> SongMetadata?
+        private val onSongClick: (Int) -> Unit
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
         companion object {
@@ -1109,8 +1145,9 @@ class MainActivity : AppCompatActivity() {
         private var songs: List<Song> = emptyList()
         private val metadataCache = android.util.LruCache<Int, SongMetadata>(500)
         private var dataVersion = 0
-        private val executor = Executors.newFixedThreadPool(4)
-        private val mainHandler = Handler(Looper.getMainLooper())
+        private var adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        var getTextMetadata: ((Song) -> SongMetadata?)? = null
+        var getArtFile: ((Song) -> File?)? = null
         var accentColor: Int = Color.parseColor("#F57C00")
         var focusedPos: Int = -1
             set(newPos) {
@@ -1142,7 +1179,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun submitData(folders: List<PlaylistFolder>, songs: List<Song>, currentIdx: Int) {
-            dataVersion++  // invalidate all in-flight metadata loads from the previous library
+            dataVersion++
+            adapterScope.cancel()
+            adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
             items.clear()
             songIndexToItemPos.clear()
             this.songs = songs.toList()   // defensive copy — adapter owns its own snapshot
@@ -1159,6 +1198,7 @@ class MainActivity : AppCompatActivity() {
             notifyDataSetChanged()
         }
 
+<<<<<<< HEAD
         fun invalidateMetadataForSong(songIndex: Int) {
             metadataCache.remove(songIndex)
             val pos = songIndexToItemPos[songIndex] ?: -1
@@ -1167,6 +1207,19 @@ class MainActivity : AppCompatActivity() {
 
         fun release() {
             executor.shutdown()
+=======
+        fun applyTextMetadata(songIndex: Int, meta: SongMetadata) {
+            metadataCache.put(songIndex, meta)
+            val pos = items.indexOfFirst { it.type == TYPE_SONG && it.songIndex == songIndex }
+            if (pos >= 0) notifyItemChanged(pos)
+        }
+
+        fun invalidateArtForFolder(folderPath: String) {
+            items.forEachIndexed { pos, item ->
+                if (item.type == TYPE_SONG && songs.getOrNull(item.songIndex)?.folderPath == folderPath)
+                    notifyItemChanged(pos)
+            }
+>>>>>>> 8d8e2c8 (Replace MetadataCache+executors with SQLite+coroutines pipeline)
         }
 
         override fun getItemViewType(position: Int) = items.getOrNull(position)?.type ?: TYPE_SONG
@@ -1193,15 +1246,18 @@ class MainActivity : AppCompatActivity() {
                     holder.itemView.setOnClickListener { onFolderClick(item.folderIndex) }
                 }
                 is SongViewHolder -> {
-                    val cached = metadataCache.get(item.songIndex)
+                    val songIndex = item.songIndex
+                    val song = songs.getOrNull(songIndex)
+
+                    // Text
+                    val cached = metadataCache.get(songIndex)
                     if (cached != null) {
-                        bindSongMetadata(holder, cached)
+                        bindSongText(holder, cached)
                     } else {
                         holder.name.text = item.displayName
                         holder.subtitle.text = ""
-                        holder.cover.setImageBitmap(null)
-                        val song = songs.getOrNull(item.songIndex)
                         if (song != null) {
+<<<<<<< HEAD
                             val idx = item.songIndex
                             val capturedVersion = dataVersion
                             executor.execute {
@@ -1213,10 +1269,29 @@ class MainActivity : AppCompatActivity() {
                                     val pos = songIndexToItemPos[idx] ?: -1
                                     if (pos >= 0) notifyItemChanged(pos)
                                 }
+=======
+                            adapterScope.launch {
+                                val meta = withContext(Dispatchers.IO) { getTextMetadata?.invoke(song) }
+                                if (meta != null) applyTextMetadata(songIndex, meta)
+>>>>>>> 8d8e2c8 (Replace MetadataCache+executors with SQLite+coroutines pipeline)
                             }
                         }
                     }
-                    val isSelected = item.songIndex == currentSongIndex
+
+                    // Art — per-ViewHolder job, cancelled on recycle
+                    holder.artJob?.cancel()
+                    holder.artJob = if (song != null) adapterScope.launch {
+                        val bmp = withContext(Dispatchers.IO) {
+                            val file = getArtFile?.invoke(song)?.takeIf { it.exists() }
+                                ?: return@withContext null
+                            BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply {
+                                inSampleSize = 2  // 256px stored → ~128px display
+                            })
+                        }
+                        holder.cover.setImageBitmap(bmp)
+                    } else null
+
+                    val isSelected = songIndex == currentSongIndex
                     holder.itemView.isSelected = isSelected
                     holder.itemView.setBackgroundColor(when {
                         isSelected -> accentColor
@@ -1224,19 +1299,23 @@ class MainActivity : AppCompatActivity() {
                         else       -> Color.TRANSPARENT
                     })
                     holder.itemView.foreground = if (isFocused) makeFocusRingFor(holder.itemView) else null
-                    holder.itemView.setOnClickListener { onSongClick(item.songIndex) }
+                    holder.itemView.setOnClickListener { onSongClick(songIndex) }
                 }
             }
         }
 
-        private fun bindSongMetadata(holder: SongViewHolder, meta: SongMetadata) {
+        override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+            super.onViewRecycled(holder)
+            (holder as? SongViewHolder)?.artJob?.cancel()
+        }
+
+        private fun bindSongText(holder: SongViewHolder, meta: SongMetadata) {
             holder.name.text = if (meta.artist.isNotEmpty()) "${meta.artist} - ${meta.title}" else meta.title
             val dur = formatDuration(meta.duration)
             holder.subtitle.text = listOfNotNull(
                 meta.album.takeIf { it.isNotEmpty() },
                 dur.takeIf { it.isNotEmpty() }
             ).joinToString("  •  ")
-            holder.cover.setImageBitmap(meta.coverArt)
         }
 
         private fun formatDuration(ms: Long): String {
@@ -1265,6 +1344,7 @@ class MainActivity : AppCompatActivity() {
             val name: TextView = view.findViewById(R.id.song_name)
             val subtitle: TextView = view.findViewById(R.id.song_subtitle)
             val cover: ImageView = view.findViewById(R.id.song_cover)
+            var artJob: Job? = null
         }
     }
 }

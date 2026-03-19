@@ -67,8 +67,8 @@ class OverlayToastManager(private val context: Context) {
 
     var onScaleChanged: ((Float) -> Unit)? = null
 
-    fun showSong(metadata: SongMetadata) {
-        showOverlay(metadata.title, metadata.artist, metadata.album, metadata.coverArt)
+    fun showSong(metadata: SongMetadata, cover: Bitmap? = null) {
+        showOverlay(metadata.title, metadata.artist, metadata.album, cover)
     }
 
     fun showMessage(message: String) {
