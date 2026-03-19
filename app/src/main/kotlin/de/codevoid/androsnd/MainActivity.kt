@@ -1064,6 +1064,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         cancelNavRepeat()
+        playlistAdapter.release()
         musicService?.setOnOverlayScaleChangedListener(null)
         musicService?.dismissOverlayDemo()
         unregisterReceiver(remoteReceiver)
@@ -1095,6 +1096,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         private val items = mutableListOf<ListItem>()
+        private val songIndexToItemPos = HashMap<Int, Int>()
         private var currentSongIndex = -1
         private var songs: List<Song> = emptyList()
         private val metadataCache = android.util.LruCache<Int, SongMetadata>(500)
@@ -1134,6 +1136,7 @@ class MainActivity : AppCompatActivity() {
         fun submitData(folders: List<PlaylistFolder>, songs: List<Song>, currentIdx: Int) {
             dataVersion++  // invalidate all in-flight metadata loads from the previous library
             items.clear()
+            songIndexToItemPos.clear()
             this.songs = songs.toList()   // defensive copy — adapter owns its own snapshot
             metadataCache.evictAll()
             currentSongIndex = currentIdx
@@ -1141,6 +1144,7 @@ class MainActivity : AppCompatActivity() {
                 items.add(ListItem(TYPE_FOLDER, folderIndex = fi, displayName = folder.name))
                 for (si in folder.songs) {
                     val song = songs.getOrNull(si) ?: continue
+                    songIndexToItemPos[si] = items.size
                     items.add(ListItem(TYPE_SONG, songIndex = si, displayName = song.displayName))
                 }
             }
@@ -1149,8 +1153,12 @@ class MainActivity : AppCompatActivity() {
 
         fun invalidateMetadataForSong(songIndex: Int) {
             metadataCache.remove(songIndex)
-            val pos = items.indexOfFirst { it.type == TYPE_SONG && it.songIndex == songIndex }
+            val pos = songIndexToItemPos[songIndex] ?: -1
             if (pos >= 0) notifyItemChanged(pos)
+        }
+
+        fun release() {
+            executor.shutdown()
         }
 
         override fun getItemViewType(position: Int) = items.getOrNull(position)?.type ?: TYPE_SONG
@@ -1194,7 +1202,7 @@ class MainActivity : AppCompatActivity() {
                                 mainHandler.post {
                                     if (dataVersion != capturedVersion) return@post
                                     metadataCache.put(idx, meta)
-                                    val pos = items.indexOfFirst { it.songIndex == idx }
+                                    val pos = songIndexToItemPos[idx] ?: -1
                                     if (pos >= 0) notifyItemChanged(pos)
                                 }
                             }
