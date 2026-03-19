@@ -1204,6 +1204,10 @@ class MainActivity : AppCompatActivity() {
             if (pos >= 0) notifyItemChanged(pos)
         }
 
+        fun release() {
+            adapterScope.cancel()
+        }
+
         fun invalidateArtForFolder(folderPath: String) {
             items.forEachIndexed { pos, item ->
                 if (item.type == TYPE_SONG && songs.getOrNull(item.songIndex)?.folderPath == folderPath)
@@ -1246,23 +1250,9 @@ class MainActivity : AppCompatActivity() {
                         holder.name.text = item.displayName
                         holder.subtitle.text = ""
                         if (song != null) {
-<<<<<<< HEAD
-                            val idx = item.songIndex
-                            val capturedVersion = dataVersion
-                            executor.execute {
-                                val meta = extractMetadata(song)
-                                    ?: SongMetadata(song.displayName, "", "", 0L, null)
-                                mainHandler.post {
-                                    if (dataVersion != capturedVersion) return@post
-                                    metadataCache.put(idx, meta)
-                                    val pos = songIndexToItemPos[idx] ?: -1
-                                    if (pos >= 0) notifyItemChanged(pos)
-                                }
-=======
                             adapterScope.launch {
                                 val meta = withContext(Dispatchers.IO) { getTextMetadata?.invoke(song) }
                                 if (meta != null) applyTextMetadata(songIndex, meta)
->>>>>>> 8d8e2c8 (Replace MetadataCache+executors with SQLite+coroutines pipeline)
                             }
                         }
                     }
