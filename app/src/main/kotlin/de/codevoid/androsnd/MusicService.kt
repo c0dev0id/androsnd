@@ -293,13 +293,26 @@ class MusicService : Service() {
     }
 
     fun handleNext() {
-        playNextQueueSong()
+        if (playlistManager.isShuffleOn) {
+            val song = playlistManager.shuffleSong()
+            if (song != null) {
+                playlistManager.selectNextQueueSong()
+                playSong(song)
+            }
+            return
+        }
+        val song = playlistManager.nextSong()
+        if (song != null) {
+            playlistManager.selectNextQueueSong()
+            playSong(song)
+        }
     }
 
     private fun playNextQueueSong() {
         val nextIdx = playlistManager.nextQueueIndex
         if (nextIdx < 0) return
         playlistManager.setCurrentIndex(nextIdx)
+        playlistManager.selectNextQueueSong()
         val song = playlistManager.getCurrentSong() ?: return
         playSong(song)
     }
@@ -307,11 +320,17 @@ class MusicService : Service() {
     fun handlePrevious() {
         if (playlistManager.isShuffleOn) {
             val song = playlistManager.shuffleSong()
-            if (song != null) playSong(song)
+            if (song != null) {
+                playlistManager.selectNextQueueSong()
+                playSong(song)
+            }
             return
         }
         val song = playlistManager.prevSong()
-        if (song != null) playSong(song)
+        if (song != null) {
+            playlistManager.selectNextQueueSong()
+            playSong(song)
+        }
     }
 
     fun handleShuffleButton() {
@@ -335,12 +354,15 @@ class MusicService : Service() {
         mediaPlayer?.release()
         mediaPlayer = null
         isPlaying = false
+        currentTextMetadata = null
+        currentArtBitmap = null
         stopProgressUpdates()
         startPlayingSong(song)
     }
 
     fun playSongAtIndex(index: Int) {
         playlistManager.setCurrentIndex(index)
+        playlistManager.selectNextQueueSong()
         val song = playlistManager.getCurrentSong() ?: return
         playSong(song)
     }
@@ -359,6 +381,18 @@ class MusicService : Service() {
             )
             player.setDataSource(applicationContext, song.uri)
             player.setOnCompletionListener { onTrackComplete() }
+            player.setOnErrorListener { mp, what, extra ->
+                Log.e(TAG, "MediaPlayer error: what=$what extra=$extra")
+                isPreparing = false
+                if (mediaPlayer === mp) {
+                    mp.release()
+                    mediaPlayer = null
+                }
+                isPlaying = false
+                stopProgressUpdates()
+                broadcastState()
+                true
+            }
             player.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
             player.setOnPreparedListener { mp ->
                 isPreparing = false
