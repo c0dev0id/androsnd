@@ -1110,6 +1110,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         unregisterReceiver(remoteReceiver)
+        if (settingsVisible) toggleSettings()
     }
 
     override fun onDestroy() {
