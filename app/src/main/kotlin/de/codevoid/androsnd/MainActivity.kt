@@ -1,5 +1,6 @@
 package de.codevoid.androsnd
 
+import android.annotation.SuppressLint
 import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -959,6 +960,7 @@ class MainActivity : AppCompatActivity() {
 
     // Physical back button on other devices mirrors Button Bottom short-press
     @Suppress("DEPRECATION")
+    @SuppressLint("MissingSuperCall") // Intentional: automotive app, back must never finish the activity
     override fun onBackPressed() {
         when {
             settingsVisible -> toggleSettings()
