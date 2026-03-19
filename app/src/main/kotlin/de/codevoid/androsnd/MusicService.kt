@@ -661,8 +661,8 @@ class MusicService : MediaBrowserServiceCompat() {
                 contentResolver.openInputStream(coverUri)?.use { stream ->
                     val original = decodeBitmapWithSampling(stream.readBytes()) ?: return
                     val scaled = scaleBitmapForSession(original)
-                    original.recycle()
                     saveArtToFile(scaled, "song_art_$index.jpg")
+                    if (scaled !== original) original.recycle()
                     scaled.recycle()
                 }
             } catch (_: Exception) {
@@ -675,8 +675,8 @@ class MusicService : MediaBrowserServiceCompat() {
             val bytes = retriever.embeddedPicture ?: return
             val original = decodeBitmapWithSampling(bytes) ?: return
             val scaled = scaleBitmapForSession(original)
-            original.recycle()
             saveArtToFile(scaled, "song_art_$index.jpg")
+            if (scaled !== original) original.recycle()
             scaled.recycle()
         } catch (_: Exception) {
         } finally {
@@ -801,7 +801,7 @@ class MusicService : MediaBrowserServiceCompat() {
                 decodeBitmapWithSampling(bytes)?.let { original ->
                     val scaled = scaleBitmapForSession(original)
                     val uri = saveArtToFile(scaled, artFilename)
-                    original.recycle()
+                    if (scaled !== original) original.recycle()
                     scaled.recycle()
                     uri
                 }
@@ -1039,5 +1039,9 @@ class MusicService : MediaBrowserServiceCompat() {
         audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         scanExecutor.shutdown()
         metadataExecutor.shutdown()
+        synchronized(this) {
+            folderCoverBitmaps.clear()
+            folderThumbnailBitmaps.clear()
+        }
     }
 }
