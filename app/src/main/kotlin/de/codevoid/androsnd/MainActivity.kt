@@ -197,6 +197,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var displayedArtFolderPath: String? = null
 
     private val metadataReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -225,7 +226,10 @@ class MainActivity : AppCompatActivity() {
             val folderPath = intent.getStringExtra(MusicService.EXTRA_ART_FOLDER_PATH) ?: return
             playlistAdapter.invalidateArtForFolder(folderPath)
             val cur = musicService?.playlistManager?.getCurrentSong() ?: return
-            if (cur.folderPath == folderPath) updateNowPlayingArt(folderPath)
+            if (cur.folderPath == folderPath) {
+                displayedArtFolderPath = null  // new art file written — force reload
+                updateNowPlayingArt(folderPath)
+            }
         }
     }
 
@@ -351,7 +355,7 @@ class MainActivity : AppCompatActivity() {
             }
         )
         playlistAdapter.getTextMetadata = { song ->
-            musicService?.metadataRepository?.db?.get(song.uri.toString(), song.lastModified)
+            musicService?.metadataRepository?.getCached(song)
         }
         playlistAdapter.getArtFile = { song ->
             musicService?.metadataRepository?.artFileForFolder(song.folderPath)
@@ -817,6 +821,7 @@ class MainActivity : AppCompatActivity() {
             }
             updateNowPlayingArt(song.folderPath)
         } else {
+            displayedArtFolderPath = null
             songTitle.text = getString(R.string.no_song)
             songArtist.text = ""
             songAlbum.text = ""
@@ -836,6 +841,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateNowPlayingArt(folderPath: String) {
+        if (folderPath == displayedArtFolderPath) return
+        displayedArtFolderPath = folderPath
         activityScope.launch {
             val bmp = withContext(Dispatchers.IO) {
                 musicService?.metadataRepository?.artFileForFolder(folderPath)
@@ -1108,6 +1115,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         cancelNavRepeat()
+        cancelFixedRepeat()
         playlistAdapter.release()
         musicService?.setOnOverlayScaleChangedListener(null)
         musicService?.dismissOverlayDemo()
@@ -1200,8 +1208,8 @@ class MainActivity : AppCompatActivity() {
 
         fun applyTextMetadata(songIndex: Int, meta: SongMetadata) {
             metadataCache.put(songIndex, meta)
-            val pos = items.indexOfFirst { it.type == TYPE_SONG && it.songIndex == songIndex }
-            if (pos >= 0) notifyItemChanged(pos)
+            val pos = songIndexToItemPos[songIndex] ?: return
+            notifyItemChanged(pos)
         }
 
         fun release() {
@@ -1209,10 +1217,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun invalidateArtForFolder(folderPath: String) {
-            items.forEachIndexed { pos, item ->
-                if (item.type == TYPE_SONG && songs.getOrNull(item.songIndex)?.folderPath == folderPath)
-                    notifyItemChanged(pos)
+            val first = items.indexOfFirst {
+                it.type == TYPE_SONG && songs.getOrNull(it.songIndex)?.folderPath == folderPath
             }
+            if (first < 0) return
+            val last = items.indexOfLast {
+                it.type == TYPE_SONG && songs.getOrNull(it.songIndex)?.folderPath == folderPath
+            }
+            notifyItemRangeChanged(first, last - first + 1)
         }
 
         override fun getItemViewType(position: Int) = items.getOrNull(position)?.type ?: TYPE_SONG
@@ -1285,7 +1297,11 @@ class MainActivity : AppCompatActivity() {
 
         override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
             super.onViewRecycled(holder)
-            (holder as? SongViewHolder)?.artJob?.cancel()
+            if (holder is SongViewHolder) {
+                holder.artJob?.cancel()
+                (holder.cover.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap?.recycle()
+                holder.cover.setImageDrawable(null)
+            }
         }
 
         private fun bindSongText(holder: SongViewHolder, meta: SongMetadata) {

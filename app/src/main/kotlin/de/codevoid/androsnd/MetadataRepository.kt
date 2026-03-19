@@ -28,7 +28,8 @@ class MetadataRepository(private val context: Context) {
         private const val TAG = "MetadataRepository"
     }
 
-    val db = MetadataDb(context)
+    private val db = MetadataDb(context)
+    fun getCached(song: Song): SongMetadata? = db.get(song.uri.toString(), song.lastModified)
     private val artDir = File(context.cacheDir, "album_art").also { it.mkdirs() }
     private var enrichJob: Job? = null
 
@@ -37,8 +38,7 @@ class MetadataRepository(private val context: Context) {
 
     private fun currentArtFile(): File = File(artDir, "current_art.jpg")
 
-    internal suspend fun fetchText(song: Song): SongMetadata =
-        db.get(song.uri.toString(), song.lastModified) ?: enrichText(song)
+    internal suspend fun fetchText(song: Song): SongMetadata = enrichText(song)
 
     internal suspend fun loadCurrentArt(song: Song): Bitmap? {
         val folderArtFile = artFileForFolder(song.folderPath)
