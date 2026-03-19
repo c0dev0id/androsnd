@@ -269,11 +269,6 @@ class MainActivity : AppCompatActivity() {
         setupButtons()
         setupSettingsPanel()
 
-        ContextCompat.registerReceiver(
-            this, remoteReceiver,
-            IntentFilter("com.thorkracing.wireddevices.keypress"),
-            ContextCompat.RECEIVER_EXPORTED
-        )
         applyAccentColor()
         requestPermissionsIfNeeded()
         requestBatteryOptimizationExemption()
@@ -1061,13 +1056,26 @@ class MainActivity : AppCompatActivity() {
     private fun dpToPx(dp: Int): Int =
         (dp * resources.displayMetrics.density + 0.5f).toInt()
 
+    override fun onResume() {
+        super.onResume()
+        ContextCompat.registerReceiver(
+            this, remoteReceiver,
+            IntentFilter("com.thorkracing.wireddevices.keypress"),
+            ContextCompat.RECEIVER_EXPORTED
+        )
+    }
+
+    override fun onPause() {
+        super.onPause()
+        unregisterReceiver(remoteReceiver)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         cancelNavRepeat()
         playlistAdapter.release()
         musicService?.setOnOverlayScaleChangedListener(null)
         musicService?.dismissOverlayDemo()
-        unregisterReceiver(remoteReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(stateReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(scanReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(metadataReceiver)
