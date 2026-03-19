@@ -1198,16 +1198,6 @@ class MainActivity : AppCompatActivity() {
             notifyDataSetChanged()
         }
 
-<<<<<<< HEAD
-        fun invalidateMetadataForSong(songIndex: Int) {
-            metadataCache.remove(songIndex)
-            val pos = songIndexToItemPos[songIndex] ?: -1
-            if (pos >= 0) notifyItemChanged(pos)
-        }
-
-        fun release() {
-            executor.shutdown()
-=======
         fun applyTextMetadata(songIndex: Int, meta: SongMetadata) {
             metadataCache.put(songIndex, meta)
             val pos = items.indexOfFirst { it.type == TYPE_SONG && it.songIndex == songIndex }
@@ -1219,7 +1209,6 @@ class MainActivity : AppCompatActivity() {
                 if (item.type == TYPE_SONG && songs.getOrNull(item.songIndex)?.folderPath == folderPath)
                     notifyItemChanged(pos)
             }
->>>>>>> 8d8e2c8 (Replace MetadataCache+executors with SQLite+coroutines pipeline)
         }
 
         override fun getItemViewType(position: Int) = items.getOrNull(position)?.type ?: TYPE_SONG
