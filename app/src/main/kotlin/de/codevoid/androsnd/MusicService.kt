@@ -101,6 +101,8 @@ class MusicService : Service() {
     var currentTextMetadata: SongMetadata? = null
         private set
     private var currentArtBitmap: Bitmap? = null
+    private var isPreparing = false
+    private var pendingPlayAfterPrepare = false
     private var isDucking = false
 
     private lateinit var overlayToastManager: OverlayToastManager
@@ -197,34 +199,7 @@ class MusicService : Service() {
                 override fun onPrepare() {
                     if (playlistManager.songs.isEmpty()) return
                     val song = playlistManager.getCurrentSong() ?: return
-                    if (mediaPlayer == null) {
-                        try {
-                            mediaPlayer = MediaPlayer().apply {
-                                setAudioAttributes(
-                                    AudioAttributes.Builder()
-                                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                                        .build()
-                                )
-                                setDataSource(applicationContext, song.uri)
-                                prepare()
-                                val vol = getAppVolumeFloat()
-                                setVolume(vol, vol)
-                                setOnCompletionListener { onTrackComplete() }
-                                setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
-                            }
-                            updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
-                            broadcastState()
-                            serviceScope.launch {
-                                val meta = withContext(Dispatchers.IO) { metadataRepository.fetchText(song) }
-                                currentTextMetadata = meta
-                                updateMediaSessionMetadata()
-                                broadcastState()
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to prepare ${song.displayName}", e)
-                        }
-                    }
+                    if (mediaPlayer == null) startPlayingSong(song, autoStart = false)
                 }
             })
             isActive = true
@@ -265,15 +240,19 @@ class MusicService : Service() {
             startPlayingSong(song)
         } else {
             if (!isPlaying) {
-                requestAudioFocus()
-                mediaPlayer?.start()
-                applyAppVolume()
-                isPlaying = true
-                startProgressUpdates()
-                updateMediaSessionMetadata()
-                updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-                startForegroundCompat(buildNotification())
-                broadcastState()
+                if (isPreparing) {
+                    pendingPlayAfterPrepare = true
+                } else {
+                    requestAudioFocus()
+                    mediaPlayer?.start()
+                    applyAppVolume()
+                    isPlaying = true
+                    startProgressUpdates()
+                    updateMediaSessionMetadata()
+                    updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                    startForegroundCompat(buildNotification())
+                    broadcastState()
+                }
             }
         }
     }
@@ -300,10 +279,9 @@ class MusicService : Service() {
     }
 
     private fun stopPlayback() {
-        mediaPlayer?.let {
-            it.stop()
-            it.release()
-        }
+        isPreparing = false
+        pendingPlayAfterPrepare = false
+        mediaPlayer?.release()
         mediaPlayer = null
         isPlaying = false
         currentTextMetadata = null
@@ -352,10 +330,9 @@ class MusicService : Service() {
     }
 
     fun playSong(song: Song) {
-        mediaPlayer?.let {
-            it.stop()
-            it.release()
-        }
+        isPreparing = false
+        pendingPlayAfterPrepare = false
+        mediaPlayer?.release()
         mediaPlayer = null
         isPlaying = false
         stopProgressUpdates()
@@ -368,42 +345,65 @@ class MusicService : Service() {
         playSong(song)
     }
 
-    private fun startPlayingSong(song: Song) {
+    private fun startPlayingSong(song: Song, autoStart: Boolean = true) {
+        val player = MediaPlayer()
+        mediaPlayer = player
+        isPreparing = true
         try {
             requestAudioFocus()
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .build()
-                )
-                setDataSource(applicationContext, song.uri)
-                prepare()
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .build()
+            )
+            player.setDataSource(applicationContext, song.uri)
+            player.setOnCompletionListener { onTrackComplete() }
+            player.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+            player.setOnPreparedListener { mp ->
+                isPreparing = false
+                if (mediaPlayer !== mp) return@setOnPreparedListener
                 val vol = getAppVolumeFloat()
-                setVolume(vol, vol)
-                start()
-                setOnCompletionListener { onTrackComplete() }
-                setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+                mp.setVolume(vol, vol)
+                val shouldPlay = autoStart || pendingPlayAfterPrepare
+                pendingPlayAfterPrepare = false
+                if (shouldPlay) {
+                    mp.start()
+                    isPlaying = true
+                    startProgressUpdates()
+                    updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                    startForegroundCompat(buildNotification())
+                    playlistManager.selectNextQueueSong()
+                } else {
+                    updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+                }
+                broadcastState()
+                serviceScope.launch {
+                    val meta = withContext(Dispatchers.IO) { metadataRepository.fetchText(song) }
+                    currentTextMetadata = meta
+                    if (shouldPlay) {
+                        val art = withContext(Dispatchers.IO) { metadataRepository.loadCurrentArt(song) }
+                        currentArtBitmap = art
+                        updateMediaSessionMetadata()
+                        updateNotification()
+                        overlayToastManager.showSong(meta, art)
+                    } else {
+                        updateMediaSessionMetadata()
+                    }
+                    broadcastState()
+                }
             }
-            isPlaying = true
-            startProgressUpdates()
-            updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+            player.prepareAsync()
+            updatePlaybackState(PlaybackStateCompat.STATE_BUFFERING)
             startForegroundCompat(buildNotification())
             broadcastState()
-            playlistManager.selectNextQueueSong()
-            serviceScope.launch {
-                val meta = withContext(Dispatchers.IO) { metadataRepository.fetchText(song) }
-                val art  = withContext(Dispatchers.IO) { metadataRepository.loadCurrentArt(song) }
-                currentTextMetadata = meta
-                currentArtBitmap    = art
-                updateMediaSessionMetadata()
-                updateNotification()
-                overlayToastManager.showSong(meta, art)
-                broadcastState()
-            }
         } catch (e: Exception) {
+            isPreparing = false
             Log.e(TAG, "Failed to start playing ${song.displayName}", e)
+            if (mediaPlayer === player) {
+                player.release()
+                mediaPlayer = null
+            }
         }
     }
 
@@ -583,7 +583,9 @@ class MusicService : Service() {
     }
 
     fun scanFolderAsync(uri: Uri) {
-        mediaPlayer?.let { it.stop(); it.release() }
+        isPreparing = false
+        pendingPlayAfterPrepare = false
+        mediaPlayer?.release()
         mediaPlayer = null
         isPlaying = false
         stopProgressUpdates()
