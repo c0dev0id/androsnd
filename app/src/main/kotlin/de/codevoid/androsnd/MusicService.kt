@@ -89,6 +89,7 @@ class MusicService : MediaBrowserServiceCompat() {
 
     private lateinit var metadataCache: MetadataCache
     private val folderCoverBitmaps = HashMap<String, android.graphics.Bitmap?>()
+    private val folderThumbnailBitmaps = HashMap<String, android.graphics.Bitmap?>()
 
     var isPlaying: Boolean = false
         private set
@@ -555,11 +556,8 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     fun extractMetadata(song: Song, maxBitmapPx: Int = 512): SongMetadata {
-        // folderCoverBitmaps caches at 512px; scale down if caller wants a thumbnail
-        val folderCover = getFolderCoverForSong(song)
-        val folderArt = folderCover?.let {
-            if (maxBitmapPx >= 512) it else scaleBitmapForSession(it, maxBitmapPx)
-        }
+        val folderArt = if (maxBitmapPx >= 512) getFolderCoverForSong(song)
+                        else getFolderThumbnailForSong(song, maxBitmapPx)
         val uriString = song.uri.toString()
 
         // Return cached text metadata combined with the (possibly scaled) cover bitmap
@@ -605,6 +603,15 @@ class MusicService : MediaBrowserServiceCompat() {
         return bitmap
     }
 
+    @Synchronized
+    private fun getFolderThumbnailForSong(song: Song, maxPx: Int): android.graphics.Bitmap? {
+        val folderPath = song.folderPath
+        if (folderThumbnailBitmaps.containsKey(folderPath)) return folderThumbnailBitmaps[folderPath]
+        val thumb = getFolderCoverForSong(song)?.let { scaleBitmapForSession(it, maxPx) }
+        folderThumbnailBitmaps[folderPath] = thumb
+        return thumb
+    }
+
     private fun decodeBitmapWithSampling(bytes: ByteArray, maxPx: Int = 512): android.graphics.Bitmap? {
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
@@ -614,7 +621,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     private fun scaleBitmapForSession(bitmap: android.graphics.Bitmap, maxPx: Int = 256): android.graphics.Bitmap {
-        if (bitmap.width <= maxPx && bitmap.height <= maxPx) return bitmap.copy(bitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+        if (bitmap.width <= maxPx && bitmap.height <= maxPx) return bitmap
         val scale = maxPx.toFloat() / maxOf(bitmap.width, bitmap.height)
         return android.graphics.Bitmap.createScaledBitmap(
             bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true
@@ -696,7 +703,10 @@ class MusicService : MediaBrowserServiceCompat() {
             // Remove stale cache entries and persist
             metadataCache.cleanup(usedKeys)
             // Clear in-memory folder cover bitmaps to free memory
-            synchronized(this@MusicService) { folderCoverBitmaps.clear() }
+            synchronized(this@MusicService) {
+                folderCoverBitmaps.clear()
+                folderThumbnailBitmaps.clear()
+            }
         }
     }
 
