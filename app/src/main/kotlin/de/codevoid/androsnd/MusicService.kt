@@ -17,7 +17,6 @@ import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.os.Binder
 import android.os.Build
-import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -91,7 +90,6 @@ class MusicService : Service() {
         private set
     var currentMetadata: SongMetadata? = null
         private set
-    private var artVersion = 0L
     private var isDucking = false
 
     private lateinit var overlayToastManager: OverlayToastManager
@@ -509,7 +507,7 @@ class MusicService : Service() {
             val dir = java.io.File(cacheDir, "album_art").also { it.mkdirs() }
             val file = java.io.File(dir, filename)
             file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
-            val uri = Uri.parse("content://de.codevoid.androsnd.albumart/$filename?v=$artVersion")
+            val uri = Uri.parse("content://de.codevoid.androsnd.albumart/$filename")
             contentResolver.notifyChange(uri, null)
             uri
         } catch (e: Exception) {
