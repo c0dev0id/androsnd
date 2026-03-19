@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -22,12 +23,9 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import java.util.concurrent.Executors
-import android.support.v4.media.MediaBrowserCompat
-import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
-import androidx.media.MediaBrowserServiceCompat
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -35,7 +33,7 @@ import androidx.media.app.NotificationCompat.MediaStyle
 import de.codevoid.androsnd.model.Song
 import de.codevoid.androsnd.model.SongMetadata
 
-class MusicService : MediaBrowserServiceCompat() {
+class MusicService : Service() {
 
     companion object {
         private const val TAG = "MusicService"
@@ -59,10 +57,6 @@ class MusicService : MediaBrowserServiceCompat() {
         private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_APP_VOLUME = "app_volume"
         private const val SKIP_DURATION_MS = 10000
-
-        private const val MEDIA_ROOT_ID = "androsnd_root"
-        private const val MEDIA_FOLDER_PREFIX = "folder_"
-        private const val MEDIA_SONG_PREFIX = "song_"
 
         private val NOTIFICATION_ACTIONS = setOf(
             ACTION_PLAY, ACTION_PAUSE, ACTION_STOP, ACTION_NEXT, ACTION_PREVIOUS, ACTION_SHUFFLE
@@ -188,29 +182,8 @@ class MusicService : MediaBrowserServiceCompat() {
                     }
                     this@MusicService.mediaSession.setShuffleMode(shuffleMode)
                     playlistManager.selectNextQueueSong()
-                    try {
-                        updateMediaSessionQueue()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to update media session queue", e)
-                    }
                     updatePlaybackState(if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED)
                     broadcastState()
-                }
-                override fun onSkipToQueueItem(id: Long) { playSongAtIndex(id.toInt()) }
-                override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
-                    val index = mediaId
-                        ?.removePrefix(MEDIA_SONG_PREFIX)
-                        ?.toIntOrNull()
-                        ?: return
-                    playSongAtIndex(index)
-                }
-                override fun onPlayFromUri(uri: Uri?, extras: Bundle?) {
-                    uri ?: return
-                    val song = Song(uri = uri, displayName = uri.lastPathSegment ?: "Unknown", folderPath = "", folderName = "")
-                    playSong(song)
-                }
-                override fun onPlayFromSearch(query: String?, extras: Bundle?) {
-                    play()
                 }
                 override fun onPrepare() {
                     if (playlistManager.songs.isEmpty()) return
@@ -244,7 +217,6 @@ class MusicService : MediaBrowserServiceCompat() {
             })
             isActive = true
         }
-        setSessionToken(mediaSession.sessionToken)
     }
 
     private fun startForegroundCompat(notification: Notification) {
@@ -271,85 +243,7 @@ class MusicService : MediaBrowserServiceCompat() {
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder? {
-        if (intent?.action == SERVICE_INTERFACE) {
-            return super.onBind(intent)
-        }
-        return binder
-    }
-
-    override fun onGetRoot(
-        clientPackageName: String,
-        clientUid: Int,
-        rootHints: Bundle?
-    ): BrowserRoot {
-        return BrowserRoot(MEDIA_ROOT_ID, null)
-    }
-
-    private fun buildSongExtras(song: Song): Bundle {
-        return Bundle().apply {
-            putLong(MediaMetadataCompat.METADATA_KEY_DURATION, song.duration)
-        }
-    }
-
-    override fun onLoadChildren(
-        parentId: String,
-        result: Result<MutableList<MediaBrowserCompat.MediaItem>>
-    ) {
-        when {
-            parentId == MEDIA_ROOT_ID -> {
-                val folders = playlistManager.folders
-                if (folders.isEmpty()) {
-                    // No folder configured yet — return flat song list (or empty if none loaded)
-                    val items = playlistManager.songs.mapIndexed { index, song ->
-                        val desc = MediaDescriptionCompat.Builder()
-                            .setMediaId("$MEDIA_SONG_PREFIX$index")
-                            .setTitle(song.displayName)
-                            .setSubtitle(song.folderName)
-                            .setMediaUri(song.uri)
-                            .setExtras(buildSongExtras(song))
-                            .apply { songArtUri(index)?.let { setIconUri(it) } }
-                            .build()
-                        MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE)
-                    }.toMutableList()
-                    result.sendResult(items)
-                } else {
-                    val items = folders.mapIndexed { index, folder ->
-                        val firstSongArtUri = folder.songs.firstOrNull()?.let { songArtUri(it) }
-                        val desc = MediaDescriptionCompat.Builder()
-                            .setMediaId("$MEDIA_FOLDER_PREFIX$index")
-                            .setTitle(folder.name)
-                            .setSubtitle("${folder.songs.size} tracks")
-                            .apply { firstSongArtUri?.let { setIconUri(it) } }
-                            .build()
-                        MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_BROWSABLE)
-                    }.toMutableList()
-                    result.sendResult(items)
-                }
-            }
-            parentId.startsWith(MEDIA_FOLDER_PREFIX) -> {
-                val folderIndex = parentId.removePrefix(MEDIA_FOLDER_PREFIX).toIntOrNull()
-                val folder = folderIndex?.let { playlistManager.folders.getOrNull(it) }
-                if (folder == null) {
-                    result.sendResult(mutableListOf())
-                    return
-                }
-                val items = folder.songs.map { songIndex ->
-                    val song = playlistManager.songs[songIndex]
-                    val desc = MediaDescriptionCompat.Builder()
-                        .setMediaId("$MEDIA_SONG_PREFIX$songIndex")
-                        .setTitle(song.displayName)
-                        .setMediaUri(song.uri)
-                        .setExtras(buildSongExtras(song))
-                        .apply { songArtUri(songIndex)?.let { setIconUri(it) } }
-                        .build()
-                    MediaBrowserCompat.MediaItem(desc, MediaBrowserCompat.MediaItem.FLAG_PLAYABLE)
-                }.toMutableList()
-                result.sendResult(items)
-            }
-            else -> result.sendResult(mutableListOf())
-        }
-    }
+    override fun onBind(intent: Intent?): IBinder = binder
 
     fun play() {
         if (playlistManager.songs.isEmpty()) return
@@ -433,11 +327,6 @@ class MusicService : MediaBrowserServiceCompat() {
         playlistManager.toggleShuffle()
         mediaSession.setShuffleMode(if (playlistManager.isShuffleOn) PlaybackStateCompat.SHUFFLE_MODE_ALL else PlaybackStateCompat.SHUFFLE_MODE_NONE)
         playlistManager.selectNextQueueSong()
-        try {
-            updateMediaSessionQueue()
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to update media session queue", e)
-        }
         broadcastState()
     }
 
@@ -490,24 +379,11 @@ class MusicService : MediaBrowserServiceCompat() {
             startForegroundCompat(buildNotification())
             broadcastState()
             playlistManager.selectNextQueueSong()
-            val capturedArtVersion = ++artVersion
-            val curIdx = playlistManager.currentIndex
-            val nextIdx = playlistManager.nextQueueIndex
-            val nextSong = if (nextIdx >= 0) playlistManager.songs.getOrNull(nextIdx) else null
             scanExecutor.execute {
                 val metadata = extractMetadata(song)
-                // Only rebuild queue when shuffle is on (current+next changes); when shuffle is off
-                // the full queue is already populated and setActiveQueueItemId handles the active item.
-                val queue = if (playlistManager.isShuffleOn) {
-                    buildQueueItems(capturedArtVersion, curIdx, nextIdx, song, nextSong, metadata)
-                } else null
                 handler.post {
                     currentMetadata = metadata
                     updateMediaSessionMetadata(metadata)
-                    if (queue != null) {
-                        mediaSession.setQueue(queue)
-                        mediaSession.setQueueTitle(getString(R.string.app_name))
-                    }
                     updateNotification()
                     overlayToastManager.showSong(metadata)
                     broadcastState()
@@ -645,13 +521,6 @@ class MusicService : MediaBrowserServiceCompat() {
     private fun songArtFile(index: Int): java.io.File =
         java.io.File(cacheDir, "album_art/song_art_$index.jpg")
 
-    private fun songArtUri(index: Int): Uri? {
-        val f = songArtFile(index)
-        return if (f.exists())
-            Uri.parse("content://de.codevoid.androsnd.albumart/song_art_$index.jpg?v=$artVersion")
-        else null
-    }
-
     private fun cacheSongArtIfNeeded(index: Int, song: Song) {
         val file = songArtFile(index)
         if (file.exists()) return
@@ -773,135 +642,10 @@ class MusicService : MediaBrowserServiceCompat() {
                 PlaybackStateCompat.ACTION_SEEK_TO or
                 PlaybackStateCompat.ACTION_FAST_FORWARD or
                 PlaybackStateCompat.ACTION_REWIND or
-                PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or
-                PlaybackStateCompat.ACTION_PREPARE or
-                PlaybackStateCompat.ACTION_SKIP_TO_QUEUE_ITEM or
-                PlaybackStateCompat.ACTION_PLAY_FROM_URI or
-                PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID
+                PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE
             )
             .build()
         mediaSession.setPlaybackState(playbackState)
-    }
-
-    private data class NeighborInfo(
-        val title: String,
-        val artist: String,
-        val album: String,
-        val artUri: Uri?
-    )
-
-    private fun extractNeighborInfo(song: Song, artFilename: String): NeighborInfo {
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(applicationContext, song.uri)
-            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: song.displayName
-            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
-            val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
-            val artUri = retriever.embeddedPicture?.let { bytes ->
-                decodeBitmapWithSampling(bytes)?.let { original ->
-                    val scaled = scaleBitmapForSession(original)
-                    val uri = saveArtToFile(scaled, artFilename)
-                    if (scaled !== original) original.recycle()
-                    scaled.recycle()
-                    uri
-                }
-            }
-            NeighborInfo(title, artist, album, artUri)
-        } catch (e: Exception) {
-            NeighborInfo(song.displayName, "", "", null)
-        } finally {
-            retriever.release()
-        }
-    }
-
-    private fun buildQueueItems(
-        artVersion: Long,
-        curIdx: Int,
-        nextIdx: Int,
-        curSong: Song,
-        nextSong: Song?,
-        metadata: SongMetadata
-    ): List<MediaSessionCompat.QueueItem> {
-        val curArtUri = Uri.parse("content://de.codevoid.androsnd.albumart/current_art.jpg?v=$artVersion")
-            .takeIf { java.io.File(cacheDir, "album_art/current_art.jpg").exists() }
-        val curDesc = MediaDescriptionCompat.Builder()
-            .setMediaId(curIdx.toString())
-            .setTitle(metadata.title)
-            .setSubtitle(metadata.artist)
-            .setDescription(metadata.album)
-            .setMediaUri(curSong.uri)
-            .apply { if (curArtUri != null) setIconUri(curArtUri) }
-            .build()
-        val queue = mutableListOf(MediaSessionCompat.QueueItem(curDesc, curIdx.toLong()))
-        if (nextSong != null) {
-            val nextInfo = extractNeighborInfo(nextSong, "next_art.jpg")
-            val nextDesc = MediaDescriptionCompat.Builder()
-                .setMediaId(nextIdx.toString())
-                .setTitle(nextInfo.title)
-                .setSubtitle(nextInfo.artist)
-                .setDescription(nextInfo.album)
-                .setMediaUri(nextSong.uri)
-                .apply { if (nextInfo.artUri != null) setIconUri(nextInfo.artUri) }
-                .build()
-            queue.add(MediaSessionCompat.QueueItem(nextDesc, nextIdx.toLong()))
-        }
-        return queue
-    }
-
-    private fun updateMediaSessionQueue() {
-        val songs = playlistManager.songs
-        if (songs.isEmpty()) return
-        val curIdx = playlistManager.currentIndex
-        val curSong = songs.getOrNull(curIdx) ?: return
-
-        val curArtUri = Uri.parse("content://de.codevoid.androsnd.albumart/current_art.jpg?v=$artVersion")
-            .takeIf { java.io.File(cacheDir, "album_art/current_art.jpg").exists() }
-        val curDesc = MediaDescriptionCompat.Builder()
-            .setMediaId(curIdx.toString())
-            .setTitle(currentMetadata?.title ?: curSong.displayName)
-            .setSubtitle(currentMetadata?.artist ?: "")
-            .setDescription(currentMetadata?.album ?: "")
-            .setMediaUri(curSong.uri)
-            .apply { if (curArtUri != null) setIconUri(curArtUri) }
-            .build()
-
-        val queue: List<MediaSessionCompat.QueueItem>
-        if (playlistManager.isShuffleOn) {
-            val nextIdx = playlistManager.nextQueueIndex
-            val nextSong = if (nextIdx >= 0) songs.getOrNull(nextIdx) else null
-            val q = mutableListOf(MediaSessionCompat.QueueItem(curDesc, curIdx.toLong()))
-            if (nextSong != null) {
-                val nextInfo = extractNeighborInfo(nextSong, "next_art.jpg")
-                val nextDesc = MediaDescriptionCompat.Builder()
-                    .setMediaId(nextIdx.toString())
-                    .setTitle(nextInfo.title)
-                    .setSubtitle(nextInfo.artist)
-                    .setDescription(nextInfo.album)
-                    .setMediaUri(nextSong.uri)
-                    .apply { if (nextInfo.artUri != null) setIconUri(nextInfo.artUri) }
-                    .build()
-                q.add(MediaSessionCompat.QueueItem(nextDesc, nextIdx.toLong()))
-            }
-            queue = q
-        } else {
-            // Shuffle off: full playlist — current song with rich metadata, others with displayName only (no I/O)
-            queue = songs.mapIndexed { idx, song ->
-                if (idx == curIdx) {
-                    MediaSessionCompat.QueueItem(curDesc, idx.toLong())
-                } else {
-                    val desc = MediaDescriptionCompat.Builder()
-                        .setMediaId(idx.toString())
-                        .setTitle(song.displayName)
-                        .setMediaUri(song.uri)
-                        .apply { songArtUri(idx)?.let { setIconUri(it) } }
-                        .build()
-                    MediaSessionCompat.QueueItem(desc, idx.toLong())
-                }
-            }
-        }
-
-        mediaSession.setQueue(queue)
-        mediaSession.setQueueTitle(getString(R.string.app_name))
     }
 
     private fun buildNotification(): Notification {
@@ -1011,12 +755,6 @@ class MusicService : MediaBrowserServiceCompat() {
                 handler.post {
                     isScanning = false
                     playlistManager.selectNextQueueSong()
-                    try {
-                        updateMediaSessionQueue()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to update media session queue", e)
-                    }
-                    notifyChildrenChanged("androsnd_root")
                     startMetadataEnrichment()
                     broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
                     broadcastState()

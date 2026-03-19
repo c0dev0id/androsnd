@@ -33,21 +33,8 @@
 
         <service
             android:name=".MusicService"
-            android:exported="true"
-            android:foregroundServiceType="mediaPlayback">
-            <intent-filter>
-                <action android:name="android.media.browse.MediaBrowserService" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
-            </intent-filter>
-        </service>
-
-        <receiver android:name="androidx.media.session.MediaButtonReceiver" android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MEDIA_BUTTON" />
-            </intent-filter>
-        </receiver>
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <provider
             android:name=".AlbumArtProvider"
@@ -55,9 +42,6 @@
             android:exported="true"
             android:grantUriPermissions="true" />
 
-        <meta-data
-            android:name="com.google.android.gms.car.application"
-            android:resource="@xml/automotive_app_desc" />
 
     </application>
 </manifest>
