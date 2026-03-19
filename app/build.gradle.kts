@@ -62,4 +62,5 @@ dependencies {
     implementation("androidx.media:media:1.7.0")
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
