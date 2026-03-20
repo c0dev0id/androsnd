@@ -56,9 +56,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var songTitle: TextView
     private lateinit var songArtist: TextView
     private lateinit var songAlbum: TextView
-    private lateinit var progressBar: SeekBar
-    private lateinit var timeCurrentView: TextView
-    private lateinit var timeTotalView: TextView
+    private lateinit var timeRemainingView: TextView
+    private lateinit var volSlider: SeekBar
     private lateinit var playlistRecycler: RecyclerView
     private lateinit var loadingIndicator: View
     private lateinit var metadataCounterView: TextView
@@ -77,7 +76,6 @@ class MainActivity : AppCompatActivity() {
     // Remote control navigation state
     private var playlistFocusPos: Int = 0
     private var buttonBarFocusIdx: Int = 1   // 1 = Play button
-    private lateinit var volDisplay: TextView
 
     // Focus frame is hidden until the first remote key is pressed
     private var hasReceivedRemoteKey = false
@@ -102,7 +100,6 @@ class MainActivity : AppCompatActivity() {
         get() = listOf(btnPrev, btnPlay, btnNext, btnStop, btnShuffle)
 
     private lateinit var playlistAdapter: PlaylistAdapter
-    private var isUserSeekBarTouch = false
     private var lastKnownPlaylistIndex = -1
     private var lastKnownSongCount = -1
     private var metadataLoadedCount = 0
@@ -290,9 +287,8 @@ class MainActivity : AppCompatActivity() {
         songTitle = findViewById(R.id.song_title)
         songArtist = findViewById(R.id.song_artist)
         songAlbum = findViewById(R.id.song_album)
-        progressBar = findViewById(R.id.progress_bar)
-        timeCurrentView = findViewById(R.id.time_current)
-        timeTotalView = findViewById(R.id.time_total)
+        timeRemainingView = findViewById(R.id.time_remaining)
+        volSlider = findViewById(R.id.vol_slider)
         playlistRecycler = findViewById(R.id.playlist_recycler)
         loadingIndicator = findViewById(R.id.loading_indicator)
         metadataCounterView = findViewById(R.id.metadata_counter)
@@ -305,7 +301,17 @@ class MainActivity : AppCompatActivity() {
         contentArea = findViewById(R.id.content_area)
         settingsPanel = findViewById(R.id.settings_panel)
         settingsButtonStrokeWidth = btnSettings.strokeWidth
-        volDisplay = findViewById(R.id.vol_display)
+
+        // Size the rotated volume SeekBar to span the container's full height
+        val volContainer = findViewById<View>(R.id.vol_slider_container)
+        volContainer.post {
+            val h = volContainer.height
+            if (h > 0) {
+                val params = volSlider.layoutParams
+                params.width = h
+                volSlider.layoutParams = params
+            }
+        }
 
         loadAccentColor()
     }
@@ -330,20 +336,6 @@ class MainActivity : AppCompatActivity() {
         btnNext.setOnClickListener { musicService?.handleNext() }
         btnStop.setOnClickListener { musicService?.handleStop() }
         btnShuffle.setOnClickListener { musicService?.handleShuffleButton() }
-
-        progressBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) {
-                    timeCurrentView.text = formatTime(progress)
-                }
-            }
-            override fun onStartTrackingTouch(sb: SeekBar?) { isUserSeekBarTouch = true }
-            override fun onStopTrackingTouch(sb: SeekBar?) {
-                musicService?.seekTo(sb?.progress ?: 0)
-                isUserSeekBarTouch = false
-            }
-        })
-
         btnSettings.setOnClickListener { toggleSettings() }
     }
 
@@ -356,9 +348,9 @@ class MainActivity : AppCompatActivity() {
     private fun applyAccentColor() {
         val accentCSL = ColorStateList.valueOf(accentColor)
 
-        // SeekBar
-        progressBar.progressTintList = accentCSL
-        progressBar.thumbTintList = accentCSL
+        // Volume slider
+        volSlider.progressTintList = accentCSL
+        volSlider.thumbTintList = accentCSL
 
         // Outlined buttons (settings)
         btnSettings.strokeColor = accentCSL
@@ -436,11 +428,11 @@ class MainActivity : AppCompatActivity() {
         val currentVolume = prefs.getInt("app_volume", 100)
         sliderVolume.value = alignToSliderStep(currentVolume.toFloat(), 0f, 100f, 1f)
         labelVolume.text = "${sliderVolume.value.toInt()}%"
-        volDisplay.text = "Vol: ${sliderVolume.value.toInt()}%"
+        volSlider.progress = sliderVolume.value.toInt()
         sliderVolume.addOnChangeListener { _, value, _ ->
             val vol = value.toInt()
             labelVolume.text = "${vol}%"
-            volDisplay.text = "Vol: ${vol}%"
+            volSlider.progress = vol
             prefs.edit().putInt("app_volume", vol).apply()
             musicService?.applyAppVolume()
         }
@@ -791,14 +783,10 @@ class MainActivity : AppCompatActivity() {
             coverArt.setImageResource(android.R.drawable.ic_media_play)
         }
 
-        if (!isUserSeekBarTouch) {
-            val pos = svc.getPosition()
-            val dur = svc.getDuration()
-            progressBar.max = if (dur > 0) dur else 100
-            progressBar.progress = pos
-            timeCurrentView.text = formatTime(pos)
-            timeTotalView.text = formatTime(dur)
-        }
+        val pos = svc.getPosition()
+        val dur = svc.getDuration()
+        val remaining = if (dur > 0) (dur - pos).coerceAtLeast(0) else 0
+        timeRemainingView.text = if (dur > 0) "-${formatTime(remaining)}" else ""
 
         updatePlaylist()
     }
@@ -1139,8 +1127,7 @@ class MainActivity : AppCompatActivity() {
                         bindSongMetadata(holder, cached)
                     } else {
                         holder.name.text = item.displayName
-                        holder.subtitle.text = ""
-                        holder.cover.setImageBitmap(null)
+                        holder.duration.text = ""
                         val song = songs.getOrNull(item.songIndex)
                         if (song != null) {
                             val idx = item.songIndex
@@ -1172,12 +1159,7 @@ class MainActivity : AppCompatActivity() {
 
         private fun bindSongMetadata(holder: SongViewHolder, meta: SongMetadata) {
             holder.name.text = if (meta.artist.isNotEmpty()) "${meta.artist} - ${meta.title}" else meta.title
-            val dur = formatDuration(meta.duration)
-            holder.subtitle.text = listOfNotNull(
-                meta.album.takeIf { it.isNotEmpty() },
-                dur.takeIf { it.isNotEmpty() }
-            ).joinToString("  •  ")
-            holder.cover.setImageBitmap(meta.coverArt)
+            holder.duration.text = formatDuration(meta.duration)
         }
 
         private fun formatDuration(ms: Long): String {
@@ -1204,7 +1186,7 @@ class MainActivity : AppCompatActivity() {
 
         class SongViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val name: TextView = view.findViewById(R.id.song_name)
-            val subtitle: TextView = view.findViewById(R.id.song_subtitle)
+            val duration: TextView = view.findViewById(R.id.song_duration)
             val cover: ImageView = view.findViewById(R.id.song_cover)
         }
     }
