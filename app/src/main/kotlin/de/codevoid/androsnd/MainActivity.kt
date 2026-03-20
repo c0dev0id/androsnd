@@ -75,8 +75,8 @@ class MainActivity : AppCompatActivity() {
     private var settingsButtonStrokeWidth = 0
 
     // Remote control navigation state
-    private var navZone: NavZone = NavZone.Playlist
     private var playlistFocusPos: Int = 0
+    private var buttonBarFocusIdx: Int = 1   // 1 = Play button
     private lateinit var volDisplay: TextView
 
     // Focus frame is hidden until the first remote key is pressed
@@ -94,12 +94,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var updateChecker: UpdateChecker
 
-    // Key-repeat state for DPAD navigation (accelerating, used for up/down)
-    private val navRepeatHandler = Handler(Looper.getMainLooper())
-    private var navRepeatRunnable: Runnable? = null
-    private var navRepeatStep = 0
-
-    // Key-repeat state for fixed-interval actions (volume and left/right seeking)
+    // Key-repeat state for fixed-interval lever actions (volume)
     private val fixedRepeatHandler = Handler(Looper.getMainLooper())
     private var fixedRepeatRunnable: Runnable? = null
 
@@ -123,11 +118,6 @@ class MainActivity : AppCompatActivity() {
         )
         private val ACCENT_NAMES = listOf("Orange", "Blue", "Green")
         private val ACCENT_KEYS = listOf("orange", "blue", "green")
-    }
-
-    sealed class NavZone {
-        object Playlist : NavZone()
-        data class ButtonBar(val idx: Int = 1) : NavZone()  // 1 = Play button
     }
 
     private val serviceConnection = object : ServiceConnection {
@@ -698,7 +688,7 @@ class MainActivity : AppCompatActivity() {
                 musicService?.dismissOverlayDemo()
                 toggleDemo.isChecked = false
             }
-            navZone = NavZone.Playlist
+            buttonBarFocusIdx = 1
         }
         updateButtonStates()
         updateFocusVisual()
@@ -879,10 +869,10 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_F6 -> adjustVolume(5f)
             KeyEvent.KEYCODE_F7 -> adjustVolume(-5f)
             // ESCAPE is handled on key-up only (toggling on release avoids state thrash on hold)
-            KeyEvent.KEYCODE_DPAD_UP    -> { handleUp(); startNavRepeat(::handleUp) }
-            KeyEvent.KEYCODE_DPAD_DOWN  -> { handleDown(); startNavRepeat(::handleDown) }
-            KeyEvent.KEYCODE_DPAD_LEFT  -> { handleLeft(); startFixedRepeat { handleLeft() } }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> { handleRight(); startFixedRepeat { handleRight() } }
+            KeyEvent.KEYCODE_DPAD_UP    -> handleUp()
+            KeyEvent.KEYCODE_DPAD_DOWN  -> handleDown()
+            KeyEvent.KEYCODE_DPAD_LEFT  -> handleLeft()
+            KeyEvent.KEYCODE_DPAD_RIGHT -> handleRight()
             KeyEvent.KEYCODE_ENTER,
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_BUTTON_A   -> handleConfirm()
@@ -895,45 +885,10 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_ESCAPE -> {
                 when {
                     settingsVisible -> toggleSettings()
-                    else -> {
-                        navZone = when (navZone) {
-                            is NavZone.Playlist  -> NavZone.ButtonBar(1)
-                            is NavZone.ButtonBar -> NavZone.Playlist
-                        }
-                        updateFocusVisual()
-                    }
+                    else -> moveTaskToBack(true)
                 }
             }
-            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> cancelNavRepeat()
-            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> cancelFixedRepeat()
         }
-    }
-
-    private fun startNavRepeat(action: () -> Boolean) {
-        cancelNavRepeat()
-        navRepeatStep = 0
-        postRepeat(action, 500L)   // initial hold delay before first repeat fires
-    }
-
-    private fun postRepeat(action: () -> Boolean, delayMs: Long) {
-        val r = Runnable {
-            action()
-            navRepeatStep++
-            val next = when {
-                navRepeatStep < 3 -> 300L   // slow
-                navRepeatStep < 8 -> 150L   // medium
-                else              -> 75L    // fast
-            }
-            postRepeat(action, next)
-        }
-        navRepeatRunnable = r
-        navRepeatHandler.postDelayed(r, delayMs)
-    }
-
-    private fun cancelNavRepeat() {
-        navRepeatRunnable?.let { navRepeatHandler.removeCallbacks(it) }
-        navRepeatRunnable = null
-        navRepeatStep = 0
     }
 
     private fun startFixedRepeat(action: () -> Unit) {
@@ -966,7 +921,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleUp(): Boolean {
-        if (navZone is NavZone.Playlist && playlistFocusPos > 0) {
+        if (playlistFocusPos > 0) {
             playlistFocusPos--
             updateFocusVisual()
             playlistRecycler.scrollToPosition(playlistFocusPos)
@@ -975,8 +930,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleDown(): Boolean {
-        if (navZone is NavZone.Playlist &&
-                playlistFocusPos < playlistAdapter.itemCount - 1) {
+        if (playlistFocusPos < playlistAdapter.itemCount - 1) {
             playlistFocusPos++
             updateFocusVisual()
             playlistRecycler.scrollToPosition(playlistFocusPos)
@@ -985,44 +939,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleLeft(): Boolean {
-        when (val z = navZone) {
-            is NavZone.Playlist  -> seekRelative(-5000)
-            is NavZone.ButtonBar -> if (z.idx > 0) {
-                navZone = NavZone.ButtonBar(z.idx - 1)
-                updateFocusVisual()
-            }
+        if (buttonBarFocusIdx > 0) {
+            buttonBarFocusIdx--
+            updateFocusVisual()
         }
         return true
     }
 
     private fun handleRight(): Boolean {
-        when (val z = navZone) {
-            is NavZone.Playlist  -> seekRelative(5000)
-            is NavZone.ButtonBar -> if (z.idx < navButtons.size - 1) {
-                navZone = NavZone.ButtonBar(z.idx + 1)
-                updateFocusVisual()
-            }
+        if (buttonBarFocusIdx < navButtons.size - 1) {
+            buttonBarFocusIdx++
+            updateFocusVisual()
         }
         return true
     }
 
     private fun handleConfirm(): Boolean {
-        when (val z = navZone) {
-            is NavZone.Playlist  -> {
-                val songIdx = playlistAdapter.getSongIndexAt(playlistFocusPos)
-                if (songIdx != null) musicService?.playSongAtIndex(songIdx)
+        val btn = navButtons[buttonBarFocusIdx]
+        if (btn == btnPlay) {
+            val focusedSongIdx = playlistAdapter.getSongIndexAt(playlistFocusPos)
+            if (focusedSongIdx != null &&
+                    focusedSongIdx != musicService?.playlistManager?.currentIndex) {
+                musicService?.playSongAtIndex(focusedSongIdx)
+                return true
             }
-            is NavZone.ButtonBar -> navButtons[z.idx].performClick()
         }
+        btn.performClick()
         return true
-    }
-
-    private fun seekRelative(deltaMs: Int) {
-        val svc = musicService ?: return
-        val newPos = (svc.getPosition() + deltaMs).coerceIn(0, svc.getDuration())
-        svc.seekTo(newPos)
-        progressBar.progress = newPos
-        timeCurrentView.text = formatTime(newPos)
     }
 
     private fun adjustSlider(id: Int, delta: Float) {
@@ -1035,12 +978,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateFocusVisual() {
         if (!hasReceivedRemoteKey) return
-        playlistAdapter.focusedPos = -1
-        navButtons.forEach { it.foreground = null }
-
-        when (val z = navZone) {
-            is NavZone.Playlist  -> playlistAdapter.focusedPos = playlistFocusPos
-            is NavZone.ButtonBar -> navButtons[z.idx].foreground = makeFocusRing(dpToPx(8))
+        playlistAdapter.focusedPos = playlistFocusPos
+        navButtons.forEachIndexed { idx, btn ->
+            btn.foreground = if (idx == buttonBarFocusIdx) makeFocusRing(dpToPx(8)) else null
         }
     }
 
@@ -1072,7 +1012,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        cancelNavRepeat()
+        cancelFixedRepeat()
         playlistAdapter.release()
         musicService?.setOnOverlayScaleChangedListener(null)
         musicService?.dismissOverlayDemo()
