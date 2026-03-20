@@ -379,6 +379,7 @@ class MainActivity : AppCompatActivity() {
 
         btnPlay.backgroundTintList = ColorStateList.valueOf(if (isPlaying) accentColor else inactiveColor)
         btnShuffle.backgroundTintList = ColorStateList.valueOf(if (isShuffleOn) accentColor else inactiveColor)
+        btnShuffle.iconTint = ColorStateList.valueOf(if (isShuffleOn) Color.parseColor("#1A1A1A") else Color.WHITE)
 
         if (settingsVisible) {
             btnSettings.backgroundTintList = ColorStateList.valueOf(accentColor)
