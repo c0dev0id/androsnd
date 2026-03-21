@@ -37,7 +37,7 @@
                 <!-- Volume slider container — narrow column left of the cover -->
                 <FrameLayout
                     android:id="@+id/vol_slider_container"
-                    android:layout_width="36dp"
+                    android:layout_width="72dp"
                     android:layout_height="match_parent"
                     android:clipChildren="false">
 
