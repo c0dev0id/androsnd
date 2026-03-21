@@ -40,9 +40,6 @@ class UpdateChecker(private val context: Context) {
         }
     }
 
-    /** Returns true if the installed build is a development (pre-release) version. */
-    fun isDevVersion(): Boolean = installedVersion().startsWith("dev", ignoreCase = true)
-
     /** Returns true when onlineTag represents a strictly newer version than installedVersion. */
     fun isNewer(onlineTag: String, installedVersion: String): Boolean {
         val online = parseVersion(onlineTag)
