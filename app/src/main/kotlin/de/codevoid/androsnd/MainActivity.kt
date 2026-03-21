@@ -309,7 +309,7 @@ class MainActivity : AppCompatActivity() {
             val h = volContainer.height
             if (h > 0) {
                 val params = volSlider.layoutParams
-                params.width = h
+                params.width = h - volLabel.height
                 volSlider.layoutParams = params
             }
         }
