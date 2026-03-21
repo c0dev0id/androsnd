@@ -314,6 +314,17 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        volSlider.addOnChangeListener { _, value, fromUser ->
+            if (!fromUser) return@addOnChangeListener
+            val vol = value.toInt()
+            volLabel.text = "${vol}%"
+            getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+                .edit().putInt("app_volume", vol).apply()
+            musicService?.applyAppVolume()
+            // Keep settings panel slider in sync if it's open
+            settingsPanel.findViewById<Slider>(R.id.slider_volume)?.value = value
+        }
+
         loadAccentColor()
     }
 
