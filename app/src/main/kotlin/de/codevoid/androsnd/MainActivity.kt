@@ -1095,7 +1095,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun release() {
-            executor.shutdown()
+            adapterScope.cancel()
+        }
+
+        fun invalidateArtForFolder(folderPath: String) {
+            val pos = items.indexOfFirst {
+                it.type == TYPE_FOLDER && folders.getOrNull(it.folderIndex)?.path == folderPath
+            }
+            if (pos >= 0) notifyItemChanged(pos)
         }
 
         override fun getItemViewType(position: Int) = items.getOrNull(position)?.type ?: TYPE_SONG
@@ -1120,11 +1127,25 @@ class MainActivity : AppCompatActivity() {
                     holder.name.text = item.displayName
                     holder.itemView.foreground = if (isFocused) makeFocusRingFor(holder.itemView) else null
                     holder.itemView.setOnClickListener { onFolderClick(item.folderIndex) }
+
+                    holder.artJob?.cancel()
+                    val firstSong = folders.getOrNull(item.folderIndex)?.songs?.firstOrNull()
+                        ?.let { songs.getOrNull(it) }
+                    holder.artJob = if (firstSong != null) adapterScope.launch {
+                        val bmp = withContext(Dispatchers.IO) {
+                            val file = getArtFile?.invoke(firstSong)?.takeIf { it.exists() }
+                                ?: return@withContext null
+                            BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply {
+                                inSampleSize = 2
+                            })
+                        }
+                        holder.cover.setImageBitmap(bmp)
+                    } else null
                 }
                 is SongViewHolder -> {
                     val cached = metadataCache.get(item.songIndex)
                     if (cached != null) {
-                        bindSongMetadata(holder, cached)
+                        bindSongText(holder, cached)
                     } else {
                         holder.name.text = item.displayName
                         holder.duration.text = ""
@@ -1144,6 +1165,7 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     }
+
                     val isSelected = item.songIndex == currentSongIndex
                     holder.itemView.isSelected = isSelected
                     holder.itemView.setBackgroundColor(when {
@@ -1157,7 +1179,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        private fun bindSongMetadata(holder: SongViewHolder, meta: SongMetadata) {
+        override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+            super.onViewRecycled(holder)
+            if (holder is FolderViewHolder) {
+                holder.artJob?.cancel()
+                (holder.cover.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap?.recycle()
+                holder.cover.setImageDrawable(null)
+            }
+        }
+
+        private fun bindSongText(holder: SongViewHolder, meta: SongMetadata) {
             holder.name.text = if (meta.artist.isNotEmpty()) "${meta.artist} - ${meta.title}" else meta.title
             holder.duration.text = formatDuration(meta.duration)
         }
@@ -1182,12 +1213,13 @@ class MainActivity : AppCompatActivity() {
 
         class FolderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val name: TextView = view.findViewById(R.id.folder_name)
+            val cover: ImageView = view.findViewById(R.id.folder_cover)
+            var artJob: Job? = null
         }
 
         class SongViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val name: TextView = view.findViewById(R.id.song_name)
             val duration: TextView = view.findViewById(R.id.song_duration)
-            val cover: ImageView = view.findViewById(R.id.song_cover)
         }
     }
 }

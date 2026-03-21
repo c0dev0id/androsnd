@@ -3,16 +3,19 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:minHeight="56dp"
+    android:minHeight="@dimen/playlist_folder_min_height"
     android:padding="12dp"
     android:background="?attr/selectableItemBackground"
     android:gravity="center_vertical">
 
     <ImageView
-        android:layout_width="@dimen/playlist_folder_icon_size"
-        android:layout_height="@dimen/playlist_folder_icon_size"
-        android:src="@drawable/ic_folder"
-        android:layout_marginEnd="@dimen/spacing_md" />
+        android:id="@+id/folder_cover"
+        android:layout_width="@dimen/playlist_folder_cover_size"
+        android:layout_height="@dimen/playlist_folder_cover_size"
+        android:layout_marginEnd="@dimen/spacing_md"
+        android:scaleType="centerCrop"
+        android:background="@color/surface_card"
+        android:contentDescription="@null" />
 
     <TextView
         android:id="@+id/folder_name"

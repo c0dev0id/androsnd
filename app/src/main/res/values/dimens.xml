@@ -18,8 +18,8 @@
     <!-- Playlist items -->
     <dimen name="playlist_song_cover_size">48dp</dimen>
     <dimen name="playlist_song_min_height">68dp</dimen>
-    <dimen name="playlist_folder_icon_size">28dp</dimen>
-    <dimen name="playlist_folder_min_height">56dp</dimen>
+    <dimen name="playlist_folder_cover_size">46dp</dimen>
+    <dimen name="playlist_folder_min_height">70dp</dimen>
 
     <!-- Overlay toast -->
     <dimen name="overlay_cover_size">64dp</dimen>
