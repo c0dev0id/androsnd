@@ -21,7 +21,6 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.ImageView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -57,7 +56,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var songArtist: TextView
     private lateinit var songAlbum: TextView
     private lateinit var timeRemainingView: TextView
-    private lateinit var volSlider: SeekBar
+    private lateinit var volSlider: Slider
+    private lateinit var volLabel: TextView
     private lateinit var playlistRecycler: RecyclerView
     private lateinit var loadingIndicator: View
     private lateinit var metadataCounterView: TextView
@@ -289,6 +289,7 @@ class MainActivity : AppCompatActivity() {
         songAlbum = findViewById(R.id.song_album)
         timeRemainingView = findViewById(R.id.time_remaining)
         volSlider = findViewById(R.id.vol_slider)
+        volLabel = findViewById(R.id.vol_label)
         playlistRecycler = findViewById(R.id.playlist_recycler)
         loadingIndicator = findViewById(R.id.loading_indicator)
         metadataCounterView = findViewById(R.id.metadata_counter)
@@ -302,7 +303,7 @@ class MainActivity : AppCompatActivity() {
         settingsPanel = findViewById(R.id.settings_panel)
         settingsButtonStrokeWidth = btnSettings.strokeWidth
 
-        // Size the rotated volume SeekBar to span the container's full height
+        // Size the rotated volume slider to span the container's full height
         val volContainer = findViewById<View>(R.id.vol_slider_container)
         volContainer.post {
             val h = volContainer.height
@@ -349,8 +350,9 @@ class MainActivity : AppCompatActivity() {
         val accentCSL = ColorStateList.valueOf(accentColor)
 
         // Volume slider
-        volSlider.progressTintList = accentCSL
+        volSlider.trackActiveTintList = accentCSL
         volSlider.thumbTintList = accentCSL
+        volLabel.setTextColor(accentColor)
 
         // Outlined buttons (settings)
         btnSettings.strokeColor = accentCSL
@@ -428,11 +430,13 @@ class MainActivity : AppCompatActivity() {
         val currentVolume = prefs.getInt("app_volume", 100)
         sliderVolume.value = alignToSliderStep(currentVolume.toFloat(), 0f, 100f, 1f)
         labelVolume.text = "${sliderVolume.value.toInt()}%"
-        volSlider.progress = sliderVolume.value.toInt()
+        volSlider.value = sliderVolume.value
+        volLabel.text = "${sliderVolume.value.toInt()}%"
         sliderVolume.addOnChangeListener { _, value, _ ->
             val vol = value.toInt()
             labelVolume.text = "${vol}%"
-            volSlider.progress = vol
+            volSlider.value = value
+            volLabel.text = "${vol}%"
             prefs.edit().putInt("app_volume", vol).apply()
             musicService?.applyAppVolume()
         }
