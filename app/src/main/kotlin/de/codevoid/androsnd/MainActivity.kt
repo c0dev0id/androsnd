@@ -492,7 +492,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun showUpdateDialog() {
         val installedVersion = updateChecker.installedVersion()
-        val isDevInstall = updateChecker.isDevVersion()
 
         // Show a lightweight "Checking…" dialog while the network call runs
         val checkingDialog = AlertDialog.Builder(this)
@@ -503,7 +502,7 @@ class MainActivity : AppCompatActivity() {
         checkingDialog.show()
 
         updateChecker.fetchRelease(
-            includePrerelease = isDevInstall,
+            includePrerelease = true,
             onResult = { release ->
                 checkingDialog.dismiss()
                 showUpdateResultDialog(installedVersion, release)
@@ -1099,10 +1098,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun invalidateArtForFolder(folderPath: String) {
-            val pos = items.indexOfFirst {
-                it.type == TYPE_FOLDER && folders.getOrNull(it.folderIndex)?.path == folderPath
+            val first = items.indexOfFirst {
+                it.type == TYPE_SONG && songs.getOrNull(it.songIndex)?.folderPath == folderPath
             }
-            if (pos >= 0) notifyItemChanged(pos)
+            if (first < 0) return
+            val last = items.indexOfLast {
+                it.type == TYPE_SONG && songs.getOrNull(it.songIndex)?.folderPath == folderPath
+            }
+            notifyItemRangeChanged(first, last - first + 1)
         }
 
         override fun getItemViewType(position: Int) = items.getOrNull(position)?.type ?: TYPE_SONG
@@ -1127,46 +1130,45 @@ class MainActivity : AppCompatActivity() {
                     holder.name.text = item.displayName
                     holder.itemView.foreground = if (isFocused) makeFocusRingFor(holder.itemView) else null
                     holder.itemView.setOnClickListener { onFolderClick(item.folderIndex) }
-
-                    holder.artJob?.cancel()
-                    val firstSong = folders.getOrNull(item.folderIndex)?.songs?.firstOrNull()
-                        ?.let { songs.getOrNull(it) }
-                    holder.artJob = if (firstSong != null) adapterScope.launch {
-                        val bmp = withContext(Dispatchers.IO) {
-                            val file = getArtFile?.invoke(firstSong)?.takeIf { it.exists() }
-                                ?: return@withContext null
-                            BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply {
-                                inSampleSize = 2
-                            })
-                        }
-                        holder.cover.setImageBitmap(bmp)
-                    } else null
                 }
                 is SongViewHolder -> {
-                    val cached = metadataCache.get(item.songIndex)
+                    val songIndex = item.songIndex
+                    val song = songs.getOrNull(songIndex)
+                    val cached = metadataCache.get(songIndex)
                     if (cached != null) {
                         bindSongText(holder, cached)
                     } else {
                         holder.name.text = item.displayName
                         holder.duration.text = ""
-                        val song = songs.getOrNull(item.songIndex)
                         if (song != null) {
-                            val idx = item.songIndex
                             val capturedVersion = dataVersion
                             executor.execute {
                                 val meta = extractMetadata(song)
                                     ?: SongMetadata(song.displayName, "", "", 0L, null)
                                 mainHandler.post {
                                     if (dataVersion != capturedVersion) return@post
-                                    metadataCache.put(idx, meta)
-                                    val pos = songIndexToItemPos[idx] ?: -1
+                                    metadataCache.put(songIndex, meta)
+                                    val pos = songIndexToItemPos[songIndex] ?: -1
                                     if (pos >= 0) notifyItemChanged(pos)
                                 }
                             }
                         }
                     }
 
-                    val isSelected = item.songIndex == currentSongIndex
+                    // Art — per-ViewHolder job, cancelled on recycle
+                    holder.artJob?.cancel()
+                    holder.artJob = if (song != null) adapterScope.launch {
+                        val bmp = withContext(Dispatchers.IO) {
+                            val file = getArtFile?.invoke(song)?.takeIf { it.exists() }
+                                ?: return@withContext null
+                            BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply {
+                                inSampleSize = 2  // 256px stored → ~128px display
+                            })
+                        }
+                        holder.cover.setImageBitmap(bmp)
+                    } else null
+
+                    val isSelected = songIndex == currentSongIndex
                     holder.itemView.isSelected = isSelected
                     holder.itemView.setBackgroundColor(when {
                         isSelected -> accentColor
@@ -1174,14 +1176,14 @@ class MainActivity : AppCompatActivity() {
                         else       -> Color.TRANSPARENT
                     })
                     holder.itemView.foreground = if (isFocused) makeFocusRingFor(holder.itemView) else null
-                    holder.itemView.setOnClickListener { onSongClick(item.songIndex) }
+                    holder.itemView.setOnClickListener { onSongClick(songIndex) }
                 }
             }
         }
 
         override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
             super.onViewRecycled(holder)
-            if (holder is FolderViewHolder) {
+            if (holder is SongViewHolder) {
                 holder.artJob?.cancel()
                 (holder.cover.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap?.recycle()
                 holder.cover.setImageDrawable(null)
@@ -1213,13 +1215,13 @@ class MainActivity : AppCompatActivity() {
 
         class FolderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val name: TextView = view.findViewById(R.id.folder_name)
-            val cover: ImageView = view.findViewById(R.id.folder_cover)
-            var artJob: Job? = null
         }
 
         class SongViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val name: TextView = view.findViewById(R.id.song_name)
             val duration: TextView = view.findViewById(R.id.song_duration)
+            val cover: ImageView = view.findViewById(R.id.song_cover)
+            var artJob: Job? = null
         }
     }
 }
