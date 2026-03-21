@@ -1098,14 +1098,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun invalidateArtForFolder(folderPath: String) {
-            val first = items.indexOfFirst {
-                it.type == TYPE_SONG && songs.getOrNull(it.songIndex)?.folderPath == folderPath
-            }
-            if (first < 0) return
-            val last = items.indexOfLast {
-                it.type == TYPE_SONG && songs.getOrNull(it.songIndex)?.folderPath == folderPath
-            }
-            notifyItemRangeChanged(first, last - first + 1)
+            val folderIdx = folders.indexOfFirst { it.path == folderPath }
+            if (folderIdx < 0) return
+            val pos = items.indexOfFirst { it.type == TYPE_FOLDER && it.folderIndex == folderIdx }
+            if (pos >= 0) notifyItemChanged(pos)
         }
 
         override fun getItemViewType(position: Int) = items.getOrNull(position)?.type ?: TYPE_SONG
@@ -1130,6 +1126,18 @@ class MainActivity : AppCompatActivity() {
                     holder.name.text = item.displayName
                     holder.itemView.foreground = if (isFocused) makeFocusRingFor(holder.itemView) else null
                     holder.itemView.setOnClickListener { onFolderClick(item.folderIndex) }
+                    val firstSong = folders.getOrNull(item.folderIndex)?.songs?.firstOrNull()?.let { songs.getOrNull(it) }
+                    holder.artJob?.cancel()
+                    holder.artJob = if (firstSong != null) adapterScope.launch {
+                        val bmp = withContext(Dispatchers.IO) {
+                            val file = getArtFile?.invoke(firstSong)?.takeIf { it.exists() }
+                                ?: return@withContext null
+                            BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply {
+                                inSampleSize = 2
+                            })
+                        }
+                        holder.cover.setImageBitmap(bmp)
+                    } else null
                 }
                 is SongViewHolder -> {
                     val songIndex = item.songIndex
@@ -1155,19 +1163,6 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    // Art — per-ViewHolder job, cancelled on recycle
-                    holder.artJob?.cancel()
-                    holder.artJob = if (song != null) adapterScope.launch {
-                        val bmp = withContext(Dispatchers.IO) {
-                            val file = getArtFile?.invoke(song)?.takeIf { it.exists() }
-                                ?: return@withContext null
-                            BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply {
-                                inSampleSize = 2  // 256px stored → ~128px display
-                            })
-                        }
-                        holder.cover.setImageBitmap(bmp)
-                    } else null
-
                     val isSelected = songIndex == currentSongIndex
                     holder.itemView.isSelected = isSelected
                     holder.itemView.setBackgroundColor(when {
@@ -1183,7 +1178,7 @@ class MainActivity : AppCompatActivity() {
 
         override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
             super.onViewRecycled(holder)
-            if (holder is SongViewHolder) {
+            if (holder is FolderViewHolder) {
                 holder.artJob?.cancel()
                 (holder.cover.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap?.recycle()
                 holder.cover.setImageDrawable(null)
@@ -1215,13 +1210,13 @@ class MainActivity : AppCompatActivity() {
 
         class FolderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val name: TextView = view.findViewById(R.id.folder_name)
+            val cover: ImageView = view.findViewById(R.id.folder_cover)
+            var artJob: Job? = null
         }
 
         class SongViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val name: TextView = view.findViewById(R.id.song_name)
             val duration: TextView = view.findViewById(R.id.song_duration)
-            val cover: ImageView = view.findViewById(R.id.song_cover)
-            var artJob: Job? = null
         }
     }
 }
