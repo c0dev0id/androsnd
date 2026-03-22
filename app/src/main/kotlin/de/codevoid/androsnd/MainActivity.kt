@@ -34,7 +34,16 @@ import androidx.recyclerview.widget.RecyclerView
 import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 import de.codevoid.androsnd.model.SongMetadata
+import android.graphics.BitmapFactory
+import java.io.File
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.slider.Slider
@@ -336,6 +345,9 @@ class MainActivity : AppCompatActivity() {
             },
             extractMetadata = { song -> musicService?.extractMetadata(song, maxBitmapPx = 128) }
         )
+        playlistAdapter.getArtFile = { song ->
+            musicService?.metadataRepository?.artFileForFolder(song.folderPath)
+        }
         playlistRecycler.layoutManager = LinearLayoutManager(this)
         playlistRecycler.adapter = playlistAdapter
     }
@@ -1050,10 +1062,13 @@ class MainActivity : AppCompatActivity() {
         private val songIndexToItemPos = HashMap<Int, Int>()
         private var currentSongIndex = -1
         private var songs: List<Song> = emptyList()
+        private var folders: List<PlaylistFolder> = emptyList()
         private val metadataCache = android.util.LruCache<Int, SongMetadata>(500)
         private var dataVersion = 0
+        private var adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         private val executor = Executors.newFixedThreadPool(4)
         private val mainHandler = Handler(Looper.getMainLooper())
+        var getArtFile: ((Song) -> File?)? = null
         var accentColor: Int = Color.parseColor("#F57C00")
         var focusedPos: Int = -1
             set(newPos) {
@@ -1086,9 +1101,12 @@ class MainActivity : AppCompatActivity() {
 
         fun submitData(folders: List<PlaylistFolder>, songs: List<Song>, currentIdx: Int) {
             dataVersion++  // invalidate all in-flight metadata loads from the previous library
+            adapterScope.cancel()
+            adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
             items.clear()
             songIndexToItemPos.clear()
             this.songs = songs.toList()   // defensive copy — adapter owns its own snapshot
+            this.folders = folders.toList()
             metadataCache.evictAll()
             currentSongIndex = currentIdx
             for ((fi, folder) in folders.withIndex()) {
@@ -1110,6 +1128,7 @@ class MainActivity : AppCompatActivity() {
 
         fun release() {
             adapterScope.cancel()
+            executor.shutdown()
         }
 
         fun invalidateArtForFolder(folderPath: String) {
