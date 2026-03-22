@@ -112,6 +112,7 @@ class MusicService : MediaBrowserServiceCompat() {
         private set
     private var currentArtBitmap: Bitmap? = null
     private var isDucking = false
+    private var lastErrorTimeMs = 0L
 
     private lateinit var overlayToastManager: OverlayToastManager
     private lateinit var broadcastManager: LocalBroadcastManager
@@ -356,6 +357,11 @@ class MusicService : MediaBrowserServiceCompat() {
 
         if (mediaPlayer == null) {
             val song = playlistManager.getCurrentSong() ?: return
+            val msSinceError = System.currentTimeMillis() - lastErrorTimeMs
+            if (msSinceError < 1500L) {
+                Log.d(TAG, "play(): suppressing auto-retry ${msSinceError}ms after last error")
+                return
+            }
             startPlayingSong(song)
         } else if (!isPlaying && !isPreparing) {
             requestAudioFocus()
@@ -486,12 +492,19 @@ class MusicService : MediaBrowserServiceCompat() {
             }
             player.setOnErrorListener { mp, what, extra ->
                 Log.e(TAG, "MediaPlayer error: what=$what extra=$extra")
+                if (mediaPlayer !== mp) {
+                    isPreparing = false
+                    return@setOnErrorListener true
+                }
                 isPreparing = false
-                if (mediaPlayer !== mp) return@setOnErrorListener true
+                pendingPlayAfterPrepare = false
+                lastErrorTimeMs = System.currentTimeMillis()
                 mp.release()
                 mediaPlayer = null
                 isPlaying = false
                 stopProgressUpdates()
+                updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
+                updateNotification()
                 broadcastState()
                 true
             }
@@ -526,8 +539,10 @@ class MusicService : MediaBrowserServiceCompat() {
             }
             player.prepareAsync()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start playing ${song.displayName}", e)
             isPreparing = false
+            pendingPlayAfterPrepare = false
+            lastErrorTimeMs = System.currentTimeMillis()
+            Log.e(TAG, "Failed to start playing ${song.displayName}", e)
         }
     }
 
