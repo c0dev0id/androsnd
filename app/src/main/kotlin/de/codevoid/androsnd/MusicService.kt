@@ -13,6 +13,7 @@ import android.net.Uri
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.os.Binder
 import android.os.Build
@@ -111,6 +112,7 @@ class MusicService : MediaBrowserServiceCompat() {
     var currentTextMetadata: SongMetadata? = null
         private set
     private var currentArtBitmap: Bitmap? = null
+    private var pendingPlayAfterPrepare = false
     private var isDucking = false
     private var lastErrorTimeMs = 0L
 
@@ -646,62 +648,18 @@ class MusicService : MediaBrowserServiceCompat() {
         val artUri: Uri?
     )
 
-    private fun extractNeighborInfo(song: Song, artFilename: String): NeighborInfo {
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(applicationContext, song.uri)
-            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: song.displayName
-            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
-            val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
-            val artUri = retriever.embeddedPicture?.let { bytes ->
-                decodeBitmapWithSampling(bytes)?.let { original ->
-                    val scaled = scaleBitmapForSession(original)
-                    val uri = saveArtToFile(scaled, artFilename)
-                    if (scaled !== original) original.recycle()
-                    scaled.recycle()
-                    uri
-                }
-            }
-            NeighborInfo(title, artist, album, artUri)
-        } catch (e: Exception) {
-            NeighborInfo(song.displayName, "", "", null)
-        } finally {
-            retriever.release()
-        }
-    }
-
-    private fun buildQueueItems(
-        artVersion: Long,
-        curIdx: Int,
-        nextIdx: Int,
-        curSong: Song,
-        nextSong: Song?,
-        metadata: SongMetadata
-    ): List<MediaSessionCompat.QueueItem> {
-        val curArtUri = Uri.parse("content://de.codevoid.androsnd.albumart/current_art.jpg?v=$artVersion")
-            .takeIf { java.io.File(cacheDir, "album_art/current_art.jpg").exists() }
-        val curDesc = MediaDescriptionCompat.Builder()
-            .setMediaId(curIdx.toString())
-            .setTitle(metadata.title)
-            .setSubtitle(metadata.artist)
-            .setDescription(metadata.album)
-            .setMediaUri(curSong.uri)
-            .apply { if (curArtUri != null) setIconUri(curArtUri) }
-            .build()
-        val queue = mutableListOf(MediaSessionCompat.QueueItem(curDesc, curIdx.toLong()))
-        if (nextSong != null) {
-            val nextInfo = extractNeighborInfo(nextSong, "next_art.jpg")
-            val nextDesc = MediaDescriptionCompat.Builder()
-                .setMediaId(nextIdx.toString())
-                .setTitle(nextInfo.title)
-                .setSubtitle(nextInfo.artist)
-                .setDescription(nextInfo.album)
-                .setMediaUri(nextSong.uri)
-                .apply { if (nextInfo.artUri != null) setIconUri(nextInfo.artUri) }
-                .build()
-            queue.add(MediaSessionCompat.QueueItem(nextDesc, nextIdx.toLong()))
-        }
-        return queue
+    private fun extractNeighborInfo(song: Song): NeighborInfo {
+        val meta = metadataRepository.db.get(song.uri.toString(), song.lastModified)
+        val artFile = metadataRepository.artFileForFolder(song.folderPath)
+        val artUri = if (artFile.exists())
+            Uri.parse("content://de.codevoid.androsnd.albumart/${artFile.name}")
+        else null
+        return NeighborInfo(
+            meta?.title ?: song.displayName,
+            meta?.artist ?: "",
+            meta?.album ?: "",
+            artUri
+        )
     }
 
     private fun updateMediaSessionQueue() {
@@ -710,13 +668,13 @@ class MusicService : MediaBrowserServiceCompat() {
         val curIdx = playlistManager.currentIndex
         val curSong = songs.getOrNull(curIdx) ?: return
 
-        val curArtUri = Uri.parse("content://de.codevoid.androsnd.albumart/current_art.jpg?v=$artVersion")
+        val curArtUri = Uri.parse("content://de.codevoid.androsnd.albumart/current_art.jpg")
             .takeIf { java.io.File(cacheDir, "album_art/current_art.jpg").exists() }
         val curDesc = MediaDescriptionCompat.Builder()
             .setMediaId(curIdx.toString())
-            .setTitle(currentMetadata?.title ?: curSong.displayName)
-            .setSubtitle(currentMetadata?.artist ?: "")
-            .setDescription(currentMetadata?.album ?: "")
+            .setTitle(currentTextMetadata?.title ?: curSong.displayName)
+            .setSubtitle(currentTextMetadata?.artist ?: "")
+            .setDescription(currentTextMetadata?.album ?: "")
             .setMediaUri(curSong.uri)
             .apply { if (curArtUri != null) setIconUri(curArtUri) }
             .build()
@@ -727,7 +685,7 @@ class MusicService : MediaBrowserServiceCompat() {
             val nextSong = if (nextIdx >= 0) songs.getOrNull(nextIdx) else null
             val q = mutableListOf(MediaSessionCompat.QueueItem(curDesc, curIdx.toLong()))
             if (nextSong != null) {
-                val nextInfo = extractNeighborInfo(nextSong, "next_art.jpg")
+                val nextInfo = extractNeighborInfo(nextSong)
                 val nextDesc = MediaDescriptionCompat.Builder()
                     .setMediaId(nextIdx.toString())
                     .setTitle(nextInfo.title)
