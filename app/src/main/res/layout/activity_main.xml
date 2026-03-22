@@ -166,24 +166,15 @@
                         style="?android:attr/progressBarStyle" />
 
                     <TextView
+                        android:id="@+id/loading_text"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/loading_files"
                         android:layout_marginTop="8dp"
                         android:textAppearance="?attr/textAppearanceBodyMedium" />
 
                 </LinearLayout>
 
             </FrameLayout>
-
-            <TextView
-                android:id="@+id/metadata_counter"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="4dp"
-                android:textAppearance="?attr/textAppearanceBodySmall"
-                android:visibility="gone" />
 
         </LinearLayout>
 

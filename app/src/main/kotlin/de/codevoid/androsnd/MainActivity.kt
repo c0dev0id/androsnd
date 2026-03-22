@@ -80,6 +80,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var settingsPanel: View
     private var settingsVisible = false
     private var settingsButtonStrokeWidth = 0
+    private var settingsSliderVolume: Slider? = null
+    private lateinit var loadingText: android.widget.TextView
+    private var loadingTotal = 0
+    private var loadingCount = 0
 
     // Remote control navigation state
     private var playlistFocusPos: Int = 0
@@ -170,14 +174,15 @@ class MainActivity : AppCompatActivity() {
                     showLoading()
                 }
                 MusicService.BROADCAST_SCAN_COMPLETED -> {
-                    hideLoading()
-                    updateUI()
-                    val total = musicService?.playlistManager?.songs?.size ?: 0
-                    if (total > 0) {
-                        metadataLoadedCount = 0
-                        metadataCounterView.text = getString(R.string.files_loaded, 0, total)
-                        metadataCounterView.visibility = View.VISIBLE
-                    }
+                    val svc = musicService ?: return
+                    val pm = svc.playlistManager
+                    loadingTotal = pm.songs.size
+                    loadingCount = 0
+                    loadingText.text = "Loading 0/$loadingTotal"
+                    // Keep spinner visible — enrichment starts now
+                    // Guard updatePlaylist() from calling submitData() until enrichment completes
+                    lastKnownSongCount = pm.songs.size
+                    lastKnownPlaylistIndex = pm.currentIndex
                 }
             }
         }
@@ -187,23 +192,25 @@ class MainActivity : AppCompatActivity() {
 
     private val metadataReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == MusicService.BROADCAST_METADATA_UPDATED) {
-                val idx      = intent.getIntExtra(MusicService.EXTRA_METADATA_SONG_INDEX, -1)
-                val title    = intent.getStringExtra(MusicService.EXTRA_METADATA_TITLE)   ?: return
-                val artist   = intent.getStringExtra(MusicService.EXTRA_METADATA_ARTIST)  ?: ""
-                val album    = intent.getStringExtra(MusicService.EXTRA_METADATA_ALBUM)   ?: ""
-                val duration = intent.getLongExtra(MusicService.EXTRA_METADATA_DURATION,  0L)
-                if (idx >= 0) playlistAdapter.applyTextMetadata(idx, SongMetadata(title, artist, album, duration))
-                val svc = musicService ?: return
-                if (idx == svc.playlistManager.currentIndex) updateUI()
-                val total = svc.playlistManager.songs.size
-                metadataLoadedCount = (metadataLoadedCount + 1).coerceAtMost(total)
-                if (metadataLoadedCount >= total) {
-                    metadataCounterView.visibility = View.GONE
-                } else {
-                    metadataCounterView.text = getString(R.string.files_loaded, metadataLoadedCount, total)
-                }
-            }
+            if (intent.action != MusicService.BROADCAST_METADATA_UPDATED) return
+            loadingCount++
+            loadingText.text = "Loading $loadingCount/$loadingTotal"
+            val idx = intent.getIntExtra(MusicService.EXTRA_METADATA_SONG_INDEX, -1)
+            val svc = musicService ?: return
+            if (idx == svc.playlistManager.currentIndex) updateUI()
+        }
+    }
+
+    private val enrichmentCompleteReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != MusicService.BROADCAST_ENRICHMENT_COMPLETE) return
+            val svc = musicService ?: return
+            val pm = svc.playlistManager
+            hideLoading()
+            lastKnownSongCount = pm.songs.size
+            lastKnownPlaylistIndex = pm.currentIndex
+            playlistAdapter.submitData(pm.folders, pm.songs, pm.currentIndex)
+            updateUI()
         }
     }
 
@@ -300,6 +307,10 @@ class MainActivity : AppCompatActivity() {
             IntentFilter(MusicService.BROADCAST_METADATA_UPDATED)
         )
         LocalBroadcastManager.getInstance(this).registerReceiver(
+            enrichmentCompleteReceiver,
+            IntentFilter(MusicService.BROADCAST_ENRICHMENT_COMPLETE)
+        )
+        LocalBroadcastManager.getInstance(this).registerReceiver(
             artReceiver,
             IntentFilter(MusicService.BROADCAST_ART_UPDATED)
         )
@@ -315,7 +326,7 @@ class MainActivity : AppCompatActivity() {
         volLabel = findViewById(R.id.vol_label)
         playlistRecycler = findViewById(R.id.playlist_recycler)
         loadingIndicator = findViewById(R.id.loading_indicator)
-        metadataCounterView = findViewById(R.id.metadata_counter)
+        loadingText = loadingIndicator.findViewById(R.id.loading_text)
         btnPlay = findViewById(R.id.btn_play)
         btnPrev = findViewById(R.id.btn_prev)
         btnNext = findViewById(R.id.btn_next)
@@ -471,7 +482,8 @@ class MainActivity : AppCompatActivity() {
         labelVolume.text = "${sliderVolume.value.toInt()}%"
         volSlider.value = sliderVolume.value
         volLabel.text = "${sliderVolume.value.toInt()}%"
-        sliderVolume.addOnChangeListener { _, value, _ ->
+        sliderVolume.addOnChangeListener { _, value, fromUser ->
+            if (!fromUser) return@addOnChangeListener
             val vol = value.toInt()
             labelVolume.text = "${vol}%"
             volSlider.value = value
@@ -1058,6 +1070,7 @@ class MainActivity : AppCompatActivity() {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(stateReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(scanReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(metadataReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(enrichmentCompleteReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(artReceiver)
         if (isBound) {
             unbindService(serviceConnection)
@@ -1087,8 +1100,8 @@ class MainActivity : AppCompatActivity() {
         private var currentSongIndex = -1
         private var songs: List<Song> = emptyList()
         private var folders: List<PlaylistFolder> = emptyList()
-        private val metadataCache = android.util.LruCache<Int, SongMetadata>(500)
-        private var dataVersion = 0
+        private val songMetadataMap = HashMap<Int, SongMetadata>()
+        private val pendingFetches = HashSet<Int>()
         private var adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         var getTextMetadata: ((Song) -> SongMetadata?)? = null
         var getArtFile: ((Song) -> File?)? = null
@@ -1106,10 +1119,10 @@ class MainActivity : AppCompatActivity() {
             return if (item.type == TYPE_SONG) item.songIndex else null
         }
 
-        fun nearestFolderPos(from: Int, forward: Boolean): Int {
-            val range = if (forward) (from + 1 until items.size) else (from - 1 downTo 0)
-            for (i in range) if (items[i].type == TYPE_FOLDER) return i
-            return from  // no adjacent folder found
+        fun getFolderFirstSongAt(pos: Int): Int? {
+            val item = items.getOrNull(pos) ?: return null
+            if (item.type != TYPE_FOLDER) return null
+            return folders.getOrNull(item.folderIndex)?.songs?.firstOrNull()
         }
 
         fun updateCurrentIndex(newIndex: Int) {
@@ -1123,14 +1136,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun submitData(folders: List<PlaylistFolder>, songs: List<Song>, currentIdx: Int) {
-            dataVersion++
             adapterScope.cancel()
             adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
             items.clear()
             songIndexToItemPos.clear()
             this.songs = songs.toList()   // defensive copy — adapter owns its own snapshot
             this.folders = folders.toList()
-            metadataCache.evictAll()
+            songMetadataMap.clear()
+            pendingFetches.clear()
             currentSongIndex = currentIdx
             for ((fi, folder) in folders.withIndex()) {
                 items.add(ListItem(TYPE_FOLDER, folderIndex = fi, displayName = folder.name))
@@ -1144,10 +1157,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun applyTextMetadata(songIndex: Int, meta: SongMetadata) {
-            metadataCache.put(songIndex, meta)
+            songMetadataMap[songIndex] = meta
             val pos = items.indexOfFirst { it.type == TYPE_SONG && it.songIndex == songIndex }
             if (pos >= 0) notifyItemChanged(pos)
         }
+
 
         fun release() {
             adapterScope.cancel()
@@ -1198,7 +1212,7 @@ class MainActivity : AppCompatActivity() {
                 is SongViewHolder -> {
                     val songIndex = item.songIndex
                     val song = songs.getOrNull(songIndex)
-                    val cached = metadataCache.get(songIndex)
+                    val cached = songMetadataMap[songIndex]
                     if (cached != null) {
                         bindSongText(holder, cached)
                     } else {
