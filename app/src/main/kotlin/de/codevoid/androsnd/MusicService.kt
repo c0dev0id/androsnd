@@ -21,6 +21,8 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.support.v4.media.MediaBrowserCompat
+import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -276,6 +278,12 @@ class MusicService : MediaBrowserServiceCompat() {
         rootHints: Bundle?
     ): BrowserRoot {
         return BrowserRoot(MEDIA_ROOT_ID, null)
+    }
+
+    private fun songArtUri(songIndex: Int): Uri? {
+        val song = playlistManager.songs.getOrNull(songIndex) ?: return null
+        val f = metadataRepository.artFileForFolder(song.folderPath)
+        return if (f.exists()) Uri.parse("content://de.codevoid.androsnd.albumart/${f.name}") else null
     }
 
     private fun buildSongExtras(song: Song): Bundle {
