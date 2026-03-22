@@ -72,12 +72,14 @@ class MetadataRepository(private val context: Context) {
         foldersByPath: Map<String, PlaylistFolder>,
         currentIdx: Int,
         onTextReady: (idx: Int, meta: SongMetadata) -> Unit,
-        onArtReady:  (folderPath: String) -> Unit
+        onArtReady:  (folderPath: String) -> Unit,
+        onComplete:  () -> Unit = {}
     ) {
         enrichJob?.cancel()
         enrichJob = scope.launch(Dispatchers.IO) {
-            val textSem = Semaphore(3)
-            val artSem  = Semaphore(2)
+            // Single semaphore serialises all MediaMetadataRetriever usage so it
+            // doesn't compete with MediaPlayer.prepareAsync() for native media slots.
+            val retrieverSem = Semaphore(1)
 
             // Priority: current song first, blocking
             songs.getOrNull(currentIdx)?.let { song ->
@@ -85,20 +87,20 @@ class MetadataRepository(private val context: Context) {
                 withContext(Dispatchers.Main) { onTextReady(currentIdx, meta) }
             }
 
-            // All others: parallel, semaphore-bounded
+            // All others: parallel dispatch, but at most one retriever open at a time
             val textJobs = songs.indices.filter { it != currentIdx }.map { idx ->
                 launch {
-                    textSem.withPermit {
+                    retrieverSem.withPermit {
                         val meta = enrichText(songs[idx])
                         withContext(Dispatchers.Main) { onTextReady(idx, meta) }
                     }
                 }
             }
 
-            // Art: one coroutine per unique folder, concurrent with text
+            // Art: one coroutine per unique folder, same serialised retriever slot
             val artJobs = songs.map { it.folderPath }.distinct().map { folderPath ->
                 launch {
-                    artSem.withPermit {
+                    retrieverSem.withPermit {
                         enrichArt(folderPath, songs, foldersByPath[folderPath])
                         withContext(Dispatchers.Main) { onArtReady(folderPath) }
                     }
@@ -108,6 +110,7 @@ class MetadataRepository(private val context: Context) {
             textJobs.forEach { it.join() }
             artJobs.forEach  { it.join() }
             db.cleanup(songs.map { it.uri.toString() }.toSet())
+            withContext(Dispatchers.Main) { onComplete() }
         }
     }
 
