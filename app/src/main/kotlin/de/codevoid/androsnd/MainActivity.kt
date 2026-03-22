@@ -68,7 +68,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var volLabel: TextView
     private lateinit var playlistRecycler: RecyclerView
     private lateinit var loadingIndicator: View
-    private lateinit var metadataCounterView: TextView
     private lateinit var btnPlay: MaterialButton
     private lateinit var btnPrev: MaterialButton
     private lateinit var btnNext: MaterialButton
@@ -80,7 +79,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var settingsPanel: View
     private var settingsVisible = false
     private var settingsButtonStrokeWidth = 0
-    private var settingsSliderVolume: Slider? = null
     private lateinit var loadingText: android.widget.TextView
     private var loadingTotal = 0
     private var loadingCount = 0
@@ -170,7 +168,6 @@ class MainActivity : AppCompatActivity() {
             when (intent.action) {
                 MusicService.BROADCAST_SCAN_STARTED -> {
                     metadataLoadedCount = 0
-                    metadataCounterView.visibility = View.GONE
                     showLoading()
                 }
                 MusicService.BROADCAST_SCAN_COMPLETED -> {
@@ -364,7 +361,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupRecyclerView() {
         playlistAdapter = PlaylistAdapter(
-            onFolderClick = { /* toggle expand */ },
+            onFolderClick = { folderIndex ->
+                val svc = musicService ?: return@PlaylistAdapter
+                val firstSong = svc.playlistManager.folders.getOrNull(folderIndex)?.songs?.firstOrNull()
+                if (firstSong != null) svc.playSongAtIndex(firstSong)
+            },
             onSongClick = { index ->
                 musicService?.playSongAtIndex(index)
             }

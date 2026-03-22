@@ -365,7 +365,9 @@ class MusicService : MediaBrowserServiceCompat() {
                 return
             }
             startPlayingSong(song)
-        } else if (!isPlaying && !isPreparing) {
+        } else if (isPreparing) {
+            pendingPlayAfterPrepare = true
+        } else if (!isPlaying) {
             requestAudioFocus()
             mediaPlayer?.start()
             applyAppVolume()
@@ -516,7 +518,10 @@ class MusicService : MediaBrowserServiceCompat() {
                 if (mediaPlayer !== mp) return@setOnPreparedListener
                 val vol = getAppVolumeFloat()
                 mp.setVolume(vol, vol)
-                if (autoStart) {
+                val shouldPlay = autoStart || pendingPlayAfterPrepare
+                pendingPlayAfterPrepare = false
+                if (shouldPlay) {
+                    if (!autoStart) requestAudioFocus()
                     mp.start()
                     isPlaying = true
                     startProgressUpdates()
