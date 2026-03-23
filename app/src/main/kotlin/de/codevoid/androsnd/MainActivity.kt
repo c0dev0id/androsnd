@@ -112,7 +112,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playlistAdapter: PlaylistAdapter
     private var lastKnownPlaylistIndex = -1
     private var lastKnownSongCount = -1
-    private var metadataLoadedCount = 0
 
     private var accentColor: Int = Color.parseColor("#F57C00")
     private val inactiveColor: Int = Color.parseColor("#444444")
@@ -167,7 +166,6 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 MusicService.BROADCAST_SCAN_STARTED -> {
-                    metadataLoadedCount = 0
                     showLoading()
                 }
                 MusicService.BROADCAST_SCAN_COMPLETED -> {
@@ -1102,7 +1100,6 @@ class MainActivity : AppCompatActivity() {
         private var songs: List<Song> = emptyList()
         private var folders: List<PlaylistFolder> = emptyList()
         private val songMetadataMap = HashMap<Int, SongMetadata>()
-        private val pendingFetches = HashSet<Int>()
         private var adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         var getTextMetadata: ((Song) -> SongMetadata?)? = null
         var getArtFile: ((Song) -> File?)? = null
@@ -1144,7 +1141,6 @@ class MainActivity : AppCompatActivity() {
             this.songs = songs.toList()   // defensive copy — adapter owns its own snapshot
             this.folders = folders.toList()
             songMetadataMap.clear()
-            pendingFetches.clear()
             currentSongIndex = currentIdx
             for ((fi, folder) in folders.withIndex()) {
                 items.add(ListItem(TYPE_FOLDER, folderIndex = fi, displayName = folder.name))

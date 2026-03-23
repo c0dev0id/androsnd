@@ -188,24 +188,6 @@ class PlaylistManager(private val context: Context) {
         return getCurrentSong()
     }
 
-    fun nextFolder(): Song? {
-        if (folders.isEmpty() || songs.isEmpty()) return null
-        val currentFolderIndex = getFolderIndexForSong(currentIndex)
-        val nextFolderIndex = (currentFolderIndex + 1) % folders.size
-        val nextFolder = folders[nextFolderIndex]
-        currentIndex = nextFolder.songs.firstOrNull() ?: 0
-        return getCurrentSong()
-    }
-
-    fun prevFolder(): Song? {
-        if (folders.isEmpty() || songs.isEmpty()) return null
-        val currentFolderIndex = getFolderIndexForSong(currentIndex)
-        val prevFolderIndex = if (currentFolderIndex <= 0) folders.size - 1 else currentFolderIndex - 1
-        val prevFolder = folders[prevFolderIndex]
-        currentIndex = prevFolder.songs.firstOrNull() ?: 0
-        return getCurrentSong()
-    }
-
     fun shuffleSong(): Song? {
         if (songs.isEmpty()) return null
         currentIndex = kotlin.random.Random.nextInt(songs.size)
