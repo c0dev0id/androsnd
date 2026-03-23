@@ -24,16 +24,22 @@ class PlaylistManager(private val context: Context) {
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private var _songs = mutableListOf<Song>()
-    val songs: List<Song> get() = _songs
+    // Scan results are published as a single atomic reference so any thread
+    // that captures the snapshot sees a consistent songs/folders/foldersByPath
+    // triple — no partial-update window between three separate field writes.
+    private data class Snapshot(
+        val songs: List<Song>,
+        val folders: List<PlaylistFolder>,
+        val foldersByPath: Map<String, PlaylistFolder>
+    )
 
-    private var _folders = mutableListOf<PlaylistFolder>()
-    val folders: List<PlaylistFolder> get() = _folders
+    @Volatile private var snapshot = Snapshot(emptyList(), emptyList(), emptyMap())
 
-    private var _foldersByPath = HashMap<String, PlaylistFolder>()
-    val foldersByPath: Map<String, PlaylistFolder> get() = _foldersByPath
+    val songs: List<Song> get() = snapshot.songs
+    val folders: List<PlaylistFolder> get() = snapshot.folders
+    val foldersByPath: Map<String, PlaylistFolder> get() = snapshot.foldersByPath
 
-    var currentIndex: Int = 0
+    @Volatile var currentIndex: Int = 0
         private set
     var isShuffleOn: Boolean = false
         private set
@@ -75,11 +81,8 @@ class PlaylistManager(private val context: Context) {
             folder.songs.addAll(newIndices)
         }
 
-        // Atomically publish — JVM guarantees reference assignments are atomic, so any
-        // thread that already captured the old _songs reference keeps seeing intact data.
-        _songs = reorderedSongs
-        _folders = newFolders
-        _foldersByPath = newFoldersByPath
+        // Single volatile write publishes all three collections simultaneously.
+        snapshot = Snapshot(reorderedSongs, newFolders, newFoldersByPath)
         currentIndex = 0
     }
 
