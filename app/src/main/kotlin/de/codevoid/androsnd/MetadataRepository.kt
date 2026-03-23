@@ -81,10 +81,13 @@ class MetadataRepository(private val context: Context) {
             // doesn't compete with MediaPlayer.prepareAsync() for native media slots.
             val retrieverSem = Semaphore(1)
 
-            // Priority: current song first, blocking
+            // Priority: current song first, blocking — holds the semaphore so
+            // concurrent art/text jobs can't open a second retriever alongside it.
             songs.getOrNull(currentIdx)?.let { song ->
-                val meta = enrichText(song)
-                withContext(Dispatchers.Main) { onTextReady(currentIdx, meta) }
+                retrieverSem.withPermit {
+                    val meta = enrichText(song)
+                    withContext(Dispatchers.Main) { onTextReady(currentIdx, meta) }
+                }
             }
 
             // All others: parallel dispatch, but at most one retriever open at a time
