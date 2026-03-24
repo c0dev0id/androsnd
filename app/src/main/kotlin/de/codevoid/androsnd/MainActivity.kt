@@ -78,6 +78,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var btnSettings: MaterialButton
     private lateinit var contentArea: View
+    private lateinit var libraryPanel: View
     private lateinit var settingsPanel: View
     private var settingsVisible = false
     private var settingsButtonStrokeWidth = 0
@@ -345,6 +346,7 @@ class MainActivity : AppCompatActivity() {
         btnShuffle = findViewById(R.id.btn_shuffle)
         btnSettings = findViewById(R.id.btn_settings)
         contentArea = findViewById(R.id.content_area)
+        libraryPanel = findViewById(R.id.library_panel)
         settingsPanel = findViewById(R.id.settings_panel)
         settingsButtonStrokeWidth = btnSettings.strokeWidth
 
@@ -722,11 +724,11 @@ class MainActivity : AppCompatActivity() {
     private fun toggleSettings() {
         settingsVisible = !settingsVisible
         if (settingsVisible) {
-            contentArea.visibility = View.GONE
+            libraryPanel.visibility = View.GONE
             settingsPanel.visibility = View.VISIBLE
         } else {
             settingsPanel.visibility = View.GONE
-            contentArea.visibility = View.VISIBLE
+            libraryPanel.visibility = View.VISIBLE
             val toggleDemo = settingsPanel.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.toggle_demo_popup)
             if (toggleDemo.isChecked) {
                 musicService?.dismissOverlayDemo()

@@ -4,7 +4,9 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="24dp">
+    android:padding="24dp"
+    android:background="@drawable/bg_panel"
+    android:clipToOutline="true">
 
     <!-- Load Music Folder -->
     <com.google.android.material.button.MaterialButton

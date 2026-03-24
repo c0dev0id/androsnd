@@ -151,6 +151,7 @@
 
         <!-- Right panel: toolbar + playlist -->
         <LinearLayout
+            android:id="@+id/library_panel"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
@@ -213,8 +214,6 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:visibility="gone"
-        android:background="@drawable/bg_panel"
-        android:clipToOutline="true"
         android:layout_marginBottom="8dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toEndOf="@id/mid_guideline"
