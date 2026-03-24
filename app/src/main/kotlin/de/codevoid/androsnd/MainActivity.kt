@@ -78,7 +78,6 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var btnSettings: MaterialButton
     private lateinit var contentArea: View
-    private lateinit var libraryPanel: View
     private lateinit var settingsPanel: View
     private var settingsVisible = false
     private var settingsButtonStrokeWidth = 0
@@ -266,17 +265,6 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
-        val settingsPanelView = findViewById<View>(R.id.settings_panel)
-        ViewCompat.setOnApplyWindowInsetsListener(settingsPanelView) { view, insets ->
-            val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
-            val basePadding = (24 * view.resources.displayMetrics.density).toInt()
-            view.setPadding(
-                view.paddingLeft, statusBarInsets.top + basePadding,
-                view.paddingRight, view.paddingBottom
-            )
-            insets
-        }
-
         val buttonBar = findViewById<View>(R.id.button_bar)
         ViewCompat.setOnApplyWindowInsetsListener(buttonBar) { view, insets ->
             val navBarInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -346,7 +334,6 @@ class MainActivity : AppCompatActivity() {
         btnShuffle = findViewById(R.id.btn_shuffle)
         btnSettings = findViewById(R.id.btn_settings)
         contentArea = findViewById(R.id.content_area)
-        libraryPanel = findViewById(R.id.library_panel)
         settingsPanel = findViewById(R.id.settings_panel)
         settingsButtonStrokeWidth = btnSettings.strokeWidth
 
@@ -724,11 +711,9 @@ class MainActivity : AppCompatActivity() {
     private fun toggleSettings() {
         settingsVisible = !settingsVisible
         if (settingsVisible) {
-            libraryPanel.visibility = View.GONE
             settingsPanel.visibility = View.VISIBLE
         } else {
             settingsPanel.visibility = View.GONE
-            libraryPanel.visibility = View.VISIBLE
             val toggleDemo = settingsPanel.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.toggle_demo_popup)
             if (toggleDemo.isChecked) {
                 musicService?.dismissOverlayDemo()
