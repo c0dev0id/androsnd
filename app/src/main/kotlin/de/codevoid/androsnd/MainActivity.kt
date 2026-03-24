@@ -345,13 +345,7 @@ class MainActivity : AppCompatActivity() {
 
         volSlider.addOnChangeListener { _, value, fromUser ->
             if (!fromUser) return@addOnChangeListener
-            val vol = value.toInt()
-            volLabel.text = "${vol}%"
-            getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-                .edit().putInt("app_volume", vol).apply()
-            musicService?.applyAppVolume()
-            // Keep settings panel slider in sync if it's open
-            settingsPanel.findViewById<Slider>(R.id.slider_volume)?.value = value
+            setAppVolume(value)
         }
 
         loadAccentColor()
@@ -483,12 +477,7 @@ class MainActivity : AppCompatActivity() {
         volLabel.text = "${sliderVolume.value.toInt()}%"
         sliderVolume.addOnChangeListener { _, value, fromUser ->
             if (!fromUser) return@addOnChangeListener
-            val vol = value.toInt()
-            labelVolume.text = "${vol}%"
-            volSlider.value = value
-            volLabel.text = "${vol}%"
-            prefs.edit().putInt("app_volume", vol).apply()
-            musicService?.applyAppVolume()
+            setAppVolume(value)
         }
 
         // Overlay Opacity
@@ -905,8 +894,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun adjustVolume(delta: Float) {
-        adjustSlider(R.id.slider_volume, delta)
-        startFixedRepeat { adjustSlider(R.id.slider_volume, delta) }
+        setAppVolume(volSlider.value + delta)
+        startFixedRepeat { setAppVolume(volSlider.value + delta) }
     }
 
     private fun onRemoteKeyDown(keyCode: Int) {
@@ -1017,10 +1006,16 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    private fun adjustSlider(id: Int, delta: Float) {
-        val slider = settingsPanel.findViewById<Slider>(id) ?: return
-        if (!slider.isEnabled) return
-        slider.value = (slider.value + delta).coerceIn(slider.valueFrom, slider.valueTo)
+    private fun setAppVolume(vol: Float) {
+        val clamped = vol.coerceIn(volSlider.valueFrom, volSlider.valueTo)
+        val pct = clamped.toInt()
+        getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+            .edit().putInt("app_volume", pct).apply()
+        volSlider.value = clamped
+        volLabel.text = "${pct}%"
+        settingsPanel.findViewById<Slider>(R.id.slider_volume)?.value = clamped
+        settingsPanel.findViewById<TextView>(R.id.label_volume)?.text = "${pct}%"
+        musicService?.applyAppVolume()
     }
 
     // ── Focus visuals ─────────────────────────────────────────────────────────
