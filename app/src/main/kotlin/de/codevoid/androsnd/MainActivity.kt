@@ -354,7 +354,7 @@ class MainActivity : AppCompatActivity() {
             val h = volContainer.height
             if (h > 0) {
                 val params = volSlider.layoutParams
-                params.width = h - volLabel.height
+                params.width = h - 2 * volLabel.height
                 volSlider.layoutParams = params
             }
         }
@@ -483,18 +483,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // App Volume
-        val sliderVolume = settingsPanel.findViewById<Slider>(R.id.slider_volume)
-        val labelVolume = settingsPanel.findViewById<TextView>(R.id.label_volume)
+        // Volume — init from prefs directly (no settings slider)
         val currentVolume = prefs.getInt("app_volume", 100)
-        sliderVolume.value = alignToSliderStep(currentVolume.toFloat(), 0f, 100f, 1f)
-        labelVolume.text = "${sliderVolume.value.toInt()}%"
-        volSlider.value = sliderVolume.value
-        volLabel.text = "${sliderVolume.value.toInt()}%"
-        sliderVolume.addOnChangeListener { _, value, fromUser ->
-            if (!fromUser) return@addOnChangeListener
-            setAppVolume(value)
-        }
+        val initialVol = alignToSliderStep(currentVolume.toFloat(), 0f, 100f, 1f)
+        volSlider.value = initialVol
+        volLabel.text = "${initialVol.toInt()}%"
 
         // Overlay Opacity
         val sliderOpacity = settingsPanel.findViewById<Slider>(R.id.slider_opacity)
@@ -747,13 +740,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyAccentToSettingsControls() {
         val accentCSL = ColorStateList.valueOf(accentColor)
-        listOf(R.id.slider_volume, R.id.slider_opacity, R.id.slider_overlay_size)
+        listOf(R.id.slider_opacity, R.id.slider_overlay_size)
             .mapNotNull { settingsPanel.findViewById<Slider>(it) }
             .forEach { slider ->
                 slider.trackActiveTintList = accentCSL
                 slider.thumbTintList = accentCSL
             }
-        listOf(R.id.label_volume, R.id.label_opacity, R.id.label_overlay_size)
+        listOf(R.id.label_opacity, R.id.label_overlay_size)
             .mapNotNull { settingsPanel.findViewById<TextView>(it) }
             .forEach { label ->
                 label.setTextColor(accentColor)
@@ -1029,8 +1022,6 @@ class MainActivity : AppCompatActivity() {
             .edit().putInt("app_volume", pct).apply()
         volSlider.value = clamped
         volLabel.text = "${pct}%"
-        settingsPanel.findViewById<Slider>(R.id.slider_volume)?.value = clamped
-        settingsPanel.findViewById<TextView>(R.id.label_volume)?.text = "${pct}%"
         musicService?.applyAppVolume()
     }
 

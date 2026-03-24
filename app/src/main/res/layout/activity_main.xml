@@ -63,11 +63,22 @@
                         app:labelBehavior="gone" />
 
                     <TextView
-                        android:id="@+id/vol_label"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="top|center_horizontal"
                         android:paddingBottom="8dp"
+                        android:text="VOL"
+                        android:maxLines="1"
+                        android:textSize="26sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/colorPrimary" />
+
+                    <TextView
+                        android:id="@+id/vol_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="bottom|center_horizontal"
+                        android:paddingTop="8dp"
                         android:maxLines="1"
                         android:textSize="26sp"
                         android:textStyle="bold"
@@ -187,15 +198,26 @@
 
     </LinearLayout>
 
-    <!-- Settings panel (replaces content_area when visible) -->
+    <!-- Guideline marking the start of the right panel (50% of layout width) -->
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/mid_guideline"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.5" />
+
+    <!-- Settings panel — overlays right (library) panel only -->
     <include
         layout="@layout/dialog_settings"
         android:id="@+id/settings_panel"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:visibility="gone"
+        android:background="@drawable/bg_panel"
+        android:clipToOutline="true"
+        android:layout_marginBottom="8dp"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintStart_toEndOf="@id/mid_guideline"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@id/button_bar" />
 
