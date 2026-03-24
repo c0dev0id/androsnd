@@ -79,6 +79,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnSettings: MaterialButton
     private lateinit var contentArea: View
     private lateinit var settingsPanel: View
+    private val prefs by lazy { getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE) }
     private var settingsVisible = false
     private var settingsButtonStrokeWidth = 0
     private lateinit var loadingText: android.widget.TextView
@@ -738,13 +739,11 @@ class MainActivity : AppCompatActivity() {
             .forEach { label ->
                 label.setTextColor(accentColor)
             }
-        listOf(R.id.btn_accent_orange, R.id.btn_accent_blue, R.id.btn_accent_green)
+        listOf(R.id.btn_folder, R.id.btn_check_update, R.id.btn_accent_orange, R.id.btn_accent_blue, R.id.btn_accent_green)
             .mapNotNull { settingsPanel.findViewById<MaterialButton>(it) }
             .forEach { btn ->
                 btn.strokeColor = accentCSL
             }
-        settingsPanel.findViewById<MaterialButton>(R.id.btn_folder)?.strokeColor = accentCSL
-        settingsPanel.findViewById<MaterialButton>(R.id.btn_check_update)?.strokeColor = accentCSL
     }
 
     private fun requestPermissionsIfNeeded() {
@@ -1005,8 +1004,7 @@ class MainActivity : AppCompatActivity() {
     private fun setAppVolume(vol: Float) {
         val clamped = vol.coerceIn(volSlider.valueFrom, volSlider.valueTo)
         val pct = clamped.toInt()
-        getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-            .edit().putInt("app_volume", pct).apply()
+        prefs.edit().putInt("app_volume", pct).apply()
         volSlider.value = clamped
         volLabel.text = "${pct}%"
         musicService?.applyAppVolume()
