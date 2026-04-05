@@ -118,6 +118,8 @@ class MainActivity : AppCompatActivity() {
 
     private var accentColor: Int = Color.parseColor("#F57C00")
     private val inactiveColor: Int = Color.parseColor("#444444")
+    private var folderPickerActive = false
+    private var awaitingPermissions = false
 
     companion object {
         private val ACCENT_COLORS = mapOf(
@@ -139,7 +141,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 updateUI()
                 if (musicService?.playlistManager?.songs?.isEmpty() == true) {
-                    openFolderPicker()
+                    openFolderPickerIfReady()
                 }
             }
             // Set up overlay scale listener for settings panel
@@ -230,6 +232,7 @@ class MainActivity : AppCompatActivity() {
     private val folderPickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
+        folderPickerActive = false
         uri?.let {
             contentResolver.takePersistableUriPermission(
                 it, Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -241,7 +244,12 @@ class MainActivity : AppCompatActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
+        awaitingPermissions = false
         updateUI()
+        if (musicService?.playlistManager?.songs?.isEmpty() == true &&
+            musicService?.isScanning != true) {
+            openFolderPickerIfReady()
+        }
     }
 
     private fun hideNavigationBar() {
@@ -441,7 +449,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun openFolderPickerIfReady() {
+        if (folderPickerActive || awaitingPermissions) return
+        folderPickerActive = true
+        folderPickerLauncher.launch(null)
+    }
+
     private fun openFolderPicker() {
+        folderPickerActive = true
         folderPickerLauncher.launch(null)
     }
 
@@ -770,7 +785,10 @@ class MainActivity : AppCompatActivity() {
                 perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
             }
         }
-        if (perms.isNotEmpty()) permissionLauncher.launch(perms.toTypedArray())
+        if (perms.isNotEmpty()) {
+            awaitingPermissions = true
+            permissionLauncher.launch(perms.toTypedArray())
+        }
     }
 
     private fun requestBatteryOptimizationExemption() {
