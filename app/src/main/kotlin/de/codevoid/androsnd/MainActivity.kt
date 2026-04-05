@@ -118,6 +118,7 @@ class MainActivity : AppCompatActivity() {
 
     private var accentColor: Int = Color.parseColor("#F57C00")
     private val inactiveColor: Int = Color.parseColor("#444444")
+    private var pendingFolderUri: Uri? = null
 
     companion object {
         private val ACCENT_COLORS = mapOf(
@@ -134,7 +135,12 @@ class MainActivity : AppCompatActivity() {
             val musicBinder = binder as? MusicService.MusicBinder ?: return
             musicService = musicBinder.getService()
             isBound = true
-            if (musicService?.isScanning == true) {
+            val pending = pendingFolderUri
+            if (pending != null) {
+                pendingFolderUri = null
+                musicService?.scanFolderAsync(pending)
+                showLoading()
+            } else if (musicService?.isScanning == true) {
                 showLoading()
             } else {
                 updateUI()
@@ -231,7 +237,12 @@ class MainActivity : AppCompatActivity() {
             contentResolver.takePersistableUriPermission(
                 it, Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
-            musicService?.scanFolderAsync(it)
+            val svc = musicService
+            if (svc != null) {
+                svc.scanFolderAsync(it)
+            } else {
+                pendingFolderUri = it
+            }
         }
     }
 
