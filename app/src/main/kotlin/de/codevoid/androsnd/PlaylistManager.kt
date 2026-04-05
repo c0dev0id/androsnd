@@ -51,7 +51,13 @@ class PlaylistManager(private val context: Context) {
         return Uri.parse(uriString)
     }
 
-    fun scanFolder(treeUri: Uri) {
+    fun clear() {
+        snapshot = Snapshot(emptyList(), emptyList(), emptyMap())
+        currentIndex = 0
+        nextQueueIndex = -1
+    }
+
+    fun scanFolder(treeUri: Uri, onProgress: ((Int) -> Unit)? = null) {
         prefs.edit().putString(KEY_FOLDER_URI, treeUri.toString()).apply()
 
         // Build into local collections so any thread holding the old _songs/_folders
@@ -62,7 +68,7 @@ class PlaylistManager(private val context: Context) {
 
         val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
         val rootName = queryDisplayName(treeUri, rootDocId) ?: "Music"
-        scanTree(treeUri, rootDocId, rootName, rootName, newSongs, newFolders, newFoldersByPath)
+        scanTree(treeUri, rootDocId, rootName, rootName, newSongs, newFolders, newFoldersByPath, onProgress)
 
         newFolders.sortBy { it.name }
         newFolders.forEach { folder ->
@@ -102,7 +108,8 @@ class PlaylistManager(private val context: Context) {
         parentPath: String,
         outSongs: MutableList<Song>,
         outFolders: MutableList<PlaylistFolder>,
-        outFoldersByPath: HashMap<String, PlaylistFolder>
+        outFoldersByPath: HashMap<String, PlaylistFolder>,
+        onProgress: ((Int) -> Unit)? = null
     ) {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
         val projection = arrayOf(
@@ -154,12 +161,13 @@ class PlaylistManager(private val context: Context) {
                     )
                 )
                 folder.songs.add(songIndex)
+                onProgress?.invoke(outSongs.size)
             }
         }
 
         for ((docId, name) in subDirs) {
             val subPath = "$parentPath/$name"
-            scanTree(treeUri, docId, name, subPath, outSongs, outFolders, outFoldersByPath)
+            scanTree(treeUri, docId, name, subPath, outSongs, outFolders, outFoldersByPath, onProgress)
         }
     }
 

@@ -62,7 +62,9 @@ class MusicService : MediaBrowserServiceCompat() {
         const val BROADCAST_METADATA_UPDATED = "de.codevoid.androsnd.METADATA_UPDATED"
         const val BROADCAST_ART_UPDATED = "de.codevoid.androsnd.ART_UPDATED"
         const val BROADCAST_ENRICHMENT_COMPLETE = "de.codevoid.androsnd.ENRICHMENT_COMPLETE"
+        const val BROADCAST_SCAN_PROGRESS = "de.codevoid.androsnd.SCAN_PROGRESS"
 
+        const val EXTRA_SCAN_SONG_COUNT = "scan_song_count"
         const val EXTRA_METADATA_SONG_INDEX = "song_index"
         const val EXTRA_METADATA_TITLE    = "meta_title"
         const val EXTRA_METADATA_ARTIST   = "meta_artist"
@@ -821,14 +823,22 @@ class MusicService : MediaBrowserServiceCompat() {
         isPlaying = false
         stopProgressUpdates()
         metadataRepository.cancelEnrichment()
+        playlistManager.clear()
+        currentTextMetadata = null
+        currentArtBitmap = null
 
         isScanning = true
         broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_STARTED))
 
         serviceScope.launch {
             withContext(Dispatchers.IO) {
-                runCatching { playlistManager.scanFolder(uri) }
-                    .onFailure { Log.e(TAG, "Scan failed", it) }
+                runCatching {
+                    playlistManager.scanFolder(uri) { count ->
+                        broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_PROGRESS).apply {
+                            putExtra(EXTRA_SCAN_SONG_COUNT, count)
+                        })
+                    }
+                }.onFailure { Log.e(TAG, "Scan failed", it) }
             }
             isScanning = false
             playlistManager.selectNextQueueSong()

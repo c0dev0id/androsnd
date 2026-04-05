@@ -169,7 +169,13 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 MusicService.BROADCAST_SCAN_STARTED -> {
+                    playlistAdapter.submitData(emptyList(), emptyList(), -1)
                     showLoading()
+                    loadingText.text = "Scanning..."
+                }
+                MusicService.BROADCAST_SCAN_PROGRESS -> {
+                    val count = intent.getIntExtra(MusicService.EXTRA_SCAN_SONG_COUNT, 0)
+                    loadingText.text = "Scanning: $count songs found"
                 }
                 MusicService.BROADCAST_SCAN_COMPLETED -> {
                     val svc = musicService ?: return
@@ -299,6 +305,7 @@ class MainActivity : AppCompatActivity() {
 
         val scanFilter = IntentFilter().apply {
             addAction(MusicService.BROADCAST_SCAN_STARTED)
+            addAction(MusicService.BROADCAST_SCAN_PROGRESS)
             addAction(MusicService.BROADCAST_SCAN_COMPLETED)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(scanReceiver, scanFilter)
