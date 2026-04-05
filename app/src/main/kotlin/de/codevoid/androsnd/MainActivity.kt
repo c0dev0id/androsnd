@@ -118,8 +118,6 @@ class MainActivity : AppCompatActivity() {
 
     private var accentColor: Int = Color.parseColor("#F57C00")
     private val inactiveColor: Int = Color.parseColor("#444444")
-    private var folderPickerActive = false
-    private var awaitingPermissions = false
 
     companion object {
         private val ACCENT_COLORS = mapOf(
@@ -140,9 +138,6 @@ class MainActivity : AppCompatActivity() {
                 showLoading()
             } else {
                 updateUI()
-                if (musicService?.playlistManager?.songs?.isEmpty() == true) {
-                    openFolderPickerIfReady()
-                }
             }
             // Set up overlay scale listener for settings panel
             val sliderSize = settingsPanel.findViewById<Slider>(R.id.slider_overlay_size)
@@ -232,7 +227,6 @@ class MainActivity : AppCompatActivity() {
     private val folderPickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
-        folderPickerActive = false
         uri?.let {
             contentResolver.takePersistableUriPermission(
                 it, Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -244,12 +238,7 @@ class MainActivity : AppCompatActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        awaitingPermissions = false
         updateUI()
-        if (musicService?.playlistManager?.songs?.isEmpty() == true &&
-            musicService?.isScanning != true) {
-            openFolderPickerIfReady()
-        }
     }
 
     private fun hideNavigationBar() {
@@ -449,14 +438,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun openFolderPickerIfReady() {
-        if (folderPickerActive || awaitingPermissions) return
-        folderPickerActive = true
-        folderPickerLauncher.launch(null)
-    }
-
     private fun openFolderPicker() {
-        folderPickerActive = true
         folderPickerLauncher.launch(null)
     }
 
@@ -786,7 +768,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         if (perms.isNotEmpty()) {
-            awaitingPermissions = true
             permissionLauncher.launch(perms.toTypedArray())
         }
     }
