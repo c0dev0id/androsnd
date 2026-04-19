@@ -26,6 +26,7 @@
     <string name="overlay_demo_album">Pinch me and I will resize :)</string>
     <string name="accent_color">Accent Color</string>
     <string name="settings_show_demo_popup">Show Demo Popup</string>
+    <string name="settings_show_overlay">Show Now Playing Overlay</string>
 
     <!-- Update checker -->
     <string name="update_check_button">Check for Updates</string>

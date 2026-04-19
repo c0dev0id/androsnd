@@ -542,6 +542,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Show Now Playing Overlay toggle
+        val toggleShowOverlay = settingsPanel.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.toggle_show_overlay)
+        toggleShowOverlay.isChecked = prefs.getBoolean("overlay_enabled", true)
+        toggleShowOverlay.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("overlay_enabled", isChecked).apply()
+        }
+
         updateFocusVisual()
     }
 
