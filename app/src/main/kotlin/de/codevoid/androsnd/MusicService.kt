@@ -540,7 +540,11 @@ class MusicService : MediaBrowserServiceCompat() {
                     currentArtBitmap    = art
                     updateMediaSessionMetadata()
                     updateNotification()
-                    overlayToastManager.showSong(meta, art)
+                    val overlayEnabled = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+                        .getBoolean("overlay_enabled", true)
+                    if (overlayEnabled) {
+                        overlayToastManager.showSong(meta, art)
+                    }
                     broadcastState()
                 }
             }
