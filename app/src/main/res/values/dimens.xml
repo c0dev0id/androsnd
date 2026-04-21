@@ -38,7 +38,7 @@
     <dimen name="settings_toggle_height">40dp</dimen>
 
     <!-- Corner radius -->
-    <dimen name="corner_radius_default">8dp</dimen>
+    <dimen name="corner_radius_default">10dp</dimen>
     <dimen name="corner_radius_overlay">20dp</dimen>
 
     <!-- Scrollbar -->

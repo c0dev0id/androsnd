@@ -116,18 +116,18 @@ class MainActivity : AppCompatActivity() {
     private var lastKnownPlaylistIndex = -1
     private var lastKnownSongCount = -1
 
-    private var accentColor: Int = Color.parseColor("#F57C00")
-    private val inactiveColor: Int = Color.parseColor("#444444")
+    private var accentColor: Int = Color.parseColor("#00B4FF")
+    private val inactiveColor: Int = Color.parseColor("#2A2F45")
     private var pendingFolderUri: Uri? = null
 
     companion object {
         private val ACCENT_COLORS = mapOf(
-            "orange" to Color.parseColor("#F57C00"),
+            "cyan" to Color.parseColor("#00B4FF"),
             "blue" to Color.parseColor("#2196F3"),
             "green" to Color.parseColor("#4CAF50")
         )
-        private val ACCENT_NAMES = listOf("Orange", "Blue", "Green")
-        private val ACCENT_KEYS = listOf("orange", "blue", "green")
+        private val ACCENT_NAMES = listOf("Cyan", "Blue", "Green")
+        private val ACCENT_KEYS = listOf("cyan", "blue", "green")
     }
 
     private val serviceConnection = object : ServiceConnection {
@@ -406,8 +406,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadAccentColor() {
         val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-        val key = prefs.getString("accent_color", "orange") ?: "orange"
-        accentColor = ACCENT_COLORS[key] ?: ACCENT_COLORS["orange"]!!
+        val key = prefs.getString("accent_color", "cyan") ?: "cyan"
+        accentColor = ACCENT_COLORS[key] ?: ACCENT_COLORS["cyan"]!!
     }
 
     private fun applyAccentColor() {
@@ -437,7 +437,7 @@ class MainActivity : AppCompatActivity() {
 
         btnPlay.backgroundTintList = ColorStateList.valueOf(if (isPlaying) accentColor else inactiveColor)
         btnShuffle.backgroundTintList = ColorStateList.valueOf(if (isShuffleOn) accentColor else inactiveColor)
-        btnShuffle.iconTint = ColorStateList.valueOf(if (isShuffleOn) Color.parseColor("#1A1A1A") else Color.WHITE)
+        btnShuffle.iconTint = ColorStateList.valueOf(if (isShuffleOn) Color.parseColor("#0B0F1A") else Color.WHITE)
 
         if (settingsVisible) {
             btnSettings.backgroundTintList = ColorStateList.valueOf(accentColor)

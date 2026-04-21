@@ -1,51 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Androsnd" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">#F57C00</item>
-        <item name="colorPrimaryDark">#E65100</item>
-        <item name="colorSecondary">#F57C00</item>
-        <item name="colorAccent">#F57C00</item>
+        <item name="colorPrimary">#00B4FF</item>
+        <item name="colorPrimaryDark">#0090CC</item>
+        <item name="colorSecondary">#00B4FF</item>
+        <item name="colorAccent">#00B4FF</item>
         <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorSurface">#2B2B2B</item>
+        <item name="colorSurface">#181824</item>
         <item name="colorOnSurface">#FFFFFF</item>
-        <item name="android:colorBackground">#2B2B2B</item>
+        <item name="android:colorBackground">#181824</item>
         <item name="colorOnBackground">#FFFFFF</item>
-        <item name="android:statusBarColor">#1A1A1A</item>
-        <item name="android:navigationBarColor">#1A1A1A</item>
+        <item name="android:statusBarColor">#0B0F1A</item>
+        <item name="android:navigationBarColor">#0B0F1A</item>
         <item name="materialAlertDialogTheme">@style/ThemeOverlay.Androsnd.AlertDialog</item>
         <item name="fontFamily">@font/apotek</item>
         <item name="android:fontFamily">@font/apotek</item>
     </style>
 
     <style name="Widget.Androsnd.Button.Orange" parent="Widget.Material3.Button">
-        <item name="android:backgroundTint">#F57C00</item>
+        <item name="android:backgroundTint">#00B4FF</item>
         <item name="android:textColor">#FFFFFF</item>
         <item name="iconTint">#FFFFFF</item>
         <item name="iconSize">32dp</item>
         <item name="iconGravity">textStart</item>
-        <item name="cornerRadius">8dp</item>
+        <item name="cornerRadius">10dp</item>
     </style>
 
     <style name="Widget.Androsnd.Button.Dark" parent="Widget.Material3.Button">
-        <item name="android:backgroundTint">#444444</item>
+        <item name="android:backgroundTint">#2A2F45</item>
         <item name="android:textColor">#FFFFFF</item>
         <item name="iconTint">#FFFFFF</item>
         <item name="iconSize">32dp</item>
         <item name="iconGravity">textStart</item>
-        <item name="cornerRadius">8dp</item>
+        <item name="cornerRadius">10dp</item>
     </style>
 
     <style name="Widget.Androsnd.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
         <item name="android:textColor">#FFFFFF</item>
         <item name="iconTint">#FFFFFF</item>
-        <item name="strokeColor">#F57C00</item>
+        <item name="strokeColor">#00B4FF</item>
         <item name="iconSize">32dp</item>
         <item name="iconGravity">textStart</item>
-        <item name="cornerRadius">8dp</item>
+        <item name="cornerRadius">10dp</item>
     </style>
 
     <style name="ThemeOverlay.Androsnd.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
-        <item name="android:background">#3C3C3C</item>
+        <item name="android:background">#151830</item>
         <item name="colorOnSurface">#FFFFFF</item>
     </style>
 </resources>
