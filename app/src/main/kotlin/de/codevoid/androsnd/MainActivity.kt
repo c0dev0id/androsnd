@@ -46,7 +46,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.slider.Slider
 import android.graphics.drawable.GradientDrawable
 import android.view.KeyEvent
@@ -116,19 +115,9 @@ class MainActivity : AppCompatActivity() {
     private var lastKnownPlaylistIndex = -1
     private var lastKnownSongCount = -1
 
-    private var accentColor: Int = Color.parseColor("#00B4FF")
+    private val accentColor: Int = Color.parseColor("#00B4FF")
     private val inactiveColor: Int = Color.parseColor("#2A2F45")
     private var pendingFolderUri: Uri? = null
-
-    companion object {
-        private val ACCENT_COLORS = mapOf(
-            "cyan" to Color.parseColor("#00B4FF"),
-            "blue" to Color.parseColor("#2196F3"),
-            "green" to Color.parseColor("#4CAF50")
-        )
-        private val ACCENT_NAMES = listOf("Cyan", "Blue", "Green")
-        private val ACCENT_KEYS = listOf("cyan", "blue", "green")
-    }
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -369,7 +358,6 @@ class MainActivity : AppCompatActivity() {
             setAppVolume(value)
         }
 
-        loadAccentColor()
     }
 
     private fun setupRecyclerView() {
@@ -402,12 +390,6 @@ class MainActivity : AppCompatActivity() {
         btnStop.setOnClickListener { musicService?.handleStop() }
         btnShuffle.setOnClickListener { musicService?.handleShuffleButton() }
         btnSettings.setOnClickListener { toggleSettings() }
-    }
-
-    private fun loadAccentColor() {
-        val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-        val key = prefs.getString("accent_color", "cyan") ?: "cyan"
-        accentColor = ACCENT_COLORS[key] ?: ACCENT_COLORS["cyan"]!!
     }
 
     private fun applyAccentColor() {
@@ -462,31 +444,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSettingsPanel() {
         val prefs = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-
-        // Accent Color
-        val toggleAccent = settingsPanel.findViewById<MaterialButtonToggleGroup>(R.id.toggle_accent_settings)
-        val savedKey = prefs.getString("accent_color", "orange") ?: "orange"
-        val initialCheckedId = when (savedKey) {
-            "orange" -> R.id.btn_accent_orange
-            "blue" -> R.id.btn_accent_blue
-            "green" -> R.id.btn_accent_green
-            else -> R.id.btn_accent_orange
-        }
-        toggleAccent.check(initialCheckedId)
-        toggleAccent.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (isChecked) {
-                val key = when (checkedId) {
-                    R.id.btn_accent_orange -> "orange"
-                    R.id.btn_accent_blue -> "blue"
-                    R.id.btn_accent_green -> "green"
-                    else -> "orange"
-                }
-                accentColor = ACCENT_COLORS[key] ?: ACCENT_COLORS["orange"]!!
-                prefs.edit().putString("accent_color", key).apply()
-                applyAccentColor()
-                updateButtonStates()
-            }
-        }
 
         // Volume — init from prefs directly (no settings slider)
         val currentVolume = prefs.getInt("app_volume", 100)
@@ -761,7 +718,7 @@ class MainActivity : AppCompatActivity() {
             .forEach { label ->
                 label.setTextColor(accentColor)
             }
-        listOf(R.id.btn_folder, R.id.btn_check_update, R.id.btn_accent_orange, R.id.btn_accent_blue, R.id.btn_accent_green)
+        listOf(R.id.btn_folder, R.id.btn_check_update)
             .mapNotNull { settingsPanel.findViewById<MaterialButton>(it) }
             .forEach { btn ->
                 btn.strokeColor = accentCSL

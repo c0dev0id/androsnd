@@ -29,53 +29,6 @@
         android:textStyle="bold"
         style="@style/Widget.Androsnd.Button.Outlined" />
 
-    <!-- Accent Color -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/accent_color"
-        android:textColor="@color/text_primary"
-        android:textStyle="bold"
-        android:textSize="16sp" />
-
-    <com.google.android.material.button.MaterialButtonToggleGroup
-        android:id="@+id/toggle_accent_settings"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="16dp"
-        app:singleSelection="true"
-        app:selectionRequired="true">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_accent_orange"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_weight="1"
-            android:text="Orange"
-            android:textSize="13sp"
-            style="@style/Widget.Material3.Button.OutlinedButton" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_accent_blue"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_weight="1"
-            android:text="Blue"
-            android:textSize="13sp"
-            style="@style/Widget.Material3.Button.OutlinedButton" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_accent_green"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_weight="1"
-            android:text="Green"
-            android:textSize="13sp"
-            style="@style/Widget.Material3.Button.OutlinedButton" />
-
-    </com.google.android.material.button.MaterialButtonToggleGroup>
-
     <!-- Now-Playing Popup Opacity -->
     <TextView
         android:layout_width="wrap_content"

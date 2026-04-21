@@ -19,9 +19,4 @@
     <color name="seekbar_track_bg">#2A2F45</color>
     <color name="overlay_bg">#CC0B0F1A</color>
     <color name="scrollbar_thumb_color">#80FFFFFF</color>
-
-    <!-- Accent color options -->
-    <color name="accent_cyan">#00B4FF</color>
-    <color name="accent_blue">#2196F3</color>
-    <color name="accent_green">#4CAF50</color>
 </resources>
