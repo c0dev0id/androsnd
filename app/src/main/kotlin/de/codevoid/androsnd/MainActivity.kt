@@ -17,6 +17,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
@@ -91,6 +92,12 @@ class MainActivity : AppCompatActivity() {
 
     // Focus frame is hidden until the first remote key is pressed
     private var hasReceivedRemoteKey = false
+
+    // Suppress duplicate remote key events when the DMD broadcast and
+    // dispatchKeyEvent both deliver the same press (per-keycode, ~100 ms window).
+    private val lastRemoteDownAtMs = HashMap<Int, Long>()
+    private val lastRemoteUpAtMs = HashMap<Int, Long>()
+    private val remoteDedupWindowMs = 100L
 
     // ── andRemote2 broadcast receiver ────────────────────────────────────────
     private val remoteReceiver = object : BroadcastReceiver() {
@@ -875,6 +882,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onRemoteKeyDown(keyCode: Int) {
+        val now = SystemClock.uptimeMillis()
+        val prev = lastRemoteDownAtMs[keyCode]
+        if (prev != null && now - prev < remoteDedupWindowMs) return
+        lastRemoteDownAtMs[keyCode] = now
         if (!hasReceivedRemoteKey) {
             hasReceivedRemoteKey = true
             updateFocusVisual()
@@ -894,6 +905,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onRemoteKeyUp(keyCode: Int) {
+        val now = SystemClock.uptimeMillis()
+        val prev = lastRemoteUpAtMs[keyCode]
+        if (prev != null && now - prev < remoteDedupWindowMs) return
+        lastRemoteUpAtMs[keyCode] = now
         when (keyCode) {
             KeyEvent.KEYCODE_F6, KeyEvent.KEYCODE_F7 -> cancelFixedRepeat()
             KeyEvent.KEYCODE_ESCAPE -> {
