@@ -40,8 +40,16 @@ class UpdateChecker(private val context: Context) {
         }
     }
 
+    /** True when this build came from the nightly/dev channel (versionName starts with "dev"). */
+    fun isNightlyBuild(): Boolean = installedVersion().startsWith("dev")
+
     /** Returns true when onlineTag represents a strictly newer version than installedVersion. */
     fun isNewer(onlineTag: String, installedVersion: String): Boolean {
+        // Nightly channel: tags are "dev-<sha>" (or just "dev"). Numeric semver comparison
+        // is meaningless for SHAs, so fall back to string inequality of the trimmed tag.
+        if (onlineTag.startsWith("dev") || installedVersion.startsWith("dev")) {
+            return onlineTag.trim() != installedVersion.trim()
+        }
         val online = parseVersion(onlineTag)
         val installed = parseVersion(installedVersion)
         val len = maxOf(online.size, installed.size)

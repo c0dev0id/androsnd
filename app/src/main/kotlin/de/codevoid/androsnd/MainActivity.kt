@@ -530,7 +530,7 @@ class MainActivity : AppCompatActivity() {
         checkingDialog.show()
 
         updateChecker.fetchRelease(
-            includePrerelease = true,
+            includePrerelease = updateChecker.isNightlyBuild(),
             onResult = { release ->
                 checkingDialog.dismiss()
                 showUpdateResultDialog(installedVersion, release)
