@@ -810,7 +810,7 @@ class MainActivity : AppCompatActivity() {
         val pm = svc.playlistManager
         val song = pm.getCurrentSong()
 
-        btnPlay.setIconResource(if (svc.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
+        btnPlay.setIconResource(resolvePlayPauseIcon())
         updateButtonStates()
 
         if (song != null) {
@@ -983,6 +983,7 @@ class MainActivity : AppCompatActivity() {
     private fun handleUp(): Boolean {
         if (playlistFocusPos > 0) {
             playlistFocusPos--
+            buttonBarFocusIdx = navButtons.indexOf(btnPlay)
             updateFocusVisual()
             playlistRecycler.scrollToPosition(playlistFocusPos)
         }
@@ -992,6 +993,7 @@ class MainActivity : AppCompatActivity() {
     private fun handleDown(): Boolean {
         if (playlistFocusPos < playlistAdapter.itemCount - 1) {
             playlistFocusPos++
+            buttonBarFocusIdx = navButtons.indexOf(btnPlay)
             updateFocusVisual()
             playlistRecycler.scrollToPosition(playlistFocusPos)
         }
@@ -1113,6 +1115,15 @@ class MainActivity : AppCompatActivity() {
         navButtons.forEachIndexed { idx, btn ->
             btn.foreground = if (idx == buttonBarFocusIdx) makeFocusRing(dpToPx(8)) else null
         }
+        btnPlay.setIconResource(resolvePlayPauseIcon())
+    }
+
+    private fun resolvePlayPauseIcon(): Int {
+        val svc = musicService ?: return R.drawable.ic_play
+        val focusedSongIdx = playlistAdapter.getSongIndexAt(playlistFocusPos)
+        val onCurrentSong = focusedSongIdx != null &&
+                focusedSongIdx == svc.playlistManager.currentIndex
+        return if (svc.isPlaying && onCurrentSong) R.drawable.ic_pause else R.drawable.ic_play
     }
 
     private fun makeFocusRing(cornerRadiusPx: Int): GradientDrawable {
