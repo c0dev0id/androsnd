@@ -32,6 +32,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import android.graphics.BitmapFactory
@@ -75,12 +76,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnNext: MaterialButton
     private lateinit var btnStop: MaterialButton
     private lateinit var btnShuffle: MaterialButton
+    private lateinit var btnFolder: MaterialButton
 
     private lateinit var btnSettings: MaterialButton
     private lateinit var contentArea: View
     private lateinit var settingsPanel: View
+    private lateinit var folderBrowserPanel: View
+    private lateinit var folderGridRecycler: RecyclerView
     private val prefs by lazy { getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE) }
     private var settingsVisible = false
+    private var folderBrowserVisible = false
+    private var folderGridFocusPos: Int = 0
     private var settingsButtonStrokeWidth = 0
     private lateinit var loadingText: android.widget.TextView
     private var loadingTotal = 0
@@ -119,8 +125,11 @@ class MainActivity : AppCompatActivity() {
         get() = listOf(btnPrev, btnPlay, btnNext, btnStop, btnShuffle)
 
     private lateinit var playlistAdapter: PlaylistAdapter
+    private lateinit var folderGridAdapter: FolderGridAdapter
     private var lastKnownPlaylistIndex = -1
     private var lastKnownSongCount = -1
+
+    private val folderBrowserCols = 4
 
     private val accentColor: Int = Color.parseColor("#00B4FF")
     private val inactiveColor: Int = Color.parseColor("#2A2F45")
@@ -213,6 +222,7 @@ class MainActivity : AppCompatActivity() {
             lastKnownSongCount = pm.songs.size
             lastKnownPlaylistIndex = pm.currentIndex
             playlistAdapter.submitData(pm.folders, pm.songs, pm.currentIndex)
+            folderGridAdapter.submitData(pm.folders)
             updateUI()
         }
     }
@@ -221,6 +231,7 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context, intent: Intent) {
             val folderPath = intent.getStringExtra(MusicService.EXTRA_ART_FOLDER_PATH) ?: return
             playlistAdapter.invalidateArtForFolder(folderPath)
+            folderGridAdapter.invalidateArtForFolder(folderPath)
             val cur = musicService?.playlistManager?.getCurrentSong() ?: return
             if (cur.folderPath == folderPath) updateNowPlayingArt(folderPath)
         }
@@ -344,9 +355,12 @@ class MainActivity : AppCompatActivity() {
         btnNext = findViewById(R.id.btn_next)
         btnStop = findViewById(R.id.btn_stop)
         btnShuffle = findViewById(R.id.btn_shuffle)
+        btnFolder = findViewById(R.id.btn_folder)
         btnSettings = findViewById(R.id.btn_settings)
         contentArea = findViewById(R.id.content_area)
         settingsPanel = findViewById(R.id.settings_panel)
+        folderBrowserPanel = findViewById(R.id.folder_browser_panel)
+        folderGridRecycler = folderBrowserPanel.findViewById(R.id.folder_grid_recycler)
         settingsButtonStrokeWidth = btnSettings.strokeWidth
 
         // Size the rotated volume slider to span the container's full height
@@ -386,6 +400,16 @@ class MainActivity : AppCompatActivity() {
         }
         playlistRecycler.layoutManager = LinearLayoutManager(this)
         playlistRecycler.adapter = playlistAdapter
+
+        folderGridAdapter = FolderGridAdapter(
+            onClick = { folderIndex -> playFolderAndClose(folderIndex) }
+        )
+        folderGridAdapter.getArtFile = { folder ->
+            musicService?.metadataRepository?.artFileForFolder(folder.path)
+        }
+        folderGridAdapter.accentColor = accentColor
+        folderGridRecycler.layoutManager = GridLayoutManager(this, folderBrowserCols)
+        folderGridRecycler.adapter = folderGridAdapter
     }
 
     private fun setupButtons() {
@@ -396,6 +420,7 @@ class MainActivity : AppCompatActivity() {
         btnNext.setOnClickListener { musicService?.handleNext() }
         btnStop.setOnClickListener { musicService?.handleStop() }
         btnShuffle.setOnClickListener { musicService?.handleShuffleButton() }
+        btnFolder.setOnClickListener { toggleFolderBrowser() }
         btnSettings.setOnClickListener { toggleSettings() }
     }
 
@@ -890,6 +915,10 @@ class MainActivity : AppCompatActivity() {
             hasReceivedRemoteKey = true
             updateFocusVisual()
         }
+        if (folderBrowserVisible) {
+            handleFolderBrowserKeyDown(keyCode)
+            return
+        }
         when (keyCode) {
             KeyEvent.KEYCODE_F6 -> adjustVolume(5f)
             KeyEvent.KEYCODE_F7 -> adjustVolume(-5f)
@@ -913,6 +942,7 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_F6, KeyEvent.KEYCODE_F7 -> cancelFixedRepeat()
             KeyEvent.KEYCODE_ESCAPE -> {
                 when {
+                    folderBrowserVisible -> closeFolderBrowser()
                     settingsVisible -> toggleSettings()
                     else -> moveTaskToBack(true)
                 }
@@ -942,6 +972,7 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("MissingSuperCall") // Intentional: automotive app, back must never finish the activity
     override fun onBackPressed() {
         when {
+            folderBrowserVisible -> closeFolderBrowser()
             settingsVisible -> toggleSettings()
             else            -> musicService?.handlePlayPause()
         }
@@ -997,6 +1028,74 @@ class MainActivity : AppCompatActivity() {
         }
         btn.performClick()
         return true
+    }
+
+    // ── Folder browser ────────────────────────────────────────────────────────
+
+    private fun toggleFolderBrowser() {
+        if (folderBrowserVisible) closeFolderBrowser() else openFolderBrowser()
+    }
+
+    private fun openFolderBrowser() {
+        val pm = musicService?.playlistManager
+        val folders = pm?.folders.orEmpty()
+        folderGridAdapter.submitData(folders)
+        val initial = pm?.let { it.getFolderIndexForSong(it.currentIndex) }?.takeIf { it >= 0 } ?: 0
+        folderGridFocusPos = if (folders.isNotEmpty()) initial.coerceIn(0, folders.size - 1) else 0
+        folderGridAdapter.focusedPos = folderGridFocusPos
+        (folderGridRecycler.layoutManager as? GridLayoutManager)
+            ?.scrollToPositionWithOffset(folderGridFocusPos, 0)
+        folderBrowserVisible = true
+        folderBrowserPanel.visibility = View.VISIBLE
+    }
+
+    private fun closeFolderBrowser() {
+        folderBrowserVisible = false
+        folderBrowserPanel.visibility = View.GONE
+        folderGridAdapter.focusedPos = -1
+    }
+
+    private fun playFolderAndClose(folderIndex: Int) {
+        val svc = musicService ?: return
+        val firstSong = svc.playlistManager.folders.getOrNull(folderIndex)?.songs?.firstOrNull()
+        if (firstSong != null) svc.playSongAtIndex(firstSong)
+        closeFolderBrowser()
+    }
+
+    private fun handleFolderBrowserKeyDown(keyCode: Int) {
+        val count = folderGridAdapter.itemCount
+        if (count == 0) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_BUTTON_A -> closeFolderBrowser()
+            }
+            return
+        }
+        val pos = folderGridFocusPos.coerceIn(0, count - 1)
+        val cols = folderBrowserCols
+        val col = pos % cols
+        var next = pos
+        when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> if (col > 0) next = pos - 1
+            KeyEvent.KEYCODE_DPAD_RIGHT -> if (col < cols - 1 && pos + 1 < count) next = pos + 1
+            KeyEvent.KEYCODE_DPAD_UP -> if (pos - cols >= 0) next = pos - cols
+            KeyEvent.KEYCODE_DPAD_DOWN -> if (pos + cols < count) next = pos + cols
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_BUTTON_A -> {
+                playFolderAndClose(pos)
+                return
+            }
+            KeyEvent.KEYCODE_F6 -> { adjustVolume(5f); return }
+            KeyEvent.KEYCODE_F7 -> { adjustVolume(-5f); return }
+            else -> return
+        }
+        if (next != pos) {
+            folderGridFocusPos = next
+            folderGridAdapter.focusedPos = next
+            folderGridRecycler.smoothScrollToPosition(next)
+        }
     }
 
     private fun setAppVolume(vol: Float) {
@@ -1057,6 +1156,7 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         cancelFixedRepeat()
         playlistAdapter.release()
+        folderGridAdapter.release()
         musicService?.setOnOverlayScaleChangedListener(null)
         musicService?.dismissOverlayDemo()
         activityScope.cancel()
@@ -1271,6 +1371,91 @@ class MainActivity : AppCompatActivity() {
         class SongViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val name: TextView = view.findViewById(R.id.song_name)
             val duration: TextView = view.findViewById(R.id.song_duration)
+        }
+    }
+
+    class FolderGridAdapter(
+        private val onClick: (Int) -> Unit
+    ) : RecyclerView.Adapter<FolderGridAdapter.GridViewHolder>() {
+
+        private var folders: List<PlaylistFolder> = emptyList()
+        private var adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        var getArtFile: ((PlaylistFolder) -> File?)? = null
+        var accentColor: Int = Color.parseColor("#00B4FF")
+        var focusedPos: Int = -1
+            set(newPos) {
+                val old = field
+                field = newPos
+                if (old >= 0 && old < itemCount) notifyItemChanged(old)
+                if (newPos >= 0 && newPos < itemCount) notifyItemChanged(newPos)
+            }
+
+        fun submitData(folders: List<PlaylistFolder>) {
+            adapterScope.cancel()
+            adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+            this.folders = folders.toList()
+            notifyDataSetChanged()
+        }
+
+        fun release() {
+            adapterScope.cancel()
+        }
+
+        fun invalidateArtForFolder(folderPath: String) {
+            val idx = folders.indexOfFirst { it.path == folderPath }
+            if (idx >= 0) notifyItemChanged(idx)
+        }
+
+        override fun getItemCount(): Int = folders.size
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): GridViewHolder {
+            val view = LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_folder_grid, parent, false)
+            return GridViewHolder(view)
+        }
+
+        override fun onBindViewHolder(holder: GridViewHolder, position: Int) {
+            val folder = folders.getOrNull(position) ?: return
+            holder.name.text = folder.name
+            val isFocused = position == focusedPos
+            holder.itemView.foreground = if (isFocused) makeFocusRingFor(holder.itemView) else null
+            holder.itemView.setOnClickListener { onClick(position) }
+
+            holder.artJob?.cancel()
+            holder.cover.setImageDrawable(null)
+            holder.artJob = adapterScope.launch {
+                val bmp = withContext(Dispatchers.IO) {
+                    val file = getArtFile?.invoke(folder)?.takeIf { it.exists() }
+                        ?: return@withContext null
+                    BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply {
+                        inSampleSize = 2
+                    })
+                }
+                holder.cover.setImageBitmap(bmp)
+            }
+        }
+
+        override fun onViewRecycled(holder: GridViewHolder) {
+            super.onViewRecycled(holder)
+            holder.artJob?.cancel()
+            (holder.cover.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap?.recycle()
+            holder.cover.setImageDrawable(null)
+        }
+
+        private fun makeFocusRingFor(view: View): GradientDrawable {
+            val dp = view.resources.displayMetrics.density
+            return GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 8f * dp
+                setStroke((3f * dp + 0.5f).toInt(), accentColor)
+                setColor(Color.TRANSPARENT)
+            }
+        }
+
+        class GridViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val name: TextView = view.findViewById(R.id.folder_grid_name)
+            val cover: ImageView = view.findViewById(R.id.folder_grid_cover)
+            var artJob: Job? = null
         }
     }
 }
