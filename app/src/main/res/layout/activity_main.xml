@@ -199,6 +199,24 @@
 
     </LinearLayout>
 
+    <!-- Folder browser overlay — covers both player and playlist panels -->
+    <FrameLayout
+        android:id="@+id/folder_browser_panel"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/bg_panel"
+        android:clipToOutline="true"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/button_bar"
+        android:layout_marginBottom="8dp">
+
+        <include layout="@layout/dialog_folder_browser" />
+
+    </FrameLayout>
+
     <!-- Bottom button bar -->
     <LinearLayout
         android:id="@+id/button_bar"
@@ -273,6 +291,19 @@
             android:layout_margin="@dimen/button_bar_margin"
             android:contentDescription="Shuffle"
             app:icon="@drawable/ic_shuffle"
+            app:iconGravity="textStart"
+            app:iconSize="@dimen/button_bar_icon_size"
+            app:iconTint="@color/text_primary"
+            style="@style/Widget.Androsnd.Button.Dark" />
+
+        <de.codevoid.androsnd.GradientButton
+            android:id="@+id/btn_folder"
+            android:layout_width="0dp"
+            android:layout_height="@dimen/button_bar_height"
+            android:layout_weight="1"
+            android:layout_margin="@dimen/button_bar_margin"
+            android:contentDescription="Folders"
+            app:icon="@drawable/ic_folder"
             app:iconGravity="textStart"
             app:iconSize="@dimen/button_bar_icon_size"
             app:iconTint="@color/text_primary"
