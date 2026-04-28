@@ -122,7 +122,7 @@ class MainActivity : AppCompatActivity() {
     private var fixedRepeatRunnable: Runnable? = null
 
     private val navButtons: List<MaterialButton>
-        get() = listOf(btnPrev, btnPlay, btnNext, btnStop, btnShuffle)
+        get() = listOf(btnPrev, btnPlay, btnNext, btnStop, btnShuffle, btnFolder)
 
     private lateinit var playlistAdapter: PlaylistAdapter
     private lateinit var folderGridAdapter: FolderGridAdapter
@@ -452,6 +452,8 @@ class MainActivity : AppCompatActivity() {
         btnPlay.backgroundTintList = ColorStateList.valueOf(if (isPlaying) accentColor else inactiveColor)
         btnShuffle.backgroundTintList = ColorStateList.valueOf(if (isShuffleOn) accentColor else inactiveColor)
         btnShuffle.iconTint = ColorStateList.valueOf(if (isShuffleOn) Color.parseColor("#0B0F1A") else Color.WHITE)
+        btnFolder.backgroundTintList = ColorStateList.valueOf(if (folderBrowserVisible) accentColor else inactiveColor)
+        btnFolder.iconTint = ColorStateList.valueOf(if (folderBrowserVisible) Color.parseColor("#0B0F1A") else Color.WHITE)
 
         if (settingsVisible) {
             btnSettings.backgroundTintList = ColorStateList.valueOf(accentColor)
@@ -1045,12 +1047,15 @@ class MainActivity : AppCompatActivity() {
             ?.scrollToPositionWithOffset(folderGridFocusPos, 0)
         folderBrowserVisible = true
         folderBrowserPanel.visibility = View.VISIBLE
+        folderBrowserPanel.bringToFront()
+        updateButtonStates()
     }
 
     private fun closeFolderBrowser() {
         folderBrowserVisible = false
         folderBrowserPanel.visibility = View.GONE
         folderGridAdapter.focusedPos = -1
+        updateButtonStates()
     }
 
     private fun playFolderAndClose(folderIndex: Int) {
