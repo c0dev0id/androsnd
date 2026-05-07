@@ -355,7 +355,7 @@ class MainActivity : AppCompatActivity() {
         btnNext = findViewById(R.id.btn_next)
         btnStop = findViewById(R.id.btn_stop)
         btnShuffle = findViewById(R.id.btn_shuffle)
-        btnFolder = findViewById(R.id.btn_folder)
+        btnFolder = findViewById(R.id.btn_folders)
         btnSettings = findViewById(R.id.btn_settings)
         contentArea = findViewById(R.id.content_area)
         settingsPanel = findViewById(R.id.settings_panel)

@@ -297,7 +297,7 @@
             style="@style/Widget.Androsnd.Button.Dark" />
 
         <de.codevoid.androsnd.GradientButton
-            android:id="@+id/btn_folder"
+            android:id="@+id/btn_folders"
             android:layout_width="0dp"
             android:layout_height="@dimen/button_bar_height"
             android:layout_weight="1"
