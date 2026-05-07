@@ -1339,7 +1339,6 @@ class MainActivity : AppCompatActivity() {
             super.onViewRecycled(holder)
             if (holder is FolderViewHolder) {
                 holder.artJob?.cancel()
-                (holder.cover.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap?.recycle()
                 holder.cover.setImageDrawable(null)
             }
         }
@@ -1443,7 +1442,6 @@ class MainActivity : AppCompatActivity() {
         override fun onViewRecycled(holder: GridViewHolder) {
             super.onViewRecycled(holder)
             holder.artJob?.cancel()
-            (holder.cover.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap?.recycle()
             holder.cover.setImageDrawable(null)
         }
 
