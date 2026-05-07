@@ -57,6 +57,14 @@ import android.app.AlertDialog
 import android.app.DownloadManager
 import android.widget.ProgressBar
 
+private fun focusRing(density: Float, accentColor: Int): GradientDrawable =
+    GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = 8f * density
+        setStroke((3f * density + 0.5f).toInt(), accentColor)
+        setColor(Color.TRANSPARENT)
+    }
+
 class MainActivity : AppCompatActivity() {
 
     private var musicService: MusicService? = null
@@ -86,7 +94,6 @@ class MainActivity : AppCompatActivity() {
     private val prefs by lazy { getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE) }
     private var settingsVisible = false
     private var folderBrowserVisible = false
-    private var folderGridFocusPos: Int = 0
     private var settingsButtonStrokeWidth = 0
     private lateinit var loadingText: android.widget.TextView
     private var loadingTotal = 0
@@ -129,10 +136,9 @@ class MainActivity : AppCompatActivity() {
     private var lastKnownPlaylistIndex = -1
     private var lastKnownSongCount = -1
 
-    private val folderBrowserCols = 4
-
     private val accentColor: Int = Color.parseColor("#00B4FF")
     private val inactiveColor: Int = Color.parseColor("#2A2F45")
+    private val onAccentColor: Int = Color.parseColor("#0B0F1A")
     private var pendingFolderUri: Uri? = null
 
     private val serviceConnection = object : ServiceConnection {
@@ -383,14 +389,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupRecyclerView() {
         playlistAdapter = PlaylistAdapter(
-            onFolderClick = { folderIndex ->
-                val svc = musicService ?: return@PlaylistAdapter
-                val firstSong = svc.playlistManager.folders.getOrNull(folderIndex)?.songs?.firstOrNull()
-                if (firstSong != null) svc.playSongAtIndex(firstSong)
-            },
-            onSongClick = { index ->
-                musicService?.playSongAtIndex(index)
-            }
+            onFolderClick = { folderIndex -> playFirstSongInFolder(folderIndex) },
+            onSongClick = { index -> musicService?.playSongAtIndex(index) }
         )
         playlistAdapter.getTextMetadata = { song ->
             musicService?.metadataRepository?.db?.get(song.uri.toString(), song.lastModified)
@@ -402,13 +402,11 @@ class MainActivity : AppCompatActivity() {
         playlistRecycler.adapter = playlistAdapter
 
         folderGridAdapter = FolderGridAdapter(
+            accentColor = accentColor,
+            getArtFile = { folder -> musicService?.metadataRepository?.artFileForFolder(folder.path) },
             onClick = { folderIndex -> playFolderAndClose(folderIndex) }
         )
-        folderGridAdapter.getArtFile = { folder ->
-            musicService?.metadataRepository?.artFileForFolder(folder.path)
-        }
-        folderGridAdapter.accentColor = accentColor
-        folderGridRecycler.layoutManager = GridLayoutManager(this, folderBrowserCols)
+        folderGridRecycler.layoutManager = GridLayoutManager(this, 4)
         folderGridRecycler.adapter = folderGridAdapter
     }
 
@@ -451,9 +449,9 @@ class MainActivity : AppCompatActivity() {
 
         btnPlay.backgroundTintList = ColorStateList.valueOf(if (isPlaying) accentColor else inactiveColor)
         btnShuffle.backgroundTintList = ColorStateList.valueOf(if (isShuffleOn) accentColor else inactiveColor)
-        btnShuffle.iconTint = ColorStateList.valueOf(if (isShuffleOn) Color.parseColor("#0B0F1A") else Color.WHITE)
+        btnShuffle.iconTint = ColorStateList.valueOf(if (isShuffleOn) onAccentColor else Color.WHITE)
         btnFolder.backgroundTintList = ColorStateList.valueOf(if (folderBrowserVisible) accentColor else inactiveColor)
-        btnFolder.iconTint = ColorStateList.valueOf(if (folderBrowserVisible) Color.parseColor("#0B0F1A") else Color.WHITE)
+        btnFolder.iconTint = ColorStateList.valueOf(if (folderBrowserVisible) onAccentColor else Color.WHITE)
 
         if (settingsVisible) {
             btnSettings.backgroundTintList = ColorStateList.valueOf(accentColor)
@@ -1040,16 +1038,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun openFolderBrowser() {
         val pm = musicService?.playlistManager
-        val folders = pm?.folders.orEmpty()
-        folderGridAdapter.submitData(folders)
+        val folderCount = pm?.folders?.size ?: 0
         val initial = pm?.let { it.getFolderIndexForSong(it.currentIndex) }?.takeIf { it >= 0 } ?: 0
-        folderGridFocusPos = if (folders.isNotEmpty()) initial.coerceIn(0, folders.size - 1) else 0
-        folderGridAdapter.focusedPos = folderGridFocusPos
+        val focus = if (folderCount > 0) initial.coerceIn(0, folderCount - 1) else 0
+        folderGridAdapter.focusedPos = focus
         (folderGridRecycler.layoutManager as? GridLayoutManager)
-            ?.scrollToPositionWithOffset(folderGridFocusPos, 0)
+            ?.scrollToPositionWithOffset(focus, 0)
         folderBrowserVisible = true
         folderBrowserPanel.visibility = View.VISIBLE
-        folderBrowserPanel.bringToFront()
         updateButtonStates()
     }
 
@@ -1060,10 +1056,14 @@ class MainActivity : AppCompatActivity() {
         updateButtonStates()
     }
 
-    private fun playFolderAndClose(folderIndex: Int) {
+    private fun playFirstSongInFolder(folderIndex: Int) {
         val svc = musicService ?: return
-        val firstSong = svc.playlistManager.folders.getOrNull(folderIndex)?.songs?.firstOrNull()
-        if (firstSong != null) svc.playSongAtIndex(firstSong)
+        val firstSong = svc.playlistManager.folders.getOrNull(folderIndex)?.songs?.firstOrNull() ?: return
+        svc.playSongAtIndex(firstSong)
+    }
+
+    private fun playFolderAndClose(folderIndex: Int) {
+        playFirstSongInFolder(folderIndex)
         closeFolderBrowser()
     }
 
@@ -1077,8 +1077,8 @@ class MainActivity : AppCompatActivity() {
             }
             return
         }
-        val pos = folderGridFocusPos.coerceIn(0, count - 1)
-        val cols = folderBrowserCols
+        val pos = folderGridAdapter.focusedPos.coerceIn(0, count - 1)
+        val cols = (folderGridRecycler.layoutManager as? GridLayoutManager)?.spanCount ?: 1
         val col = pos % cols
         var next = pos
         when (keyCode) {
@@ -1097,7 +1097,6 @@ class MainActivity : AppCompatActivity() {
             else -> return
         }
         if (next != pos) {
-            folderGridFocusPos = next
             folderGridAdapter.focusedPos = next
             folderGridRecycler.smoothScrollToPosition(next)
         }
@@ -1118,7 +1117,7 @@ class MainActivity : AppCompatActivity() {
         if (!hasReceivedRemoteKey) return
         playlistAdapter.focusedPos = playlistFocusPos
         navButtons.forEachIndexed { idx, btn ->
-            btn.foreground = if (idx == buttonBarFocusIdx) makeFocusRing(dpToPx(8)) else null
+            btn.foreground = if (idx == buttonBarFocusIdx) makeFocusRing() else null
         }
         btnPlay.setIconResource(resolvePlayPauseIcon())
     }
@@ -1131,17 +1130,8 @@ class MainActivity : AppCompatActivity() {
         return if (svc.isPlaying && onCurrentSong) R.drawable.ic_pause else R.drawable.ic_play
     }
 
-    private fun makeFocusRing(cornerRadiusPx: Int): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = cornerRadiusPx.toFloat()
-            setStroke(dpToPx(3), accentColor)
-            setColor(Color.TRANSPARENT)
-        }
-    }
-
-    private fun dpToPx(dp: Int): Int =
-        (dp * resources.displayMetrics.density + 0.5f).toInt()
+    private fun makeFocusRing(): GradientDrawable =
+        focusRing(resources.displayMetrics.density, accentColor)
 
     override fun onResume() {
         super.onResume()
@@ -1205,6 +1195,7 @@ class MainActivity : AppCompatActivity() {
         var accentColor: Int = Color.parseColor("#F57C00")
         var focusedPos: Int = -1
             set(newPos) {
+                if (newPos == field) return
                 val old = field
                 field = newPos
                 if (old >= 0 && old < itemCount) notifyItemChanged(old)
@@ -1290,7 +1281,7 @@ class MainActivity : AppCompatActivity() {
             when (holder) {
                 is FolderViewHolder -> {
                     holder.name.text = item.displayName
-                    holder.itemView.foreground = if (isFocused) makeFocusRingFor(holder.itemView) else null
+                    holder.itemView.foreground = if (isFocused) focusRing(holder.itemView.resources.displayMetrics.density, accentColor) else null
                     holder.itemView.setOnClickListener { onFolderClick(item.folderIndex) }
                     val firstSong = folders.getOrNull(item.folderIndex)?.songs?.firstOrNull()?.let { songs.getOrNull(it) }
                     holder.artJob?.cancel()
@@ -1329,7 +1320,7 @@ class MainActivity : AppCompatActivity() {
                         isFocused  -> Color.argb(77, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
                         else       -> Color.TRANSPARENT
                     })
-                    holder.itemView.foreground = if (isFocused) makeFocusRingFor(holder.itemView) else null
+                    holder.itemView.foreground = if (isFocused) focusRing(holder.itemView.resources.displayMetrics.density, accentColor) else null
                     holder.itemView.setOnClickListener { onSongClick(songIndex) }
                 }
             }
@@ -1356,16 +1347,6 @@ class MainActivity : AppCompatActivity() {
             return "%d:%02d".format(min, sec)
         }
 
-        private fun makeFocusRingFor(view: View): GradientDrawable {
-            val dp = view.resources.displayMetrics.density
-            return GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = 8f * dp
-                setStroke((3f * dp + 0.5f).toInt(), accentColor)
-                setColor(Color.TRANSPARENT)
-            }
-        }
-
         class FolderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val name: TextView = view.findViewById(R.id.folder_name)
             val cover: ImageView = view.findViewById(R.id.folder_cover)
@@ -1379,15 +1360,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     class FolderGridAdapter(
+        private val accentColor: Int,
+        private val getArtFile: (PlaylistFolder) -> File?,
         private val onClick: (Int) -> Unit
     ) : RecyclerView.Adapter<FolderGridAdapter.GridViewHolder>() {
 
         private var folders: List<PlaylistFolder> = emptyList()
         private var adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-        var getArtFile: ((PlaylistFolder) -> File?)? = null
-        var accentColor: Int = Color.parseColor("#00B4FF")
         var focusedPos: Int = -1
             set(newPos) {
+                if (newPos == field) return
                 val old = field
                 field = newPos
                 if (old >= 0 && old < itemCount) notifyItemChanged(old)
@@ -1395,6 +1377,7 @@ class MainActivity : AppCompatActivity() {
             }
 
         fun submitData(folders: List<PlaylistFolder>) {
+            if (this.folders === folders) return
             adapterScope.cancel()
             adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
             this.folders = folders.toList()
@@ -1422,18 +1405,15 @@ class MainActivity : AppCompatActivity() {
             val folder = folders.getOrNull(position) ?: return
             holder.name.text = folder.name
             val isFocused = position == focusedPos
-            holder.itemView.foreground = if (isFocused) makeFocusRingFor(holder.itemView) else null
+            holder.itemView.foreground = if (isFocused) focusRing(holder.itemView.resources.displayMetrics.density, accentColor) else null
             holder.itemView.setOnClickListener { onClick(position) }
 
             holder.artJob?.cancel()
             holder.cover.setImageDrawable(null)
             holder.artJob = adapterScope.launch {
                 val bmp = withContext(Dispatchers.IO) {
-                    val file = getArtFile?.invoke(folder)?.takeIf { it.exists() }
-                        ?: return@withContext null
-                    BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply {
-                        inSampleSize = 2
-                    })
+                    val file = getArtFile(folder) ?: return@withContext null
+                    BitmapFactory.decodeFile(file.absolutePath)
                 }
                 holder.cover.setImageBitmap(bmp)
             }
@@ -1443,16 +1423,6 @@ class MainActivity : AppCompatActivity() {
             super.onViewRecycled(holder)
             holder.artJob?.cancel()
             holder.cover.setImageDrawable(null)
-        }
-
-        private fun makeFocusRingFor(view: View): GradientDrawable {
-            val dp = view.resources.displayMetrics.density
-            return GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = 8f * dp
-                setStroke((3f * dp + 0.5f).toInt(), accentColor)
-                setColor(Color.TRANSPARENT)
-            }
         }
 
         class GridViewHolder(view: View) : RecyclerView.ViewHolder(view) {
