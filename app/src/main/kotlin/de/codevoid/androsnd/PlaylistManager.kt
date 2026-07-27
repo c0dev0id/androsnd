@@ -39,11 +39,20 @@ class PlaylistManager(private val context: Context) {
     val folders: List<PlaylistFolder> get() = snapshot.folders
     val foldersByPath: Map<String, PlaylistFolder> get() = snapshot.foldersByPath
 
+    // Playback cursor. currentIndex is written by scanFolder() on an IO thread;
+    // the other two are only mutated from the main thread today. All three are
+    // volatile so a read from any thread sees the latest write.
+    //
+    // Visibility is all this buys: they are independent fields, so an update
+    // spanning more than one of them — toggleShuffle()'s read-modify-write, or
+    // selectNextQueueSong() reading isShuffleOn/currentIndex to derive
+    // nextQueueIndex — is still not atomic. Those mutators must stay on a single
+    // thread; only the reads are safe to do from anywhere.
     @Volatile var currentIndex: Int = 0
         private set
-    var isShuffleOn: Boolean = false
+    @Volatile var isShuffleOn: Boolean = false
         private set
-    var nextQueueIndex: Int = -1
+    @Volatile var nextQueueIndex: Int = -1
         private set
 
     fun loadSavedFolder(): Uri? {
