@@ -62,7 +62,7 @@ Four distinct paths — the first three are the intended ones, the fourth is a d
 
 3. **DMD Remote 2 → `MainActivity` (key events):** A global **exported** `BroadcastReceiver` for action `"com.thorkracing.wireddevices.keypress"` carrying `key_press`/`key_release` int extras. This crosses process boundaries (an external companion app sends it), unlike the `LocalBroadcastManager` path. Registered in `onResume` and unregistered in `onPause` — not in `onCreate`/`onDestroy` like the local receivers. Because the same physical press can also arrive through normal key dispatch, `onRemoteKeyDown`/`onRemoteKeyUp` de-duplicate per keycode within a 100 ms window.
 
-4. **Adapters → `MetadataDb` (direct reads):** `PlaylistAdapter.getTextMetadata` and `getArtFile` reach through the binder straight into `musicService.metadataRepository.db` / `artFileForFolder()`. Row binding needs synchronous per-song lookups; routing thousands of those through broadcasts would be unworkable. Keep such reads cheap and cached.
+4. **Adapters → `MetadataDb` (direct reads):** `PlaylistAdapter.getTextMetadata` and `getArtFile` reach through the binder straight into `musicService.metadataRepository.db` / `artFileForFolder()`. Routing per-row lookups through broadcasts would be unworkable, so `onBindViewHolder` checks an in-memory `songMetadataMap` first and otherwise dispatches the read via `adapterScope.launch { withContext(Dispatchers.IO) { ... } }` — these are off the main thread, so `MetadataDb` is genuinely read from adapter IO threads while the service writes to it.
 
 ## Key Behavioural Details
 
@@ -78,7 +78,9 @@ The playback cursor (`currentIndex`, `isShuffleOn`, `nextQueueIndex`) is three s
 
 ### Retriever contention
 
-`MediaMetadataRetriever` and `MediaPlayer.prepareAsync()` compete for a limited pool of native media slots, and exhausting it breaks playback. `startEnrichment` therefore guards **every** retriever use with a single `Semaphore(1)`: the currently-playing song is enriched first while holding the permit, then remaining text and per-folder art jobs are dispatched in parallel but serialized through the same permit. Do not open a `MediaMetadataRetriever` outside that semaphore.
+`MediaMetadataRetriever` and `MediaPlayer.prepareAsync()` compete for a limited pool of native media slots, and exhausting it breaks playback. `startEnrichment` guards its own retriever use with a `Semaphore(1)`: the currently-playing song is enriched first while holding the permit, then remaining text and per-folder art jobs are dispatched in parallel but serialized through the same permit.
+
+Be aware this is **not** app-wide serialization, despite reading like it. `retrieverSem` is a local `val` inside `startEnrichment`'s coroutine, so it only covers that one job. `MetadataRepository.loadCurrentArt()` and `enrichText()` (via `fetchText()`) open retrievers with no permit at all, and `MusicService` calls both from the `OnPreparedListener` on every song change — concurrently with enrichment and with the next `prepareAsync()`. A rescan compounds it: `cancelEnrichment()` doesn't join, so an outgoing job's retriever can still be open while the new job starts under a fresh semaphore instance. Treat the semaphore as a within-job limit, not a global one.
 
 ### Album art
 

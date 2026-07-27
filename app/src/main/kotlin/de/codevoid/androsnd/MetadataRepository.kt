@@ -32,6 +32,16 @@ class MetadataRepository(private val context: Context) {
     private val artDir = File(context.cacheDir, "album_art").also { it.mkdirs() }
     private var enrichJob: Job? = null
 
+    // Serialises every MediaMetadataRetriever in the process. Retrievers compete
+    // with MediaPlayer.prepareAsync() for a small pool of native media slots, and
+    // the playback path opens them on every song change — so this has to outlive
+    // any single enrichment job and survive a rescan swapping one job for another.
+    //
+    // Acquired by the leaf functions that actually construct a retriever
+    // (enrichText, enrichArt, loadCurrentArt). Callers must NOT hold it on their
+    // behalf: kotlinx Semaphore is not reentrant, so nesting would deadlock.
+    private val retrieverSem = Semaphore(1)
+
     fun artFileForFolder(folderPath: String): File =
         File(artDir, "${folderPath.hashCode()}.jpg")
 
@@ -49,20 +59,22 @@ class MetadataRepository(private val context: Context) {
             if (scaled !== bmp) bmp.recycle()
             return scaled
         }
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(context, song.uri)
-            val bytes = retriever.embeddedPicture ?: return null
-            val bmp = decodeBitmapWithSampling(bytes, 512) ?: return null
-            val scaled = scaleBitmapForSession(bmp)
-            saveToFile(scaled, currentArtFile(), notifyChange = true)
-            if (scaled !== bmp) bmp.recycle()
-            scaled
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to load art for ${song.displayName}", e)
-            null
-        } finally {
-            retriever.release()
+        return retrieverSem.withPermit {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, song.uri)
+                val bytes = retriever.embeddedPicture ?: return@withPermit null
+                val bmp = decodeBitmapWithSampling(bytes, 512) ?: return@withPermit null
+                val scaled = scaleBitmapForSession(bmp)
+                saveToFile(scaled, currentArtFile(), notifyChange = true)
+                if (scaled !== bmp) bmp.recycle()
+                scaled
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load art for ${song.displayName}", e)
+                null
+            } finally {
+                retriever.release()
+            }
         }
     }
 
@@ -77,36 +89,30 @@ class MetadataRepository(private val context: Context) {
     ) {
         enrichJob?.cancel()
         enrichJob = scope.launch(Dispatchers.IO) {
-            // Single semaphore serialises all MediaMetadataRetriever usage so it
-            // doesn't compete with MediaPlayer.prepareAsync() for native media slots.
-            val retrieverSem = Semaphore(1)
+            // Retriever access is serialised inside enrichText/enrichArt via the
+            // shared retrieverSem. Do NOT wrap these calls in a permit here — the
+            // semaphore is not reentrant and the nested acquire would deadlock.
 
-            // Priority: current song first, blocking — holds the semaphore so
-            // concurrent art/text jobs can't open a second retriever alongside it.
+            // Priority: current song first, blocking, so the playing row fills in
+            // before the bulk of the library queues up behind it.
             songs.getOrNull(currentIdx)?.let { song ->
-                retrieverSem.withPermit {
-                    val meta = enrichText(song)
-                    withContext(Dispatchers.Main) { onTextReady(currentIdx, meta) }
-                }
+                val meta = enrichText(song)
+                withContext(Dispatchers.Main) { onTextReady(currentIdx, meta) }
             }
 
             // All others: parallel dispatch, but at most one retriever open at a time
             val textJobs = songs.indices.filter { it != currentIdx }.map { idx ->
                 launch {
-                    retrieverSem.withPermit {
-                        val meta = enrichText(songs[idx])
-                        withContext(Dispatchers.Main) { onTextReady(idx, meta) }
-                    }
+                    val meta = enrichText(songs[idx])
+                    withContext(Dispatchers.Main) { onTextReady(idx, meta) }
                 }
             }
 
             // Art: one coroutine per unique folder, same serialised retriever slot
             val artJobs = songs.map { it.folderPath }.distinct().map { folderPath ->
                 launch {
-                    retrieverSem.withPermit {
-                        enrichArt(folderPath, songs, foldersByPath[folderPath])
-                        withContext(Dispatchers.Main) { onArtReady(folderPath) }
-                    }
+                    enrichArt(folderPath, songs, foldersByPath[folderPath])
+                    withContext(Dispatchers.Main) { onArtReady(folderPath) }
                 }
             }
 
@@ -129,24 +135,26 @@ class MetadataRepository(private val context: Context) {
 
     private suspend fun enrichText(song: Song): SongMetadata {
         db.get(song.uri.toString(), song.lastModified)?.let { return it }
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(context, song.uri)
-            SongMetadata(
-                retriever.extractMetadata(METADATA_KEY_TITLE)    ?: song.displayName,
-                retriever.extractMetadata(METADATA_KEY_ARTIST)   ?: "",
-                retriever.extractMetadata(METADATA_KEY_ALBUM)    ?: "",
-                retriever.extractMetadata(METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            ).also { db.upsert(song.uri.toString(), song.lastModified, it) }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to extract metadata for ${song.displayName}", e)
-            SongMetadata(song.displayName, "", "", 0L)
-        } finally {
-            retriever.release()
+        return retrieverSem.withPermit {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, song.uri)
+                SongMetadata(
+                    retriever.extractMetadata(METADATA_KEY_TITLE)    ?: song.displayName,
+                    retriever.extractMetadata(METADATA_KEY_ARTIST)   ?: "",
+                    retriever.extractMetadata(METADATA_KEY_ALBUM)    ?: "",
+                    retriever.extractMetadata(METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                ).also { db.upsert(song.uri.toString(), song.lastModified, it) }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to extract metadata for ${song.displayName}", e)
+                SongMetadata(song.displayName, "", "", 0L)
+            } finally {
+                retriever.release()
+            }
         }
     }
 
-    private fun enrichArt(folderPath: String, songs: List<Song>, folder: PlaylistFolder?) {
+    private suspend fun enrichArt(folderPath: String, songs: List<Song>, folder: PlaylistFolder?) {
         val artFile = artFileForFolder(folderPath)
         if (artFile.exists()) return
         // 1. Folder cover URI
@@ -163,21 +171,24 @@ class MetadataRepository(private val context: Context) {
             }
             return
         }
-        // 2. First embedded picture in folder
-        songs.filter { it.folderPath == folderPath }.forEach { song ->
-            val r = MediaMetadataRetriever()
-            try {
-                r.setDataSource(context, song.uri)
-                val bytes = r.embeddedPicture ?: return@forEach
-                decodeBitmapWithSampling(bytes, 256)?.let { bmp ->
-                    saveToFile(bmp, artFile)
-                    bmp.recycle()
-                    return
+        // 2. First embedded picture in folder. Only this branch touches a
+        // retriever, so the cover-file branch above stays permit-free.
+        retrieverSem.withPermit {
+            songs.filter { it.folderPath == folderPath }.forEach { song ->
+                val r = MediaMetadataRetriever()
+                try {
+                    r.setDataSource(context, song.uri)
+                    val bytes = r.embeddedPicture ?: return@forEach
+                    decodeBitmapWithSampling(bytes, 256)?.let { bmp ->
+                        saveToFile(bmp, artFile)
+                        bmp.recycle()
+                        return@withPermit
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to read embedded art from ${song.displayName}", e)
+                } finally {
+                    r.release()
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to read embedded art from ${song.displayName}", e)
-            } finally {
-                r.release()
             }
         }
     }
