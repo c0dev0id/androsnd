@@ -859,6 +859,12 @@ class MainActivity : AppCompatActivity() {
         val svc = musicService ?: return
         val pm = svc.playlistManager
         if (pm.currentIndex == lastKnownPlaylistIndex && pm.songs.size == lastKnownSongCount) return
+        // The playing song moved — follow it in the list, whether that came from the
+        // track advancing, next/previous, a row being picked, or a media-session
+        // client. updateUI() consumes the request immediately after this call; going
+        // through the pending flag means a song change that lands while the playlist
+        // is still empty (mid-scan) is honoured once the rows arrive.
+        if (pm.currentIndex != lastKnownPlaylistIndex) pendingScrollToCurrent = true
         if (pm.songs.size == lastKnownSongCount && pm.currentIndex != lastKnownPlaylistIndex) {
             lastKnownPlaylistIndex = pm.currentIndex
             playlistAdapter.updateCurrentIndex(pm.currentIndex)
