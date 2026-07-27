@@ -106,6 +106,12 @@ class MainActivity : AppCompatActivity() {
     // Focus frame is hidden until the first remote key is pressed
     private var hasReceivedRemoteKey = false
 
+    // Set when the activity comes to the foreground, consumed once the playlist
+    // actually has rows. On a cold start the adapter is still empty at onResume —
+    // it only fills in when the service binds, or later if a scan is running —
+    // so the request has to survive until there is something to scroll to.
+    private var pendingScrollToCurrent = false
+
     // Suppress duplicate remote key events when the DMD broadcast and
     // dispatchKeyEvent both deliver the same press (per-keycode, ~100 ms window).
     private val lastRemoteDownAtMs = HashMap<Int, Long>()
@@ -834,6 +840,7 @@ class MainActivity : AppCompatActivity() {
         timeRemainingView.text = if (dur > 0) "-${formatTime(remaining)}" else ""
 
         updatePlaylist()
+        scrollToCurrentSongIfPending()
     }
 
     private fun updateNowPlayingArt(folderPath: String) {
@@ -862,6 +869,23 @@ class MainActivity : AppCompatActivity() {
             val maxPos = (playlistAdapter.itemCount - 1).coerceAtLeast(0)
             if (playlistFocusPos > maxPos) playlistFocusPos = maxPos
         }
+    }
+
+    /**
+     * Bring the playing song into view. Also moves the remote cursor onto that
+     * row, so the first up/down press continues from what the user is looking at
+     * instead of snapping the list back to wherever the cursor was left.
+     */
+    private fun scrollToCurrentSongIfPending() {
+        if (!pendingScrollToCurrent) return
+        val pm = musicService?.playlistManager ?: return
+        if (playlistAdapter.itemCount == 0) return
+        val pos = playlistAdapter.getItemPosForSong(pm.currentIndex) ?: return
+        pendingScrollToCurrent = false
+        playlistFocusPos = pos
+        updateFocusVisual()
+        (playlistRecycler.layoutManager as? LinearLayoutManager)
+            ?.scrollToPositionWithOffset(pos, 0)
     }
 
     private fun showLoading() {
@@ -1140,6 +1164,11 @@ class MainActivity : AppCompatActivity() {
             IntentFilter("com.thorkracing.wireddevices.keypress"),
             ContextCompat.RECEIVER_EXPORTED
         )
+        // Covers both "opened" and "resumed" — onResume runs after onCreate on a
+        // cold start too. Fires now if the playlist is already populated, otherwise
+        // the request is picked up when the data arrives.
+        pendingScrollToCurrent = true
+        scrollToCurrentSongIfPending()
     }
 
     override fun onPause() {
@@ -1206,6 +1235,9 @@ class MainActivity : AppCompatActivity() {
             val item = items.getOrNull(pos) ?: return null
             return if (item.type == TYPE_SONG) item.songIndex else null
         }
+
+        /** Row position of a song, or null if it isn't in the current list. */
+        fun getItemPosForSong(songIndex: Int): Int? = songIndexToItemPos[songIndex]
 
         fun getFolderFirstSongAt(pos: Int): Int? {
             val item = items.getOrNull(pos) ?: return null
