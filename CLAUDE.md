@@ -74,6 +74,8 @@ Four distinct paths — the first three are the intended ones, the fourth is a d
 
 `PlaylistManager` publishes `songs`, `folders`, and `foldersByPath` together as a single `@Volatile` `Snapshot` data class, swapped once at the end of a scan. The three public properties are getters over that one reference. This exists specifically so a reader can never observe a half-updated triple — when adding derived collections, add them to `Snapshot` rather than as separate fields.
 
+The playback cursor (`currentIndex`, `isShuffleOn`, `nextQueueIndex`) is three separate `@Volatile` fields, so it gets visibility but not atomicity. `currentIndex` is written by `scanFolder()` on an IO thread; the other two are mutated only from the main thread. Reads are safe anywhere, but the mutators span multiple fields — `toggleShuffle()` is a read-modify-write, and `selectNextQueueSong()` derives `nextQueueIndex` from `isShuffleOn` plus `currentIndex` — so keep those calls on the main thread. `MusicService.updateMediaSessionQueue()` is the pattern to follow: it snapshots both fields into locals before its `withContext(Dispatchers.IO)` block rather than reading them from the IO thread.
+
 ### Retriever contention
 
 `MediaMetadataRetriever` and `MediaPlayer.prepareAsync()` compete for a limited pool of native media slots, and exhausting it breaks playback. `startEnrichment` therefore guards **every** retriever use with a single `Semaphore(1)`: the currently-playing song is enriched first while holding the permit, then remaining text and per-folder art jobs are dispatched in parallel but serialized through the same permit. Do not open a `MediaMetadataRetriever` outside that semaphore.
