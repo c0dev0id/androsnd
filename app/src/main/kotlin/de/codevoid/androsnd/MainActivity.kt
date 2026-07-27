@@ -1174,6 +1174,11 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         unregisterReceiver(remoteReceiver)
+        // The volume repeat is only ever stopped by the matching key-up, which is
+        // delivered through remoteReceiver — just unregistered above. Without this
+        // a key held across a pause (call, screen lock, head-unit context switch)
+        // leaves the 150 ms loop running forever, driving volume to a rail.
+        cancelFixedRepeat()
     }
 
     override fun onDestroy() {
