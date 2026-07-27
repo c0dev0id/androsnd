@@ -403,10 +403,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     private fun stopPlayback() {
-        mediaPlayer?.let {
-            it.stop()
-            it.release()
-        }
+        mediaPlayer?.let { releasePlayer(it) }
         mediaPlayer = null
         isPlaying = false
         isPreparing = false
@@ -460,10 +457,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     fun playSong(song: Song) {
-        mediaPlayer?.let {
-            it.stop()
-            it.release()
-        }
+        mediaPlayer?.let { releasePlayer(it) }
         mediaPlayer = null
         isPlaying = false
         isPreparing = false
@@ -475,6 +469,21 @@ class MusicService : MediaBrowserServiceCompat() {
         playlistManager.setCurrentIndex(index)
         val song = playlistManager.getCurrentSong() ?: return
         playSong(song)
+    }
+
+    /**
+     * Tear down a player from any state. `stop()` is only legal once the player is
+     * prepared — calling it during `prepareAsync()` throws, and since `release()`
+     * used to follow it as a separate statement, the native player leaked. Swallow
+     * the illegal-state case so `release()` always runs.
+     */
+    private fun releasePlayer(player: MediaPlayer) {
+        try {
+            player.stop()
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "stop() on a player that was not in a stoppable state", e)
+        }
+        player.release()
     }
 
     private fun startPlayingSong(song: Song, autoStart: Boolean = true) {
@@ -496,10 +505,10 @@ class MusicService : MediaBrowserServiceCompat() {
             }
             player.setOnErrorListener { mp, what, extra ->
                 Log.e(TAG, "MediaPlayer error: what=$what extra=$extra")
-                if (mediaPlayer !== mp) {
-                    isPreparing = false
-                    return@setOnErrorListener true
-                }
+                // A superseded player must not touch isPreparing — the player that
+                // replaced it may still be preparing, and clearing the flag here
+                // would let play() call start() on it in an illegal state.
+                if (mediaPlayer !== mp) return@setOnErrorListener true
                 isPreparing = false
                 pendingPlayAfterPrepare = false
                 lastErrorTimeMs = System.currentTimeMillis()
@@ -514,8 +523,10 @@ class MusicService : MediaBrowserServiceCompat() {
             }
             player.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
             player.setOnPreparedListener { mp ->
-                isPreparing = false
+                // Guard before clearing the flag: a late callback from a discarded
+                // player must not report that the current one is done preparing.
                 if (mediaPlayer !== mp) return@setOnPreparedListener
+                isPreparing = false
                 val vol = getAppVolumeFloat()
                 mp.setVolume(vol, vol)
                 val shouldPlay = autoStart || pendingPlayAfterPrepare
@@ -534,8 +545,13 @@ class MusicService : MediaBrowserServiceCompat() {
                     broadcastState()
                 }
                 serviceScope.launch {
+                    // Both fetches suspend, and the user may skip to another song
+                    // meanwhile. Re-check ownership after each one, or this song's
+                    // title and cover overwrite whatever is actually playing now.
                     val meta = withContext(Dispatchers.IO) { metadataRepository.fetchText(song) }
+                    if (mediaPlayer !== mp) return@launch
                     val art  = withContext(Dispatchers.IO) { metadataRepository.loadCurrentArt(song) }
+                    if (mediaPlayer !== mp) return@launch
                     currentTextMetadata = meta
                     currentArtBitmap    = art
                     updateMediaSessionMetadata()
@@ -822,7 +838,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     fun scanFolderAsync(uri: Uri) {
-        mediaPlayer?.let { it.stop(); it.release() }
+        mediaPlayer?.let { releasePlayer(it) }
         mediaPlayer = null
         isPlaying = false
         stopProgressUpdates()
