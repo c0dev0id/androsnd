@@ -7,27 +7,36 @@
     android:padding="24dp"
     android:background="@color/surface_dark">
 
-    <!-- Load Music Folder -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btn_folder"
+    <!-- Load Music Folder / Check for Updates -->
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginBottom="8dp"
-        android:text="@string/select_folder"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        style="@style/Widget.Androsnd.Button.Outlined" />
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="24dp">
 
-    <!-- Check for Updates -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btn_check_update"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginBottom="24dp"
-        android:text="@string/update_check_button"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        style="@style/Widget.Androsnd.Button.Outlined" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_folder"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:text="@string/select_folder"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            style="@style/Widget.Androsnd.Button.Outlined" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_check_update"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="@string/update_check_button"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            style="@style/Widget.Androsnd.Button.Outlined" />
+
+    </LinearLayout>
 
     <!-- Now-Playing Popup Opacity -->
     <TextView
