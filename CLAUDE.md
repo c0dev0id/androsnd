@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**androsnd** (Andro Sound) is a Kotlin-only Android music player targeting automotive/embedded devices. It is landscape-only and designed for physical remote control navigation. Package: `de.codevoid.androsnd`, minSdk 26, targetSdk 35, JVM target 17.
+**androsnd** (Andro Sound) is a Kotlin-only Android music player targeting automotive/embedded devices — specifically DMD navigation units driven by a DMD Remote2 controller. It is landscape-only, fully offline, and designed for physical remote control navigation. Package: `de.codevoid.androsnd`, minSdk 26, targetSdk 35, JVM target 17. `README.md` is the end-user manual and is the reference for intended behaviour (remote button mapping, permissions, overlay).
 
 ## Build Commands
 
@@ -19,7 +19,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew lint
 ```
 
-`versionName` comes from the `appVersionName` Gradle property and falls back to `"dev"`. `UpdateChecker.isNightlyBuild()` keys off that `dev` prefix to decide whether to offer pre-releases, so passing a realistic version matters when testing the updater.
+**Builds are CI's job.** The Android Gradle Plugin is not reachable from the development sandbox, so do not attempt a local build or try to work around the restriction — push and let the workflows build. The commands above document what CI runs.
+
+`versionName` comes from the `appVersionName` Gradle property and falls back to `"dev"`. CI passes `dev-<short-sha>` for main-branch builds and `vX.Y.Z` for releases. `UpdateChecker.isNightlyBuild()` keys off that `dev` prefix to decide whether to offer pre-releases, and `isNewer()` deliberately degrades to string inequality when either side starts with `dev` (SHAs have no semver ordering) — so passing a realistic version matters when testing the updater.
 
 Release signing reads four environment variables — `SIGNING_KEYSTORE_PATH`, `SIGNING_KEYSTORE_PASSWORD`, `SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD`. If any is missing the `release` signing config is silently not created and the build emits `app-release-unsigned.apk`; the release workflow treats that as a hard error.
 
@@ -29,7 +31,7 @@ CI (`.github/workflows/build.yml`) runs `lint` and a signed release build on eve
 
 ## Source Layout
 
-All Kotlin lives under `app/src/main/kotlin/de/codevoid/androsnd/`. Data classes are in the `model/` subpackage (`Song`, `PlaylistFolder`, `SongMetadata`). `MainActivity.kt` is ~1400 lines and contains both RecyclerView adapters as nested classes (`PlaylistAdapter`, `FolderGridAdapter`).
+All Kotlin lives under `app/src/main/kotlin/de/codevoid/androsnd/`. Data classes are in the `model/` subpackage (`Song`, `PlaylistFolder`, `SongMetadata`). `MainActivity.kt` is ~1500 lines and contains both RecyclerView adapters as nested classes (`PlaylistAdapter`, `FolderGridAdapter`).
 
 ## Architecture
 
@@ -37,16 +39,16 @@ Four main runtime components:
 
 **`MainActivity`** — The sole Activity (landscape-only). Owns all UI: left panel (album art, metadata, volume slider), right panel (folder/song `RecyclerView`), bottom button bar, settings panel, and folder browser overlay. Binds to `MusicService` via `ServiceConnection`.
 
-**`MusicService`** — `MediaBrowserServiceCompat` running as a foreground service. Owns the `MediaPlayer` lifecycle, `MediaSession`, audio focus, and the persistent notification. Delegates library state to `PlaylistManager` and metadata to `MetadataRepository`. All async work runs on `serviceScope` (`SupervisorJob() + Dispatchers.Main.immediate`), with `withContext(Dispatchers.IO)` for blocking calls — there are no executors.
+**`MusicService`** — `MediaBrowserServiceCompat` running as a foreground service. Owns the `MediaPlayer` lifecycle, `MediaSession`, audio focus, and the persistent notification. Delegates library state to `PlaylistManager` and metadata to `MetadataRepository`. All async work runs on `serviceScope` (`SupervisorJob() + Dispatchers.Main.immediate`), with `withContext(Dispatchers.IO)` for blocking calls — no executors here.
 
-**`PlaylistManager`** — Data layer over SAF (`DocumentsContract`), no playback concerns. Recursively scans a tree URI for audio files (mp3/ogg/flac/aac/m4a/opus), builds `PlaylistFolder` → `Song`, and detects cover-art files by well-known name (`cover.jpg`, `folder.png`, `front.jpeg`, …). Also owns shuffle state and the current index.
+**`PlaylistManager`** — Data layer over SAF (`DocumentsContract`), no playback concerns. Recursively scans a tree URI for audio files (mp3/ogg/flac/aac/m4a/opus), builds `PlaylistFolder` → `Song`, and detects cover-art files by well-known name (`cover.jpg`, `folder.png`, `front.jpeg`, …). Also owns shuffle state and the playback cursor.
 
-**`MetadataRepository` + `MetadataDb`** — `MetadataDb` is a `SQLiteOpenHelper` over `metadata.db` with a single `songs` table keyed by URI, where a row is only considered valid if its stored `last_modified` matches the file's current value. `MetadataRepository` wraps it with `MediaMetadataRetriever` extraction and album-art handling. Two-phase loading: the scan publishes filenames instantly, then `startEnrichment()` fills in tags and art in the background.
+**`MetadataRepository` + `MetadataDb`** — `MetadataDb` is a `SQLiteOpenHelper` over `metadata.db` with a single `songs` table keyed by URI, where a row is only considered valid if its stored `last_modified` matches the file's current value. `onUpgrade` drops and recreates — there is deliberately no migration code pre-1.0. `MetadataRepository` wraps it with `MediaMetadataRetriever` extraction and album-art handling. Two-phase loading: the scan publishes filenames instantly, then `startEnrichment()` fills in tags and art in the background.
 
 Supporting components:
 
 - **`OverlayToastManager`** — `SYSTEM_ALERT_WINDOW` floating "Now Playing" popup with drag/pinch gestures and fade animations. Owned by `MusicService`, configured from the settings panel (opacity, scale, enable toggle, live demo).
-- **`UpdateChecker`** — Polls the GitHub releases API for `c0dev0id/androsnd`, compares semver, downloads the APK via `DownloadManager`, polls progress, and triggers install. Nightly builds track pre-releases; release builds track `/releases/latest`.
+- **`UpdateChecker`** — Polls the GitHub releases API for `c0dev0id/androsnd`, compares semver, downloads the APK via `DownloadManager`, polls progress, and triggers install. Nightly builds track pre-releases; release builds track `/releases/latest`. This is the one component that does **not** use coroutines — it runs on a single-thread `Executor` and posts back through a main-thread `Handler`.
 - **`AlbumArtProvider`** — `ContentProvider` (authority `de.codevoid.androsnd.albumart`) serving JPEGs out of `cacheDir/album_art/` with a canonical-path traversal guard. Exported so the notification and Android Auto can render art.
 - **`GradientButton`** — `MaterialButton` subclass that paints its own gradient/depth; used across the button bar.
 
@@ -54,7 +56,7 @@ There is **no** remote key-preset system and no key-mapping wizard: remote keyco
 
 ## Communication Patterns
 
-Four distinct paths — the first three are the intended ones, the fourth is a deliberate exception:
+Five paths — the first three are the intended ones, the last two are deliberate exceptions:
 
 1. **`MainActivity` → `MusicService` (commands and state reads):** Direct method calls via the `MusicBinder` (e.g. `musicService?.play()`, `musicService?.playlistManager?.folders`). The binder is both the command interface and the way the UI reads current state.
 
@@ -64,11 +66,15 @@ Four distinct paths — the first three are the intended ones, the fourth is a d
 
 4. **Adapters → `MetadataDb` (direct reads):** `PlaylistAdapter.getTextMetadata` and `getArtFile` reach through the binder straight into `musicService.metadataRepository.db` / `artFileForFolder()`. Routing per-row lookups through broadcasts would be unworkable, so `onBindViewHolder` checks an in-memory `songMetadataMap` first and otherwise dispatches the read via `adapterScope.launch { withContext(Dispatchers.IO) { ... } }` — these are off the main thread, so `MetadataDb` is genuinely read from adapter IO threads while the service writes to it.
 
+5. **Everything → `SharedPreferences` (`androsnd_prefs`):** All four components open the same prefs file by name, and it is the only shared mutable state outside the service. Notably the volume path never crosses the binder as a value: `MainActivity.setAppVolume()` writes `app_volume` (0–100) and then calls `musicService?.applyAppVolume()`, which re-reads the pref. Same shape for `overlay_enabled`, `overlay_opacity`, `overlay_scale`/position (written by the settings panel and by drag/pinch in `OverlayToastManager`), and `folder_uri`, `last_song_uri`, `shuffle_on` (all written by `PlaylistManager`). When adding a setting, follow that pattern — write the pref, then poke the owner to re-read.
+
 ## Key Behavioural Details
 
 ### Indices, not objects
 
-`PlaylistFolder.songs` is a `MutableList<Int>` of indices into `PlaylistManager.songs` — resolve via `playlistManager.songs[folder.songs[i]]`. After scanning, `scanFolder` **rebuilds the whole song list in display order** and rewrites every folder's index list to match, so index-based next/previous navigation follows what the user sees. Any code that caches song indices across a rescan is holding stale values.
+`PlaylistFolder.songs` is a `MutableList<Int>` of indices into `PlaylistManager.songs` — resolve via `playlistManager.songs[folder.songs[i]]`. After scanning, `scanFolder` **rebuilds the whole song list in display order** and rewrites every folder's index list to match, so index-based next/previous navigation follows what the user sees. Any code that caches song indices across a rescan is holding stale values — including across restarts, which is why the remembered cursor is persisted as a song **URI** (`last_song_uri`) and resolved back to an index at the end of every scan. Every cursor move goes through `PlaylistManager.moveCursorTo()`; a new mutator that assigns `currentIndex` directly will silently stop the position from being remembered.
+
+A third index space exists in the UI: `PlaylistAdapter` flattens folders and songs into one interleaved `items` list (`TYPE_FOLDER` header rows followed by their `TYPE_SONG` rows), so **adapter positions are not song indices**. Convert with `getSongIndexAt(pos)` / `getItemPosForSong(songIndex)` (backed by the `songIndexToItemPos` map built in `submitData`) rather than doing arithmetic on positions. `playlistFocusPos` is an adapter position; `currentIndex` is a song index.
 
 ### Snapshot publication
 
@@ -76,11 +82,20 @@ Four distinct paths — the first three are the intended ones, the fourth is a d
 
 The playback cursor (`currentIndex`, `isShuffleOn`, `nextQueueIndex`) is three separate `@Volatile` fields, so it gets visibility but not atomicity. `currentIndex` is written by `scanFolder()` on an IO thread; the other two are mutated only from the main thread. Reads are safe anywhere, but the mutators span multiple fields — `toggleShuffle()` is a read-modify-write, and `selectNextQueueSong()` derives `nextQueueIndex` from `isShuffleOn` plus `currentIndex` — so keep those calls on the main thread. `MusicService.updateMediaSessionQueue()` is the pattern to follow: it snapshots both fields into locals before its `withContext(Dispatchers.IO)` block rather than reading them from the IO thread.
 
+### "Next" is pre-selected, not computed
+
+`handleNext()` and track completion do not compute the next song; they play `playlistManager.nextQueueIndex`, which was chosen ahead of time by `selectNextQueueSong()` (sequential wrap-around, or a random non-repeating pick when shuffle is on). That pre-selection is what the MediaSession queue advertises to Android Auto and the notification, so the announced next track is the one that actually plays. `selectNextQueueSong()` is called from `OnPreparedListener` (every song change), from the shuffle toggle, and after a scan — a new playback entry point that bypasses `OnPreparedListener` will leave `nextQueueIndex` stale.
+
 ### Retriever contention
 
-`MediaMetadataRetriever` and `MediaPlayer.prepareAsync()` compete for a limited pool of native media slots, and exhausting it breaks playback. `startEnrichment` guards its own retriever use with a `Semaphore(1)`: the currently-playing song is enriched first while holding the permit, then remaining text and per-folder art jobs are dispatched in parallel but serialized through the same permit.
+`MediaMetadataRetriever` and `MediaPlayer.prepareAsync()` compete for a limited pool of native media slots, and exhausting it breaks playback. `MetadataRepository.retrieverSem` is a `Semaphore(1)` held as a **field on the repository**, so it spans background enrichment and the playback path alike and survives a rescan swapping one enrichment job for another.
 
-Be aware this is **not** app-wide serialization, despite reading like it. `retrieverSem` is a local `val` inside `startEnrichment`'s coroutine, so it only covers that one job. `MetadataRepository.loadCurrentArt()` and `enrichText()` (via `fetchText()`) open retrievers with no permit at all, and `MusicService` calls both from the `OnPreparedListener` on every song change — concurrently with enrichment and with the next `prepareAsync()`. A rescan compounds it: `cancelEnrichment()` doesn't join, so an outgoing job's retriever can still be open while the new job starts under a fresh semaphore instance. Treat the semaphore as a within-job limit, not a global one.
+Two rules follow from that, and both are load-bearing:
+
+- The permit is acquired by the **leaf** functions that actually construct a retriever — `enrichText`, `enrichArt`'s embedded-picture branch, `loadCurrentArt`. `enrichArt`'s folder-cover branch opens no retriever and stays permit-free.
+- Callers must **not** hold the permit on a leaf's behalf. `kotlinx.coroutines.sync.Semaphore` is not reentrant, so wrapping `startEnrichment`'s dispatch loop in a permit would deadlock against the leaves.
+
+`startEnrichment` enriches the currently-playing song first and blocking, so the playing row fills in before the rest of the library queues up behind it; the remaining text jobs and per-folder art jobs are then dispatched in parallel and serialized through the permit.
 
 ### Album art
 
@@ -88,13 +103,17 @@ Art is cached per **folder**, not per song, at `cacheDir/album_art/${folderPath.
 
 ### MediaPlayer preparation
 
-`MusicService` tracks `isPreparing` and `pendingPlayAfterPrepare` so a play/next issued while a track is still preparing is applied on the `OnPreparedListener` instead of touching the player in an illegal state. `OnPreparedListener` also bails out via `if (mediaPlayer !== mp) return` when a newer player has superseded it.
+`MusicService` tracks `isPreparing` and `pendingPlayAfterPrepare` so a play/next issued while a track is still preparing is applied on the `OnPreparedListener` instead of touching the player in an illegal state. `OnPreparedListener` also bails out via `if (mediaPlayer !== mp) return` when a newer player has superseded it, and the error/completion callbacks make the same identity check before touching `isPreparing`.
+
+### Volume is app-relative
+
+There is no `AudioManager` stream manipulation. The slider sets `MediaPlayer.setVolume()` to `app_volume / 100f`, i.e. a fraction *of* whatever the system music volume is — deliberate, so navigation prompts can stay at full system volume while music plays quietly under them. Transient audio-focus loss ducks to `0.2 ×` that same app volume rather than pausing.
 
 ### Remote navigation focus model
 
 There is no single "focus zone". Two cursors are live at once: `playlistFocusPos` (moved by up/down) and `buttonBarFocusIdx` (moved by left/right, defaults to Play). On every `onResume` the playlist scrolls to the playing song and `playlistFocusPos` is seeded to that row, so navigation resumes from what is on screen. Because the adapter is still empty at `onResume` on a cold start, that request is held in `pendingScrollToCurrent` and consumed by `updateUI()` once the data lands — anything that repopulates the playlist should route through `updateUI()` so the pending scroll still fires. Confirm acts on the focused **button**, with one special case — pressing Confirm on Play while the playlist cursor sits on a non-current song plays that song instead of toggling playback. Up/down also reset `buttonBarFocusIdx` back to Play. The focus ring stays hidden until the first remote key arrives (`hasReceivedRemoteKey`). When the folder browser overlay is open, all key handling is diverted to `handleFolderBrowserKeyDown`.
 
-Hardcoded keycodes: F6/F7 volume up/down (with a 400 ms-delay, 150 ms-interval repeat), DPAD directions, ENTER/DPAD_CENTER/BUTTON_A confirm, ESCAPE handled on key-**up** only (closes folder browser, then settings, else backgrounds the app).
+Hardcoded keycodes: F6/F7 volume up/down (with a 400 ms-delay, 150 ms-interval repeat), DPAD directions, ENTER/DPAD_CENTER/BUTTON_A confirm, ESCAPE handled on key-**up** only (closes folder browser, then settings, else backgrounds the app). The volume repeat is cancelled only by the matching key-up, so any new key handling that swallows key-up events will leave the 150 ms loop running and drive volume to a rail.
 
 ### Back button
 

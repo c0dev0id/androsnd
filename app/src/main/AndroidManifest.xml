@@ -41,6 +41,11 @@
             <intent-filter>
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
             </intent-filter>
+            <!-- Lets MediaButtonReceiver forward headset keys straight to the service
+                 instead of falling back to binding the media browser first. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
         </service>
 
         <receiver android:name="androidx.media.session.MediaButtonReceiver" android:exported="true">

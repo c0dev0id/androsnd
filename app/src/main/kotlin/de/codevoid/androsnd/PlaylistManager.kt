@@ -12,6 +12,8 @@ class PlaylistManager(private val context: Context) {
     companion object {
         private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_FOLDER_URI = "folder_uri"
+        private const val KEY_LAST_SONG_URI = "last_song_uri"
+        private const val KEY_SHUFFLE_ON = "shuffle_on"
         private val AUDIO_EXTENSIONS = setOf("mp3", "ogg", "flac", "aac", "m4a", "opus")
         private val COVER_IMAGE_NAMES = setOf(
             "cover.jpg", "cover.jpeg", "cover.png",
@@ -43,6 +45,8 @@ class PlaylistManager(private val context: Context) {
     // the other two are only mutated from the main thread today. All three are
     // volatile so a read from any thread sees the latest write.
     //
+    // Both currentIndex and isShuffleOn are also persisted — see moveCursorTo.
+    //
     // Visibility is all this buys: they are independent fields, so an update
     // spanning more than one of them — toggleShuffle()'s read-modify-write, or
     // selectNextQueueSong() reading isShuffleOn/currentIndex to derive
@@ -50,7 +54,7 @@ class PlaylistManager(private val context: Context) {
     // thread; only the reads are safe to do from anywhere.
     @Volatile var currentIndex: Int = 0
         private set
-    @Volatile var isShuffleOn: Boolean = false
+    @Volatile var isShuffleOn: Boolean = prefs.getBoolean(KEY_SHUFFLE_ON, false)
         private set
     @Volatile var nextQueueIndex: Int = -1
         private set
@@ -58,6 +62,28 @@ class PlaylistManager(private val context: Context) {
     fun loadSavedFolder(): Uri? {
         val uriString = prefs.getString(KEY_FOLDER_URI, null) ?: return null
         return Uri.parse(uriString)
+    }
+
+    /**
+     * Moves the playback cursor and remembers the song it landed on. Indices are
+     * rebuilt from scratch by every scan, so the URI is the only handle that stays
+     * valid across a restart.
+     */
+    private fun moveCursorTo(index: Int) {
+        currentIndex = index
+        val uri = getCurrentSong()?.uri?.toString() ?: return
+        prefs.edit().putString(KEY_LAST_SONG_URI, uri).apply()
+    }
+
+    /**
+     * Position of the song remembered by the previous session, or 0 when there is
+     * none in this library. The stored URI is deliberately left alone when it does
+     * not resolve — an empty or partial scan (unmounted SD card, revoked SAF grant)
+     * must not erase the bookmark that a later, complete scan can still honour.
+     */
+    private fun indexOfRememberedSong(library: List<Song>): Int {
+        val savedUri = prefs.getString(KEY_LAST_SONG_URI, null) ?: return 0
+        return library.indexOfFirst { it.uri.toString() == savedUri }.coerceAtLeast(0)
     }
 
     fun clear() {
@@ -98,7 +124,7 @@ class PlaylistManager(private val context: Context) {
 
         // Single volatile write publishes all three collections simultaneously.
         snapshot = Snapshot(reorderedSongs, newFolders, newFoldersByPath)
-        currentIndex = 0
+        currentIndex = indexOfRememberedSong(reorderedSongs)
     }
 
     private fun queryDisplayName(treeUri: Uri, documentId: String): String? {
@@ -195,28 +221,29 @@ class PlaylistManager(private val context: Context) {
 
     fun nextSong(): Song? {
         if (songs.isEmpty()) return null
-        currentIndex = (currentIndex + 1) % songs.size
+        moveCursorTo((currentIndex + 1) % songs.size)
         return getCurrentSong()
     }
 
     fun prevSong(): Song? {
         if (songs.isEmpty()) return null
-        currentIndex = if (currentIndex <= 0) songs.size - 1 else currentIndex - 1
+        moveCursorTo(if (currentIndex <= 0) songs.size - 1 else currentIndex - 1)
         return getCurrentSong()
     }
 
     fun shuffleSong(): Song? {
         if (songs.isEmpty()) return null
-        currentIndex = kotlin.random.Random.nextInt(songs.size)
+        moveCursorTo(kotlin.random.Random.nextInt(songs.size))
         return getCurrentSong()
     }
 
     fun setCurrentIndex(index: Int) {
-        if (index in songs.indices) currentIndex = index
+        if (index in songs.indices) moveCursorTo(index)
     }
 
     fun toggleShuffle(): Boolean {
         isShuffleOn = !isShuffleOn
+        prefs.edit().putBoolean(KEY_SHUFFLE_ON, isShuffleOn).apply()
         return isShuffleOn
     }
 
