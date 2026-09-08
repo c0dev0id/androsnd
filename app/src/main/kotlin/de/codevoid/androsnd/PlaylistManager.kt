@@ -45,9 +45,7 @@ class PlaylistManager(private val context: Context) {
     // the other two are only mutated from the main thread today. All three are
     // volatile so a read from any thread sees the latest write.
     //
-    // currentIndex and isShuffleOn survive a restart: every cursor move records
-    // the song's URI in prefs (see moveCursorTo), and a scan restores the cursor
-    // from it. isShuffleOn is seeded from prefs here and rewritten on each toggle.
+    // Both currentIndex and isShuffleOn are also persisted — see moveCursorTo.
     //
     // Visibility is all this buys: they are independent fields, so an update
     // spanning more than one of them — toggleShuffle()'s read-modify-write, or
@@ -73,7 +71,7 @@ class PlaylistManager(private val context: Context) {
      */
     private fun moveCursorTo(index: Int) {
         currentIndex = index
-        val uri = songs.getOrNull(index)?.uri?.toString() ?: return
+        val uri = getCurrentSong()?.uri?.toString() ?: return
         prefs.edit().putString(KEY_LAST_SONG_URI, uri).apply()
     }
 

@@ -242,23 +242,23 @@ class MusicService : MediaBrowserServiceCompat() {
                     }
                 }
             })
-            // Shuffle is restored from prefs by PlaylistManager's constructor, so the
-            // session has to be told about it here — nothing else announces the state
-            // until the user toggles the button.
-            setShuffleMode(
-                if (playlistManager.isShuffleOn) PlaybackStateCompat.SHUFFLE_MODE_ALL
-                else PlaybackStateCompat.SHUFFLE_MODE_NONE
-            )
             isActive = true
         }
         setSessionToken(mediaSession.sessionToken)
 
-        // An active session whose PlaybackState was never set sits in STATE_NONE, and
-        // the system will not nominate it as the media button session — which is why
-        // a headset's PLAY used to do nothing until the app had been played once by
-        // hand. Publish a real state up front so the session is a routing candidate
-        // from the moment the service starts.
+        // A session whose PlaybackState was never set sits in STATE_NONE, and the
+        // system will not nominate such a session as the media button session — so a
+        // headset's PLAY went nowhere until the app had been played once by hand.
         updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+        publishShuffleMode()
+    }
+
+    /** Mirrors the restored/toggled shuffle state onto the session. */
+    private fun publishShuffleMode() {
+        mediaSession.setShuffleMode(
+            if (playlistManager.isShuffleOn) PlaybackStateCompat.SHUFFLE_MODE_ALL
+            else PlaybackStateCompat.SHUFFLE_MODE_NONE
+        )
     }
 
     private fun startForegroundCompat(notification: Notification) {
@@ -270,15 +270,19 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Delivered by MediaButtonReceiver for the manifest's MEDIA_BUTTON filter:
+        // unpacks the KeyEvent and dispatches it to the session callback. Dispatched
+        // before startForeground() so a headset press is not held up by building a
+        // notification; the service may still be background here (stopPlayback drops
+        // it), so startForeground has to follow either way.
+        if (intent != null && intent.action == Intent.ACTION_MEDIA_BUTTON) {
+            MediaButtonReceiver.handleIntent(mediaSession, intent)
+            startForegroundCompat(buildNotification())
+            return START_STICKY
+        }
         // Must call startForeground() promptly to avoid ForegroundServiceDidNotStartInTimeException
         if (intent?.action == null || intent.action !in NOTIFICATION_ACTIONS) {
             startForegroundCompat(buildNotification())
-        }
-        // Delivered by MediaButtonReceiver for the manifest's MEDIA_BUTTON filter:
-        // unpacks the KeyEvent and dispatches it to the session callback.
-        if (intent != null && intent.action == Intent.ACTION_MEDIA_BUTTON) {
-            MediaButtonReceiver.handleIntent(mediaSession, intent)
-            return START_STICKY
         }
         when (intent?.action) {
             ACTION_PLAY -> play()
@@ -466,7 +470,7 @@ class MusicService : MediaBrowserServiceCompat() {
 
     fun handleShuffleButton() {
         playlistManager.toggleShuffle()
-        mediaSession.setShuffleMode(if (playlistManager.isShuffleOn) PlaybackStateCompat.SHUFFLE_MODE_ALL else PlaybackStateCompat.SHUFFLE_MODE_NONE)
+        publishShuffleMode()
         playlistManager.selectNextQueueSong()
         serviceScope.launch {
             try { updateMediaSessionQueue() }
@@ -893,14 +897,14 @@ class MusicService : MediaBrowserServiceCompat() {
             broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
             broadcastState()
 
-            // Describe the restored song to the session before anything plays, so a
-            // headset or head unit has something to show and act on.
-            updateMediaSessionMetadata()
-            updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
-
             if (pendingPlayAfterScan) {
                 pendingPlayAfterScan = false
                 play()
+            } else {
+                // Describe the restored song to the session, so a headset or head unit
+                // has something to show and act on before anything plays.
+                updateMediaSessionMetadata()
+                updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
             }
 
             metadataRepository.startEnrichment(
