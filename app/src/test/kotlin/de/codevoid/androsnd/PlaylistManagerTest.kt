@@ -98,6 +98,61 @@ class PlaylistManagerTest {
         assertEquals(0, PlaylistManager(context).indexOfRememberedSong(emptyList()))
     }
 
+    // ── What the scanner picks up ────────────────────────────────────────────
+
+    @Test
+    fun `every documented audio format is recognised`() {
+        val manager = PlaylistManager(context)
+
+        for (ext in listOf("mp3", "ogg", "flac", "aac", "m4a", "opus")) {
+            assertTrue("$ext should be playable", manager.isAudioFile("track.$ext"))
+        }
+    }
+
+    @Test
+    fun `audio extensions are matched regardless of case`() {
+        val manager = PlaylistManager(context)
+
+        assertTrue(manager.isAudioFile("TRACK.MP3"))
+        assertTrue(manager.isAudioFile("Track.FlAc"))
+    }
+
+    @Test
+    fun `non-audio files are left out of the library`() {
+        val manager = PlaylistManager(context)
+
+        assertFalse(manager.isAudioFile("liner-notes.txt"))
+        assertFalse(manager.isAudioFile("cover.jpg"))
+        assertFalse(manager.isAudioFile("track.wav"))
+        assertFalse(manager.isAudioFile("README"))
+    }
+
+    /** Only the final extension counts — a backup of a song is not a song. */
+    @Test
+    fun `an audio extension that is not the last one does not count`() {
+        assertFalse(PlaylistManager(context).isAudioFile("track.mp3.bak"))
+    }
+
+    @Test
+    fun `the well-known cover names are recognised regardless of case`() {
+        val manager = PlaylistManager(context)
+
+        for (name in listOf("cover.jpg", "folder.png", "front.jpeg", "album.jpg", "artwork.png")) {
+            assertTrue("$name should be cover art", manager.isCoverImage(name))
+        }
+        assertTrue(manager.isCoverImage("Cover.JPG"))
+        assertTrue(manager.isCoverImage("FOLDER.PNG"))
+    }
+
+    @Test
+    fun `images that are not a known cover name are ignored`() {
+        val manager = PlaylistManager(context)
+
+        assertFalse(manager.isCoverImage("albumart.jpg"))
+        assertFalse(manager.isCoverImage("cover.gif"))
+        assertFalse(manager.isCoverImage("band-photo.jpg"))
+    }
+
     @Test
     fun `clearing the library keeps the bookmark`() {
         prefs().edit().putString(KEY_LAST_SONG, uriOf("a.mp3")).commit()

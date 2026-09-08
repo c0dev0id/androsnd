@@ -206,12 +206,12 @@ class PlaylistManager(private val context: Context) {
         }
     }
 
-    private fun isAudioFile(name: String): Boolean {
+    internal fun isAudioFile(name: String): Boolean {
         val ext = name.substringAfterLast('.', "").lowercase()
         return ext in AUDIO_EXTENSIONS
     }
 
-    private fun isCoverImage(name: String): Boolean = name.lowercase() in COVER_IMAGE_NAMES
+    internal fun isCoverImage(name: String): Boolean = name.lowercase() in COVER_IMAGE_NAMES
 
     fun getCurrentSong(): Song? = songs.getOrNull(currentIndex)
 
