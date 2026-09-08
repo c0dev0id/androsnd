@@ -103,7 +103,7 @@ Art is cached per **folder**, not per song, at `cacheDir/album_art/${folderPath.
 
 ### MediaPlayer preparation
 
-`MusicService` tracks `isPreparing` and `pendingPlayAfterPrepare` so a play/next issued while a track is still preparing is applied on the `OnPreparedListener` instead of touching the player in an illegal state. `OnPreparedListener` also bails out via `if (mediaPlayer !== mp) return` when a newer player has superseded it, and the error/completion callbacks make the same identity check before touching `isPreparing`.
+`MusicService` tracks `isPreparing` and `playRequested` so a play issued before playback can start is applied at the next readiness point instead of touching the player in an illegal state. `playRequested` is the single "the user wants playback" latch: it is set only while a readiness event is actually pending — the player is preparing, or the library is still being scanned — and is consumed by whichever arrives first (`OnPreparedListener`, or the end of `scanFolderAsync`). Setting it with no pending event would leave it standing to fire at an unrelated moment later. `OnPreparedListener` also bails out via `if (mediaPlayer !== mp) return` when a newer player has superseded it, and the error/completion callbacks make the same identity check before touching `isPreparing`.
 
 ### Volume is app-relative
 
