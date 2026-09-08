@@ -17,7 +17,7 @@ class PlaylistManager(
 ) {
 
     companion object {
-        private const val PREFS_NAME = "androsnd_prefs"
+        const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_FOLDER_URI = "folder_uri"
         private const val KEY_LAST_SONG_URI = "last_song_uri"
         private const val KEY_SHUFFLE_ON = "shuffle_on"
@@ -25,10 +25,12 @@ class PlaylistManager(
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    // Scan results are published as a single atomic reference so any thread that
-    // captures the library sees a consistent songs/folders/foldersByPath triple —
-    // no partial-update window between three separate field writes.
-    @Volatile private var library = Library.EMPTY
+    // Scan results are published as one reference — see Library. The three getters
+    // below are a convenience for readers that need a single collection; a reader
+    // that needs two must take `library` once, because each getter re-reads the
+    // field and a scan landing between them would hand back a mismatched pair.
+    @Volatile var library: Library = Library.EMPTY
+        private set
 
     val songs: List<Song> get() = library.songs
     val folders: List<PlaylistFolder> get() = library.folders
@@ -90,8 +92,6 @@ class PlaylistManager(
         // the next start even if this scan fails part way through.
         prefs.edit().putString(KEY_FOLDER_URI, treeUri.toString()).apply()
 
-        // Built entirely off to the side: a reader keeps seeing the previous library,
-        // complete, until the single volatile write below swaps it.
         val scanned = Library.of(scanner.scan(treeUri, onProgress))
 
         library = scanned

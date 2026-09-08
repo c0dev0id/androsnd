@@ -231,10 +231,13 @@ class MainActivity : AppCompatActivity() {
             val svc = musicService ?: return
             val pm = svc.playlistManager
             hideLoading()
-            lastKnownSongCount = pm.songs.size
+            // One reference for all three reads: a rescan landing between them would
+            // pair folders with a song list their indices no longer address.
+            val library = pm.library
+            lastKnownSongCount = library.songs.size
             lastKnownPlaylistIndex = pm.currentIndex
-            playlistAdapter.submitData(pm.folders, pm.songs, pm.currentIndex)
-            folderGridAdapter.submitData(pm.folders)
+            playlistAdapter.submitData(library.folders, library.songs, pm.currentIndex)
+            folderGridAdapter.submitData(library.folders)
             updateUI()
         }
     }
@@ -869,9 +872,10 @@ class MainActivity : AppCompatActivity() {
             lastKnownPlaylistIndex = pm.currentIndex
             playlistAdapter.updateCurrentIndex(pm.currentIndex)
         } else {
+            val library = pm.library
             lastKnownPlaylistIndex = pm.currentIndex
-            lastKnownSongCount = pm.songs.size
-            playlistAdapter.submitData(pm.folders, pm.songs, pm.currentIndex)
+            lastKnownSongCount = library.songs.size
+            playlistAdapter.submitData(library.folders, library.songs, pm.currentIndex)
             val maxPos = (playlistAdapter.itemCount - 1).coerceAtLeast(0)
             if (playlistFocusPos > maxPos) playlistFocusPos = maxPos
         }

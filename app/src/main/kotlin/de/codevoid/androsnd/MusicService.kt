@@ -330,10 +330,11 @@ class MusicService : MediaBrowserServiceCompat() {
     ) {
         when {
             parentId == MEDIA_ROOT_ID -> {
-                val folders = playlistManager.folders
+                val library = playlistManager.library
+                val folders = library.folders
                 if (folders.isEmpty()) {
                     // No folder configured yet — return flat song list (or empty if none loaded)
-                    val items = playlistManager.songs.mapIndexed { index, song ->
+                    val items = library.songs.mapIndexed { index, song ->
                         val desc = MediaDescriptionCompat.Builder()
                             .setMediaId("$MEDIA_SONG_PREFIX$index")
                             .setTitle(song.displayName)
@@ -361,13 +362,16 @@ class MusicService : MediaBrowserServiceCompat() {
             }
             parentId.startsWith(MEDIA_FOLDER_PREFIX) -> {
                 val folderIndex = parentId.removePrefix(MEDIA_FOLDER_PREFIX).toIntOrNull()
-                val folder = folderIndex?.let { playlistManager.folders.getOrNull(it) }
+                // The folder's indices only address the song list they were built with,
+                // so both have to come from the same library reference.
+                val library = playlistManager.library
+                val folder = folderIndex?.let { library.folders.getOrNull(it) }
                 if (folder == null) {
                     result.sendResult(mutableListOf())
                     return
                 }
                 val items = folder.songs.map { songIndex ->
-                    val song = playlistManager.songs[songIndex]
+                    val song = library.songs[songIndex]
                     val desc = MediaDescriptionCompat.Builder()
                         .setMediaId("$MEDIA_SONG_PREFIX$songIndex")
                         .setTitle(song.displayName)
@@ -923,10 +927,13 @@ class MusicService : MediaBrowserServiceCompat() {
                 updatePlaybackState()
             }
 
+            // Enrichment joins songs against foldersByPath, so a mismatched pair would
+            // silently lose folder art for every folder that moved.
+            val library = playlistManager.library
             metadataRepository.startEnrichment(
                 scope         = serviceScope,
-                songs         = playlistManager.songs,
-                foldersByPath = playlistManager.foldersByPath,
+                songs         = library.songs,
+                foldersByPath = library.foldersByPath,
                 currentIdx    = playlistManager.currentIndex,
                 onTextReady   = { idx, meta ->
                     if (idx == playlistManager.currentIndex && currentTextMetadata == null) {

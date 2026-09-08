@@ -29,14 +29,6 @@ class MetadataRepositoryTest {
     }
 
     @Test
-    fun `the same folder always maps to the same file`() {
-        assertEquals(
-            repository.artFileForFolder("/Music/Album").absolutePath,
-            repository.artFileForFolder("/Music/Album").absolutePath
-        )
-    }
-
-    @Test
     fun `a fresh repository resolves the same folder to the same file`() {
         val first = repository.artFileForFolder("/Music/Album")
 

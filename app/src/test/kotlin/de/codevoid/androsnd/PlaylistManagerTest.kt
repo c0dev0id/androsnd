@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import de.codevoid.androsnd.model.Song
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -34,20 +33,6 @@ class PlaylistManagerTest {
 
     private val tree: Uri = Uri.parse("content://tree/music")
 
-    private fun song(name: String, folder: String) = Song(
-        uri = Uri.parse("content://tree/document/$folder/$name"),
-        displayName = name,
-        folderPath = "/music/$folder",
-        folderName = folder
-    )
-
-    private fun folder(name: String, vararg songNames: String) = ScannedFolder(
-        name = name,
-        path = "/music/$name",
-        coverUri = null,
-        songs = songNames.map { song(it, name) }
-    )
-
     /** A manager over the same prefs — i.e. what the next app start would build. */
     private fun managerOver(vararg folders: ScannedFolder) =
         PlaylistManager(context, StubScanner(folders.toList()))
@@ -58,14 +43,14 @@ class PlaylistManagerTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        context.getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences(PlaylistManager.PREFS_NAME, Context.MODE_PRIVATE).edit().clear().commit()
     }
 
     // ── Where playback resumes ───────────────────────────────────────────────
 
     @Test
     fun `a first scan starts at the first song`() {
-        val manager = scanned(folder("Album", "a.mp3", "b.mp3"))
+        val manager = scanned(scannedFolder("Album", "a.mp3", "b.mp3"))
 
         assertEquals(0, manager.currentIndex)
         assertEquals("a.mp3", manager.getCurrentSong()?.displayName)
@@ -73,9 +58,9 @@ class PlaylistManagerTest {
 
     @Test
     fun `the song being played is picked up again after a restart`() {
-        scanned(folder("Album", "a.mp3", "b.mp3", "c.mp3")).setCurrentIndex(2)
+        scanned(scannedFolder("Album", "a.mp3", "b.mp3", "c.mp3")).setCurrentIndex(2)
 
-        val restarted = scanned(folder("Album", "a.mp3", "b.mp3", "c.mp3"))
+        val restarted = scanned(scannedFolder("Album", "a.mp3", "b.mp3", "c.mp3"))
 
         assertEquals(2, restarted.currentIndex)
         assertEquals("c.mp3", restarted.getCurrentSong()?.displayName)
@@ -87,9 +72,9 @@ class PlaylistManagerTest {
      */
     @Test
     fun `the remembered song is found again at its new index`() {
-        scanned(folder("Beta", "b1.mp3", "b2.mp3")).setCurrentIndex(1)
+        scanned(scannedFolder("Beta", "b1.mp3", "b2.mp3")).setCurrentIndex(1)
 
-        val grown = scanned(folder("Alpha", "a1.mp3"), folder("Beta", "b1.mp3", "b2.mp3"))
+        val grown = scanned(scannedFolder("Alpha", "a1.mp3"), scannedFolder("Beta", "b1.mp3", "b2.mp3"))
 
         assertEquals("b2.mp3", grown.getCurrentSong()?.displayName)
         assertEquals(2, grown.currentIndex)
@@ -101,29 +86,29 @@ class PlaylistManagerTest {
      */
     @Test
     fun `a bookmark survives a scan that cannot find it`() {
-        scanned(folder("Beta", "b1.mp3", "b2.mp3")).setCurrentIndex(1)
+        scanned(scannedFolder("Beta", "b1.mp3", "b2.mp3")).setCurrentIndex(1)
 
-        val withoutIt = scanned(folder("Alpha", "a1.mp3"))
+        val withoutIt = scanned(scannedFolder("Alpha", "a1.mp3"))
         assertEquals(0, withoutIt.currentIndex)
 
-        val withItAgain = scanned(folder("Beta", "b1.mp3", "b2.mp3"))
+        val withItAgain = scanned(scannedFolder("Beta", "b1.mp3", "b2.mp3"))
         assertEquals("b2.mp3", withItAgain.getCurrentSong()?.displayName)
     }
 
     @Test
     fun `clearing the library keeps the bookmark`() {
-        val manager = scanned(folder("Album", "a.mp3", "b.mp3"))
+        val manager = scanned(scannedFolder("Album", "a.mp3", "b.mp3"))
         manager.setCurrentIndex(1)
 
         manager.clear()
 
         assertNull(manager.getCurrentSong())
-        assertEquals("b.mp3", scanned(folder("Album", "a.mp3", "b.mp3")).getCurrentSong()?.displayName)
+        assertEquals("b.mp3", scanned(scannedFolder("Album", "a.mp3", "b.mp3")).getCurrentSong()?.displayName)
     }
 
     @Test
     fun `an out-of-range index leaves the cursor alone`() {
-        val manager = scanned(folder("Album", "a.mp3", "b.mp3"))
+        val manager = scanned(scannedFolder("Album", "a.mp3", "b.mp3"))
 
         manager.setCurrentIndex(9)
 
@@ -134,7 +119,7 @@ class PlaylistManagerTest {
 
     @Test
     fun `next wraps around at the end of the library`() {
-        val manager = scanned(folder("Album", "a.mp3", "b.mp3"))
+        val manager = scanned(scannedFolder("Album", "a.mp3", "b.mp3"))
 
         assertEquals("b.mp3", manager.nextSong()?.displayName)
         assertEquals("a.mp3", manager.nextSong()?.displayName)
@@ -142,7 +127,7 @@ class PlaylistManagerTest {
 
     @Test
     fun `previous wraps around at the start of the library`() {
-        val manager = scanned(folder("Album", "a.mp3", "b.mp3"))
+        val manager = scanned(scannedFolder("Album", "a.mp3", "b.mp3"))
 
         assertEquals("b.mp3", manager.prevSong()?.displayName)
     }
@@ -159,7 +144,7 @@ class PlaylistManagerTest {
 
     @Test
     fun `a song maps back to the folder holding it`() {
-        val manager = scanned(folder("Alpha", "a1.mp3"), folder("Beta", "b1.mp3", "b2.mp3"))
+        val manager = scanned(scannedFolder("Alpha", "a1.mp3"), scannedFolder("Beta", "b1.mp3", "b2.mp3"))
 
         assertEquals(0, manager.getFolderIndexForSong(0))
         assertEquals(1, manager.getFolderIndexForSong(1))
@@ -170,7 +155,7 @@ class PlaylistManagerTest {
 
     @Test
     fun `the queued song is the one after the current one`() {
-        val manager = scanned(folder("Album", "a.mp3", "b.mp3", "c.mp3"))
+        val manager = scanned(scannedFolder("Album", "a.mp3", "b.mp3", "c.mp3"))
 
         manager.selectNextQueueSong()
 
@@ -179,7 +164,7 @@ class PlaylistManagerTest {
 
     @Test
     fun `the queue wraps to the first song at the end of the library`() {
-        val manager = scanned(folder("Album", "a.mp3", "b.mp3"))
+        val manager = scanned(scannedFolder("Album", "a.mp3", "b.mp3"))
         manager.setCurrentIndex(1)
 
         manager.selectNextQueueSong()
@@ -198,7 +183,7 @@ class PlaylistManagerTest {
 
     @Test
     fun `shuffle never queues the song already playing`() {
-        val manager = scanned(folder("Album", "a.mp3", "b.mp3", "c.mp3", "d.mp3"))
+        val manager = scanned(scannedFolder("Album", "a.mp3", "b.mp3", "c.mp3", "d.mp3"))
         manager.toggleShuffle()
 
         repeat(100) {
@@ -209,7 +194,7 @@ class PlaylistManagerTest {
 
     @Test
     fun `shuffle with a single song queues that song`() {
-        val manager = scanned(folder("Album", "only.mp3"))
+        val manager = scanned(scannedFolder("Album", "only.mp3"))
         manager.toggleShuffle()
 
         manager.selectNextQueueSong()
@@ -239,7 +224,7 @@ class PlaylistManagerTest {
 
     @Test
     fun `the scanned folder is remembered for the next start`() {
-        scanned(folder("Album", "a.mp3"))
+        scanned(scannedFolder("Album", "a.mp3"))
 
         assertEquals(tree, managerOver().loadSavedFolder())
     }
