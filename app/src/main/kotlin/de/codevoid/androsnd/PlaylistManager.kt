@@ -81,7 +81,7 @@ class PlaylistManager(private val context: Context) {
      * not resolve — an empty or partial scan (unmounted SD card, revoked SAF grant)
      * must not erase the bookmark that a later, complete scan can still honour.
      */
-    private fun indexOfRememberedSong(library: List<Song>): Int {
+    internal fun indexOfRememberedSong(library: List<Song>): Int {
         val savedUri = prefs.getString(KEY_LAST_SONG_URI, null) ?: return 0
         return library.indexOfFirst { it.uri.toString() == savedUri }.coerceAtLeast(0)
     }

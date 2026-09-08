@@ -54,6 +54,13 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests {
+            // Robolectric needs the merged resources and manifest to boot a context.
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -65,4 +72,12 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    // Unit tests run on the JVM. Robolectric supplies the Android pieces this code
+    // is built on — SharedPreferences, Uri, SQLite — so the tests exercise the real
+    // classes rather than mocks of them.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("androidx.test.ext:junit:1.3.0")
+    testImplementation("androidx.test:core:1.7.0")
 }

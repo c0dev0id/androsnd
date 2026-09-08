@@ -17,7 +17,7 @@ actually does. Kept for future development context, not as user documentation �
 | Persistence | `SQLiteOpenHelper` (`metadata.db`) for tags, `SharedPreferences` (`androsnd_prefs`) for settings and playback state |
 | Lists | RecyclerView 1.3.2 |
 | Build / release | Gradle, GitHub Actions; signed release APKs, `dev` pre-release per main push |
-| Tests | None yet — no JUnit/Robolectric harness in the build |
+| Tests | JUnit 4 + Robolectric, JVM unit tests in `app/src/test/kotlin`, run in CI |
 
 ## Key Decisions
 
@@ -66,6 +66,15 @@ the notification is provably the one that will actually play, shuffle included.
 **Settings cross component boundaries as prefs, not as binder values.** The writer
 updates `androsnd_prefs` and then pokes the owner to re-read. Adding a setting
 means following that pattern rather than widening the binder interface.
+
+**Tests run against the real Android classes, not mocks.** The interesting logic
+here is inseparable from `SharedPreferences`, `Uri` and SQLite semantics — a
+cached row is valid only while `last_modified` matches, a bookmark is a URI
+because indices are rebuilt every scan. Mocking those away would test the mock.
+Robolectric runs the real implementations on the JVM, so the suite stays fast and
+needs no device. Where a class cannot be driven from a test at all — populating
+`PlaylistManager` needs a real SAF tree — the decision is extracted into an
+`internal` function that takes plain data, rather than building a heavier fake.
 
 **No migration code before 1.0.** `MetadataDb.onUpgrade` drops and recreates the
 table; the cache is fully rebuildable from the files on disk, so a schema change
