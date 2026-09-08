@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   starts from the beginning when you press Play — playback is not auto-resumed.
 - Shuffle stays on across restarts.
 
+### Fixed
+
+- Bluetooth headset and steering-wheel media buttons now work straight after
+  launch. Play, next and pause previously did nothing until playback had been
+  started once from inside the app.
+- A media button pressed while the library is still being scanned is honoured
+  once the scan finishes, instead of being ignored.
+
 ### Notes
 
 This file starts here; releases before it were not tracked in a changelog.
