@@ -28,6 +28,7 @@ import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.media.MediaBrowserServiceCompat
+import androidx.media.session.MediaButtonReceiver
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -115,6 +116,7 @@ class MusicService : MediaBrowserServiceCompat() {
         private set
     private var currentArtBitmap: Bitmap? = null
     private var pendingPlayAfterPrepare = false
+    private var pendingPlayAfterScan = false
     private var isDucking = false
     private var lastErrorTimeMs = 0L
 
@@ -250,6 +252,13 @@ class MusicService : MediaBrowserServiceCompat() {
             isActive = true
         }
         setSessionToken(mediaSession.sessionToken)
+
+        // An active session whose PlaybackState was never set sits in STATE_NONE, and
+        // the system will not nominate it as the media button session — which is why
+        // a headset's PLAY used to do nothing until the app had been played once by
+        // hand. Publish a real state up front so the session is a routing candidate
+        // from the moment the service starts.
+        updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
     }
 
     private fun startForegroundCompat(notification: Notification) {
@@ -264,6 +273,12 @@ class MusicService : MediaBrowserServiceCompat() {
         // Must call startForeground() promptly to avoid ForegroundServiceDidNotStartInTimeException
         if (intent?.action == null || intent.action !in NOTIFICATION_ACTIONS) {
             startForegroundCompat(buildNotification())
+        }
+        // Delivered by MediaButtonReceiver for the manifest's MEDIA_BUTTON filter:
+        // unpacks the KeyEvent and dispatches it to the session callback.
+        if (intent != null && intent.action == Intent.ACTION_MEDIA_BUTTON) {
+            MediaButtonReceiver.handleIntent(mediaSession, intent)
+            return START_STICKY
         }
         when (intent?.action) {
             ACTION_PLAY -> play()
@@ -363,7 +378,12 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     fun play() {
-        if (playlistManager.songs.isEmpty()) return
+        if (playlistManager.songs.isEmpty()) {
+            // A media button pressed during the startup scan would otherwise be
+            // dropped: the library is still empty for the first seconds after launch.
+            if (isScanning) pendingPlayAfterScan = true
+            return
+        }
 
         if (mediaPlayer == null) {
             val song = playlistManager.getCurrentSong() ?: return
@@ -845,6 +865,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     fun scanFolderAsync(uri: Uri) {
+        pendingPlayAfterScan = false
         mediaPlayer?.let { releasePlayer(it) }
         mediaPlayer = null
         isPlaying = false
@@ -872,6 +893,16 @@ class MusicService : MediaBrowserServiceCompat() {
             broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
             broadcastState()
 
+            // Describe the restored song to the session before anything plays, so a
+            // headset or head unit has something to show and act on.
+            updateMediaSessionMetadata()
+            updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+
+            if (pendingPlayAfterScan) {
+                pendingPlayAfterScan = false
+                play()
+            }
+
             metadataRepository.startEnrichment(
                 scope         = serviceScope,
                 songs         = playlistManager.songs,
@@ -880,6 +911,7 @@ class MusicService : MediaBrowserServiceCompat() {
                 onTextReady   = { idx, meta ->
                     if (idx == playlistManager.currentIndex && currentTextMetadata == null) {
                         currentTextMetadata = meta
+                        updateMediaSessionMetadata()
                         broadcastState()
                     }
                     broadcastManager.sendBroadcast(Intent(BROADCAST_METADATA_UPDATED).apply {
