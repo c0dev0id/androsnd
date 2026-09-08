@@ -83,6 +83,17 @@ costs one rescan and no migration surface.
 **Back never finishes the Activity.** This is an always-foreground automotive app;
 `onBackPressed` closes overlays or toggles playback instead of calling `super`.
 
+**The nightly is deliberately ungated; the release is gated by a human.**
+`draft-release` depends on `build` alone — not on `lint` or `test` — so a push
+that fails either still replaces the `dev` pre-release. That is intentional: the
+nightly channel exists for development and testing, and a build that fails a test
+is precisely the one worth installing to debug. Gating it would withhold the
+artifact at the moment it is most useful. The user-facing path is separate:
+`release.yml` is manual (`workflow_dispatch`), cut after checking the last
+nightly ran fully green and after manual verification on the device, and it
+publishes a *draft* release for a human to finish. Do not "fix" `draft-release`
+by adding `needs: test`.
+
 **Builds run in CI only.** The Android Gradle Plugin is not reachable from the
 development sandbox, so changes are validated by pushing, not by a local build.
 
