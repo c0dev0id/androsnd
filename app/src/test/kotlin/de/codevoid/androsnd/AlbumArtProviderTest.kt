@@ -1,7 +1,6 @@
 package de.codevoid.androsnd
 
 import android.content.Context
-import android.content.pm.ProviderInfo
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -10,6 +9,7 @@ import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import java.io.File
 
 /**
@@ -35,9 +35,10 @@ class AlbumArtProviderTest {
         context = ApplicationProvider.getApplicationContext()
         artDir = File(context.cacheDir, "album_art").apply { mkdirs() }
         artDir.listFiles()?.forEach { it.delete() }
-        provider = AlbumArtProvider().apply {
-            attachInfo(context, ProviderInfo().apply { authority = AUTHORITY })
-        }
+        // Robolectric has to build the provider: constructing one directly and calling
+        // attachInfo leaves getContext() null, because the framework method bodies are
+        // not run outside its controller.
+        provider = Robolectric.setupContentProvider(AlbumArtProvider::class.java, AUTHORITY)
     }
 
     @Test
