@@ -582,7 +582,7 @@ class MainActivity : AppCompatActivity() {
         release: UpdateChecker.ReleaseInfo
     ) {
         val availableVersion = release.apkVersion ?: release.tagName
-        val hasUpdate = updateChecker.isNewer(availableVersion, installedVersion)
+        val hasUpdate = UpdateChecker.isNewer(availableVersion, installedVersion)
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

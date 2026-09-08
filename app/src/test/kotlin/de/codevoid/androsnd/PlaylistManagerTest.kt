@@ -7,118 +7,245 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import de.codevoid.androsnd.model.Song
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Covers the state PlaylistManager carries across a restart: the remembered song
- * and the shuffle flag.
+ * The cursor and what survives a restart. A restart is simulated by building a
+ * second PlaylistManager over the same prefs and rescanning, which is exactly what
+ * a fresh process does.
  *
- * The write half of the cursor path (moveCursorTo) is not reachable here — it needs
- * a populated library, and the only way to populate one is a real SAF tree scan.
+ * The library arrives from a [LibraryScanner], so a stub one puts a known library
+ * in place without a Storage Access Framework tree — that is what makes the cursor
+ * write path reachable at all.
  */
 @RunWith(AndroidJUnit4::class)
 class PlaylistManagerTest {
 
+    private class StubScanner(private var found: List<ScannedFolder>) : LibraryScanner {
+        override fun scan(treeUri: Uri, onProgress: ((Int) -> Unit)?) = found
+    }
+
     private lateinit var context: Context
 
-    private fun prefs() = context.getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+    private val tree: Uri = Uri.parse("content://tree/music")
 
-    private fun song(name: String) = Song(
-        uri = Uri.parse("content://tree/document/$name"),
+    private fun song(name: String, folder: String) = Song(
+        uri = Uri.parse("content://tree/document/$folder/$name"),
         displayName = name,
-        folderPath = "/music/album",
-        folderName = "album"
+        folderPath = "/music/$folder",
+        folderName = folder
     )
+
+    private fun folder(name: String, vararg songNames: String) = ScannedFolder(
+        name = name,
+        path = "/music/$name",
+        coverUri = null,
+        songs = songNames.map { song(it, name) }
+    )
+
+    /** A manager over the same prefs — i.e. what the next app start would build. */
+    private fun managerOver(vararg folders: ScannedFolder) =
+        PlaylistManager(context, StubScanner(folders.toList()))
+
+    private fun scanned(vararg folders: ScannedFolder) =
+        managerOver(*folders).also { it.scanFolder(tree) }
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        prefs().edit().clear().commit()
+        context.getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    // ── Where playback resumes ───────────────────────────────────────────────
+
+    @Test
+    fun `a first scan starts at the first song`() {
+        val manager = scanned(folder("Album", "a.mp3", "b.mp3"))
+
+        assertEquals(0, manager.currentIndex)
+        assertEquals("a.mp3", manager.getCurrentSong()?.displayName)
     }
 
     @Test
-    fun `shuffle is off when nothing was ever stored`() {
-        assertFalse(PlaylistManager(context).isShuffleOn)
-    }
+    fun `the song being played is picked up again after a restart`() {
+        scanned(folder("Album", "a.mp3", "b.mp3", "c.mp3")).setCurrentIndex(2)
 
-    @Test
-    fun `shuffle is restored from prefs`() {
-        prefs().edit().putBoolean("shuffle_on", true).commit()
+        val restarted = scanned(folder("Album", "a.mp3", "b.mp3", "c.mp3"))
 
-        assertTrue(PlaylistManager(context).isShuffleOn)
-    }
-
-    @Test
-    fun `toggling shuffle persists both directions`() {
-        val manager = PlaylistManager(context)
-
-        manager.toggleShuffle()
-        assertTrue(manager.isShuffleOn)
-        assertTrue(prefs().getBoolean("shuffle_on", false))
-
-        manager.toggleShuffle()
-        assertFalse(manager.isShuffleOn)
-        assertFalse(prefs().getBoolean("shuffle_on", true))
-    }
-
-    @Test
-    fun `remembered song resolves to whatever index it now occupies`() {
-        prefs().edit().putString("last_song_uri", "content://tree/document/c.mp3").commit()
-        val library = listOf(song("a.mp3"), song("b.mp3"), song("c.mp3"))
-
-        assertEquals(2, PlaylistManager(context).indexOfRememberedSong(library))
-    }
-
-    @Test
-    fun `no bookmark starts at the first song`() {
-        val library = listOf(song("a.mp3"), song("b.mp3"))
-
-        assertEquals(0, PlaylistManager(context).indexOfRememberedSong(library))
-    }
-
-    @Test
-    fun `a bookmark that is no longer in the library starts at the first song`() {
-        prefs().edit().putString("last_song_uri", "content://tree/document/gone.mp3").commit()
-        val library = listOf(song("a.mp3"), song("b.mp3"))
-
-        assertEquals(0, PlaylistManager(context).indexOfRememberedSong(library))
-    }
-
-    @Test
-    fun `an empty library starts at the first song`() {
-        prefs().edit().putString("last_song_uri", "content://tree/document/a.mp3").commit()
-
-        assertEquals(0, PlaylistManager(context).indexOfRememberedSong(emptyList()))
+        assertEquals(2, restarted.currentIndex)
+        assertEquals("c.mp3", restarted.getCurrentSong()?.displayName)
     }
 
     /**
-     * An empty or partial scan — unmounted card, revoked SAF grant — must not be
-     * treated as proof the song is gone, or the bookmark is lost for good.
+     * The bookmark is a URI rather than an index precisely for this: a library that
+     * grew in front of the remembered song renumbers every song after it.
      */
     @Test
-    fun `failing to resolve a bookmark does not erase it`() {
-        prefs().edit().putString("last_song_uri", "content://tree/document/gone.mp3").commit()
+    fun `the remembered song is found again at its new index`() {
+        scanned(folder("Beta", "b1.mp3", "b2.mp3")).setCurrentIndex(1)
 
-        PlaylistManager(context).indexOfRememberedSong(emptyList())
+        val grown = scanned(folder("Alpha", "a1.mp3"), folder("Beta", "b1.mp3", "b2.mp3"))
 
-        assertEquals(
-            "content://tree/document/gone.mp3",
-            prefs().getString("last_song_uri", null)
-        )
+        assertEquals("b2.mp3", grown.getCurrentSong()?.displayName)
+        assertEquals(2, grown.currentIndex)
+    }
+
+    /**
+     * A scan that cannot see the song is not proof it is gone — an unmounted card or
+     * a revoked grant looks the same — so the bookmark has to outlive the fallback.
+     */
+    @Test
+    fun `a bookmark survives a scan that cannot find it`() {
+        scanned(folder("Beta", "b1.mp3", "b2.mp3")).setCurrentIndex(1)
+
+        val withoutIt = scanned(folder("Alpha", "a1.mp3"))
+        assertEquals(0, withoutIt.currentIndex)
+
+        val withItAgain = scanned(folder("Beta", "b1.mp3", "b2.mp3"))
+        assertEquals("b2.mp3", withItAgain.getCurrentSong()?.displayName)
     }
 
     @Test
     fun `clearing the library keeps the bookmark`() {
-        prefs().edit().putString("last_song_uri", "content://tree/document/a.mp3").commit()
+        val manager = scanned(folder("Album", "a.mp3", "b.mp3"))
+        manager.setCurrentIndex(1)
 
-        PlaylistManager(context).clear()
+        manager.clear()
 
-        assertEquals(
-            "content://tree/document/a.mp3",
-            prefs().getString("last_song_uri", null)
-        )
+        assertNull(manager.getCurrentSong())
+        assertEquals("b.mp3", scanned(folder("Album", "a.mp3", "b.mp3")).getCurrentSong()?.displayName)
+    }
+
+    @Test
+    fun `an out-of-range index leaves the cursor alone`() {
+        val manager = scanned(folder("Album", "a.mp3", "b.mp3"))
+
+        manager.setCurrentIndex(9)
+
+        assertEquals(0, manager.currentIndex)
+    }
+
+    // ── Moving through the library ───────────────────────────────────────────
+
+    @Test
+    fun `next wraps around at the end of the library`() {
+        val manager = scanned(folder("Album", "a.mp3", "b.mp3"))
+
+        assertEquals("b.mp3", manager.nextSong()?.displayName)
+        assertEquals("a.mp3", manager.nextSong()?.displayName)
+    }
+
+    @Test
+    fun `previous wraps around at the start of the library`() {
+        val manager = scanned(folder("Album", "a.mp3", "b.mp3"))
+
+        assertEquals("b.mp3", manager.prevSong()?.displayName)
+    }
+
+    @Test
+    fun `an empty library has nowhere to move`() {
+        val manager = scanned()
+
+        assertNull(manager.nextSong())
+        assertNull(manager.prevSong())
+        assertNull(manager.shuffleSong())
+        assertNull(manager.getCurrentSong())
+    }
+
+    @Test
+    fun `a song maps back to the folder holding it`() {
+        val manager = scanned(folder("Alpha", "a1.mp3"), folder("Beta", "b1.mp3", "b2.mp3"))
+
+        assertEquals(0, manager.getFolderIndexForSong(0))
+        assertEquals(1, manager.getFolderIndexForSong(1))
+        assertEquals(1, manager.getFolderIndexForSong(2))
+    }
+
+    // ── The pre-selected next track ──────────────────────────────────────────
+
+    @Test
+    fun `the queued song is the one after the current one`() {
+        val manager = scanned(folder("Album", "a.mp3", "b.mp3", "c.mp3"))
+
+        manager.selectNextQueueSong()
+
+        assertEquals(1, manager.nextQueueIndex)
+    }
+
+    @Test
+    fun `the queue wraps to the first song at the end of the library`() {
+        val manager = scanned(folder("Album", "a.mp3", "b.mp3"))
+        manager.setCurrentIndex(1)
+
+        manager.selectNextQueueSong()
+
+        assertEquals(0, manager.nextQueueIndex)
+    }
+
+    @Test
+    fun `an empty library queues nothing`() {
+        val manager = scanned()
+
+        manager.selectNextQueueSong()
+
+        assertEquals(-1, manager.nextQueueIndex)
+    }
+
+    @Test
+    fun `shuffle never queues the song already playing`() {
+        val manager = scanned(folder("Album", "a.mp3", "b.mp3", "c.mp3", "d.mp3"))
+        manager.toggleShuffle()
+
+        repeat(100) {
+            manager.selectNextQueueSong()
+            assertNotEquals(manager.currentIndex, manager.nextQueueIndex)
+        }
+    }
+
+    @Test
+    fun `shuffle with a single song queues that song`() {
+        val manager = scanned(folder("Album", "only.mp3"))
+        manager.toggleShuffle()
+
+        manager.selectNextQueueSong()
+
+        assertEquals(0, manager.nextQueueIndex)
+    }
+
+    // ── Shuffle ──────────────────────────────────────────────────────────────
+
+    @Test
+    fun `shuffle is off when nothing was ever stored`() {
+        assertFalse(managerOver().isShuffleOn)
+    }
+
+    @Test
+    fun `toggling shuffle survives a restart in both directions`() {
+        val manager = managerOver()
+
+        manager.toggleShuffle()
+        assertTrue("shuffle on should survive", managerOver().isShuffleOn)
+
+        manager.toggleShuffle()
+        assertFalse("shuffle off should survive", managerOver().isShuffleOn)
+    }
+
+    // ── The picked folder ────────────────────────────────────────────────────
+
+    @Test
+    fun `the scanned folder is remembered for the next start`() {
+        scanned(folder("Album", "a.mp3"))
+
+        assertEquals(tree, managerOver().loadSavedFolder())
+    }
+
+    @Test
+    fun `no folder is remembered before the first scan`() {
+        assertNull(managerOver().loadSavedFolder())
     }
 }

@@ -27,14 +27,14 @@ class MetadataDbTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteDatabase("metadata.db")
+        context.deleteDatabase(MetadataDb.DB_NAME)
         db = MetadataDb(context)
     }
 
     @After
     fun tearDown() {
         db.close()
-        context.deleteDatabase("metadata.db")
+        context.deleteDatabase(MetadataDb.DB_NAME)
     }
 
     @Test

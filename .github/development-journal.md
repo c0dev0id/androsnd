@@ -31,6 +31,15 @@ point of the feature: navigation prompts stay at full system volume while music
 plays quietly underneath. Transient focus loss ducks to `0.2 ×` app volume rather
 than pausing, so a spoken instruction never stops the music.
 
+**Finding the files is separate from shaping the library.** `SafLibraryScanner`
+walks the SAF tree and reports what is there; `Library.of()` decides the ordering
+and numbering; `PlaylistManager` publishes the result and tracks the cursor. The
+split was made because the ordering rules are where the subtle bugs live and they
+were previously unreachable from a test — the walk needed a real content provider.
+With a `LibraryScanner` interface in front, a stub puts a known library in place
+and the real `scanFolder` path is exercised directly. Keep new decisions out of
+the walk.
+
 **Songs are addressed by index, folders hold index lists.** Cheap and compact,
 but every scan rebuilds the index space in display order, so an index is only
 valid within one scan generation. Anything that must outlive a scan — notably the
@@ -82,6 +91,17 @@ costs one rescan and no migration surface.
 
 **Back never finishes the Activity.** This is an always-foreground automotive app;
 `onBackPressed` closes overlays or toggles playback instead of calling `super`.
+
+**The nightly is deliberately ungated; the release is gated by a human.**
+`draft-release` depends on `build` alone — not on `lint` or `test` — so a push
+that fails either still replaces the `dev` pre-release. That is intentional: the
+nightly channel exists for development and testing, and a build that fails a test
+is precisely the one worth installing to debug. Gating it would withhold the
+artifact at the moment it is most useful. The user-facing path is separate:
+`release.yml` is manual (`workflow_dispatch`), cut after checking the last
+nightly ran fully green and after manual verification on the device, and it
+publishes a *draft* release for a human to finish. Do not "fix" `draft-release`
+by adding `needs: test`.
 
 **Builds run in CI only.** The Android Gradle Plugin is not reachable from the
 development sandbox, so changes are validated by pushing, not by a local build.

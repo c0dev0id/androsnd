@@ -38,6 +38,16 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # Robolectric fetches its android-all jar at test runtime with its own resolver,
+      # into ~/.m2 — outside the Gradle cache setup-gradle restores. Without this the
+      # ~100 MB jar is re-downloaded on every run.
+      - name: Cache Robolectric SDK jars
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ hashFiles('app/build.gradle.kts') }}
+          restore-keys: robolectric-
+
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
 

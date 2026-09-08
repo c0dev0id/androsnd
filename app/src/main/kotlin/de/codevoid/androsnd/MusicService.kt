@@ -115,10 +115,9 @@ class MusicService : MediaBrowserServiceCompat() {
     var currentTextMetadata: SongMetadata? = null
         private set
     private var currentArtBitmap: Bitmap? = null
-    // "The user asked for playback but it could not start yet." Set only when a
-    // readiness event is actually pending — the player is preparing, or the library
-    // is still being scanned — so it can never be left standing with nothing to
-    // consume it. Whichever readiness point arrives first consumes it.
+    // "The user asked for playback but it could not start yet." Only ever set while
+    // a readiness event is pending, so it cannot be left standing with nothing to
+    // consume it; whichever readiness point arrives first consumes it.
     private var playRequested = false
     private var isDucking = false
     private var lastErrorTimeMs = 0L
@@ -252,7 +251,7 @@ class MusicService : MediaBrowserServiceCompat() {
         // A session whose PlaybackState was never set sits in STATE_NONE, and the
         // system will not nominate such a session as the media button session — so a
         // headset's PLAY went nowhere until the app had been played once by hand.
-        updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+        updatePlaybackState()
         publishShuffleMode()
     }
 
@@ -409,7 +408,7 @@ class MusicService : MediaBrowserServiceCompat() {
             isPlaying = true
             startProgressUpdates()
             updateMediaSessionMetadata()
-            updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+            updatePlaybackState()
             startForegroundCompat(buildNotification())
             broadcastState()
         }
@@ -421,7 +420,7 @@ class MusicService : MediaBrowserServiceCompat() {
                 it.pause()
                 isPlaying = false
                 stopProgressUpdates()
-                updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+                updatePlaybackState()
                 updateNotification()
                 broadcastState()
             }
@@ -573,12 +572,12 @@ class MusicService : MediaBrowserServiceCompat() {
                     mp.start()
                     isPlaying = true
                     startProgressUpdates()
-                    updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                    updatePlaybackState()
                     startForegroundCompat(buildNotification())
                     broadcastState()
                     playlistManager.selectNextQueueSong()
                 } else {
-                    updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+                    updatePlaybackState()
                     broadcastState()
                 }
                 serviceScope.launch {
@@ -678,9 +677,8 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     /**
-     * Publishes the session's playback state. Defaults to the state implied by the
-     * service's own fields, so a call site only names one when it means something
-     * the fields cannot say — STOPPED, which is not the same as "not playing".
+     * Pass a state only for STOPPED, which the fields cannot express — everything
+     * else is implied by isPlaying.
      *
      * Not wired into broadcastState(), tempting as that is: broadcastState() doubles
      * as the 1 s progress tick, so publishing the whole session view from there would
@@ -922,7 +920,7 @@ class MusicService : MediaBrowserServiceCompat() {
                 // Describe the restored song to the session, so a headset or head unit
                 // has something to show and act on before anything plays.
                 updateMediaSessionMetadata()
-                updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+                updatePlaybackState()
             }
 
             metadataRepository.startEnrichment(
