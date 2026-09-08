@@ -6,7 +6,11 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import de.codevoid.androsnd.model.SongMetadata
 
-class MetadataDb(context: Context) : SQLiteOpenHelper(context, "metadata.db", null, 1) {
+class MetadataDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 1) {
+
+    companion object {
+        const val DB_NAME = "metadata.db"
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""

@@ -14,7 +14,8 @@ import org.junit.runner.RunWith
 
 /**
  * Covers the state PlaylistManager carries across a restart: the remembered song
- * and the shuffle flag.
+ * and the shuffle flag. Restart is simulated by building a second instance, which
+ * re-reads persisted state exactly as a fresh process would.
  *
  * The write half of the cursor path (moveCursorTo) is not reachable here — it needs
  * a populated library, and the only way to populate one is a real SAF tree scan.
@@ -22,12 +23,19 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class PlaylistManagerTest {
 
+    private companion object {
+        const val PREFS = "androsnd_prefs"
+        const val KEY_LAST_SONG = "last_song_uri"
+    }
+
     private lateinit var context: Context
 
-    private fun prefs() = context.getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+    private fun prefs() = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private fun uriOf(name: String) = "content://tree/document/$name"
 
     private fun song(name: String) = Song(
-        uri = Uri.parse("content://tree/document/$name"),
+        uri = Uri.parse(uriOf(name)),
         displayName = name,
         folderPath = "/music/album",
         folderName = "album"
@@ -45,28 +53,19 @@ class PlaylistManagerTest {
     }
 
     @Test
-    fun `shuffle is restored from prefs`() {
-        prefs().edit().putBoolean("shuffle_on", true).commit()
-
-        assertTrue(PlaylistManager(context).isShuffleOn)
-    }
-
-    @Test
-    fun `toggling shuffle persists both directions`() {
+    fun `toggling shuffle survives a restart in both directions`() {
         val manager = PlaylistManager(context)
 
         manager.toggleShuffle()
-        assertTrue(manager.isShuffleOn)
-        assertTrue(prefs().getBoolean("shuffle_on", false))
+        assertTrue("shuffle on should survive", PlaylistManager(context).isShuffleOn)
 
         manager.toggleShuffle()
-        assertFalse(manager.isShuffleOn)
-        assertFalse(prefs().getBoolean("shuffle_on", true))
+        assertFalse("shuffle off should survive", PlaylistManager(context).isShuffleOn)
     }
 
     @Test
     fun `remembered song resolves to whatever index it now occupies`() {
-        prefs().edit().putString("last_song_uri", "content://tree/document/c.mp3").commit()
+        prefs().edit().putString(KEY_LAST_SONG, uriOf("c.mp3")).commit()
         val library = listOf(song("a.mp3"), song("b.mp3"), song("c.mp3"))
 
         assertEquals(2, PlaylistManager(context).indexOfRememberedSong(library))
@@ -79,46 +78,32 @@ class PlaylistManagerTest {
         assertEquals(0, PlaylistManager(context).indexOfRememberedSong(library))
     }
 
+    /**
+     * Falling back is not the same as forgetting: a partial scan — unmounted card,
+     * revoked SAF grant — must not be treated as proof the song is gone.
+     */
     @Test
-    fun `a bookmark that is no longer in the library starts at the first song`() {
-        prefs().edit().putString("last_song_uri", "content://tree/document/gone.mp3").commit()
+    fun `a bookmark missing from the library falls back without being erased`() {
+        prefs().edit().putString(KEY_LAST_SONG, uriOf("gone.mp3")).commit()
         val library = listOf(song("a.mp3"), song("b.mp3"))
 
         assertEquals(0, PlaylistManager(context).indexOfRememberedSong(library))
+        assertEquals(uriOf("gone.mp3"), prefs().getString(KEY_LAST_SONG, null))
     }
 
     @Test
     fun `an empty library starts at the first song`() {
-        prefs().edit().putString("last_song_uri", "content://tree/document/a.mp3").commit()
+        prefs().edit().putString(KEY_LAST_SONG, uriOf("a.mp3")).commit()
 
         assertEquals(0, PlaylistManager(context).indexOfRememberedSong(emptyList()))
     }
 
-    /**
-     * An empty or partial scan — unmounted card, revoked SAF grant — must not be
-     * treated as proof the song is gone, or the bookmark is lost for good.
-     */
-    @Test
-    fun `failing to resolve a bookmark does not erase it`() {
-        prefs().edit().putString("last_song_uri", "content://tree/document/gone.mp3").commit()
-
-        PlaylistManager(context).indexOfRememberedSong(emptyList())
-
-        assertEquals(
-            "content://tree/document/gone.mp3",
-            prefs().getString("last_song_uri", null)
-        )
-    }
-
     @Test
     fun `clearing the library keeps the bookmark`() {
-        prefs().edit().putString("last_song_uri", "content://tree/document/a.mp3").commit()
+        prefs().edit().putString(KEY_LAST_SONG, uriOf("a.mp3")).commit()
 
         PlaylistManager(context).clear()
 
-        assertEquals(
-            "content://tree/document/a.mp3",
-            prefs().getString("last_song_uri", null)
-        )
+        assertEquals(uriOf("a.mp3"), prefs().getString(KEY_LAST_SONG, null))
     }
 }

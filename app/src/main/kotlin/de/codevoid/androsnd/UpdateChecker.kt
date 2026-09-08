@@ -23,13 +23,35 @@ class UpdateChecker(private val context: Context) {
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    private companion object {
-        const val GITHUB_OWNER = "c0dev0id"
-        const val GITHUB_REPO = "androsnd"
-        const val API_BASE = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases"
-        const val CONNECT_TIMEOUT_MS = 10_000
-        const val READ_TIMEOUT_MS = 10_000
-        const val POLL_INTERVAL_MS = 500L
+    companion object {
+        private const val GITHUB_OWNER = "c0dev0id"
+        private const val GITHUB_REPO = "androsnd"
+        private const val API_BASE = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases"
+        private const val CONNECT_TIMEOUT_MS = 10_000
+        private const val READ_TIMEOUT_MS = 10_000
+        private const val POLL_INTERVAL_MS = 500L
+
+        /** Returns true when onlineTag represents a strictly newer version than installedVersion. */
+        fun isNewer(onlineTag: String, installedVersion: String): Boolean {
+            // Nightly channel: tags are "dev-<sha>" (or just "dev"). Numeric semver comparison
+            // is meaningless for SHAs, so fall back to string inequality of the trimmed tag.
+            if (onlineTag.startsWith("dev") || installedVersion.startsWith("dev")) {
+                return onlineTag.trim() != installedVersion.trim()
+            }
+            val online = parseVersion(onlineTag)
+            val installed = parseVersion(installedVersion)
+            val len = maxOf(online.size, installed.size)
+            for (i in 0 until len) {
+                val o = online.getOrElse(i) { 0 }
+                val ins = installed.getOrElse(i) { 0 }
+                if (o > ins) return true
+                if (o < ins) return false
+            }
+            return false
+        }
+
+        private fun parseVersion(raw: String): List<Int> =
+            raw.trimStart('v').split('.').mapNotNull { it.toIntOrNull() }
     }
 
     fun installedVersion(): String {
@@ -42,28 +64,6 @@ class UpdateChecker(private val context: Context) {
 
     /** True when this build came from the nightly/dev channel (versionName starts with "dev"). */
     fun isNightlyBuild(): Boolean = installedVersion().startsWith("dev")
-
-    /** Returns true when onlineTag represents a strictly newer version than installedVersion. */
-    fun isNewer(onlineTag: String, installedVersion: String): Boolean {
-        // Nightly channel: tags are "dev-<sha>" (or just "dev"). Numeric semver comparison
-        // is meaningless for SHAs, so fall back to string inequality of the trimmed tag.
-        if (onlineTag.startsWith("dev") || installedVersion.startsWith("dev")) {
-            return onlineTag.trim() != installedVersion.trim()
-        }
-        val online = parseVersion(onlineTag)
-        val installed = parseVersion(installedVersion)
-        val len = maxOf(online.size, installed.size)
-        for (i in 0 until len) {
-            val o = online.getOrElse(i) { 0 }
-            val ins = installed.getOrElse(i) { 0 }
-            if (o > ins) return true
-            if (o < ins) return false
-        }
-        return false
-    }
-
-    private fun parseVersion(raw: String): List<Int> =
-        raw.trimStart('v').split('.').mapNotNull { it.toIntOrNull() }
 
     /**
      * Fetches the latest release from GitHub.

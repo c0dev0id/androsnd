@@ -32,7 +32,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Release signing reads four environment variables — `SIGNING_KEYSTORE_PATH`, `SIGNING_KEYSTORE_PASSWORD`, `SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD`. If any is missing the `release` signing config is silently not created and the build emits `app-release-unsigned.apk`; the release workflow treats that as a hard error.
 
-Unit tests live in `app/src/test/kotlin` and run on the JVM under Robolectric, which supplies the Android pieces this code is built on — `SharedPreferences`, `Uri`, SQLite — so they exercise the real classes rather than mocks. They need no device and no signing config. There are no instrumentation tests.
+Unit tests live in `app/src/test/kotlin` and run on the JVM. The ones that touch Android APIs use Robolectric, which supplies the pieces this code is built on — `SharedPreferences`, `Uri`, SQLite — so they exercise the real classes rather than mocks; logic that needs no Android (version comparison) runs as plain JUnit and stays out of the Robolectric sandbox. They need no device and no signing config. There are no instrumentation tests.
 
 Robolectric downloads an `android-all` jar for the target SDK on first run, so the first test run needs network access. Like the rest of the build, the tests cannot run in the development sandbox — CI runs them.
 
