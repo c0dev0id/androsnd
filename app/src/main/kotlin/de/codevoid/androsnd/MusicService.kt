@@ -240,6 +240,13 @@ class MusicService : MediaBrowserServiceCompat() {
                     }
                 }
             })
+            // Shuffle is restored from prefs by PlaylistManager's constructor, so the
+            // session has to be told about it here — nothing else announces the state
+            // until the user toggles the button.
+            setShuffleMode(
+                if (playlistManager.isShuffleOn) PlaybackStateCompat.SHUFFLE_MODE_ALL
+                else PlaybackStateCompat.SHUFFLE_MODE_NONE
+            )
             isActive = true
         }
         setSessionToken(mediaSession.sessionToken)
