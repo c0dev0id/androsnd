@@ -115,8 +115,11 @@ class MusicService : MediaBrowserServiceCompat() {
     var currentTextMetadata: SongMetadata? = null
         private set
     private var currentArtBitmap: Bitmap? = null
-    private var pendingPlayAfterPrepare = false
-    private var pendingPlayAfterScan = false
+    // "The user asked for playback but it could not start yet." Set only when a
+    // readiness event is actually pending — the player is preparing, or the library
+    // is still being scanned — so it can never be left standing with nothing to
+    // consume it. Whichever readiness point arrives first consumes it.
+    private var playRequested = false
     private var isDucking = false
     private var lastErrorTimeMs = 0L
 
@@ -212,7 +215,7 @@ class MusicService : MediaBrowserServiceCompat() {
                         try { updateMediaSessionQueue() }
                         catch (e: Exception) { Log.w(TAG, "Failed to update media session queue", e) }
                     }
-                    updatePlaybackState(if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED)
+                    updatePlaybackState()
                     broadcastState()
                 }
                 override fun onSkipToQueueItem(id: Long) { playSongAtIndex(id.toInt()) }
@@ -238,7 +241,7 @@ class MusicService : MediaBrowserServiceCompat() {
                         startPlayingSong(song, autoStart = false)
                     } else if (!isPreparing) {
                         // Already loaded — confirm current state so the system doesn't wait
-                        updatePlaybackState(if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED)
+                        updatePlaybackState()
                     }
                 }
             })
@@ -385,7 +388,7 @@ class MusicService : MediaBrowserServiceCompat() {
         if (playlistManager.songs.isEmpty()) {
             // A media button pressed during the startup scan would otherwise be
             // dropped: the library is still empty for the first seconds after launch.
-            if (isScanning) pendingPlayAfterScan = true
+            if (isScanning) playRequested = true
             return
         }
 
@@ -398,7 +401,7 @@ class MusicService : MediaBrowserServiceCompat() {
             }
             startPlayingSong(song)
         } else if (isPreparing) {
-            pendingPlayAfterPrepare = true
+            playRequested = true
         } else if (!isPlaying) {
             requestAudioFocus()
             mediaPlayer?.start()
@@ -438,6 +441,9 @@ class MusicService : MediaBrowserServiceCompat() {
         mediaPlayer = null
         isPlaying = false
         isPreparing = false
+        // Stop means stop: a play request still waiting on a readiness event would
+        // otherwise survive the teardown and start the next prepared song.
+        playRequested = false
         currentTextMetadata = null
         currentArtBitmap = null
         stopProgressUpdates()
@@ -483,7 +489,7 @@ class MusicService : MediaBrowserServiceCompat() {
         val duration = mediaPlayer?.duration ?: 0
         val clamped = positionMs.coerceIn(0, if (duration > 0) duration else 0)
         mediaPlayer?.seekTo(clamped)
-        updatePlaybackState(if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED)
+        updatePlaybackState()
         broadcastState()
     }
 
@@ -541,7 +547,7 @@ class MusicService : MediaBrowserServiceCompat() {
                 // would let play() call start() on it in an illegal state.
                 if (mediaPlayer !== mp) return@setOnErrorListener true
                 isPreparing = false
-                pendingPlayAfterPrepare = false
+                playRequested = false
                 lastErrorTimeMs = System.currentTimeMillis()
                 mp.release()
                 mediaPlayer = null
@@ -560,8 +566,8 @@ class MusicService : MediaBrowserServiceCompat() {
                 isPreparing = false
                 val vol = getAppVolumeFloat()
                 mp.setVolume(vol, vol)
-                val shouldPlay = autoStart || pendingPlayAfterPrepare
-                pendingPlayAfterPrepare = false
+                val shouldPlay = autoStart || playRequested
+                playRequested = false
                 if (shouldPlay) {
                     if (!autoStart) requestAudioFocus()
                     mp.start()
@@ -598,7 +604,7 @@ class MusicService : MediaBrowserServiceCompat() {
             player.prepareAsync()
         } catch (e: Exception) {
             isPreparing = false
-            pendingPlayAfterPrepare = false
+            playRequested = false
             lastErrorTimeMs = System.currentTimeMillis()
             Log.e(TAG, "Failed to start playing ${song.displayName}", e)
         }
@@ -671,7 +677,19 @@ class MusicService : MediaBrowserServiceCompat() {
         mediaSession.setMetadata(builder.build())
     }
 
-    private fun updatePlaybackState(state: Int) {
+    /**
+     * Publishes the session's playback state. Defaults to the state implied by the
+     * service's own fields, so a call site only names one when it means something
+     * the fields cannot say — STOPPED, which is not the same as "not playing".
+     *
+     * Not wired into broadcastState(), tempting as that is: broadcastState() doubles
+     * as the 1 s progress tick, so publishing the whole session view from there would
+     * re-send the metadata — album-art bitmap included — every second.
+     */
+    private fun updatePlaybackState(
+        state: Int = if (isPlaying) PlaybackStateCompat.STATE_PLAYING
+                     else PlaybackStateCompat.STATE_PAUSED
+    ) {
         val position = mediaPlayer?.currentPosition?.toLong() ?: 0L
         val speed = if (isPlaying) 1f else 0f
         val playbackState = PlaybackStateCompat.Builder()
@@ -869,7 +887,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     fun scanFolderAsync(uri: Uri) {
-        pendingPlayAfterScan = false
+        playRequested = false
         mediaPlayer?.let { releasePlayer(it) }
         mediaPlayer = null
         isPlaying = false
@@ -897,8 +915,8 @@ class MusicService : MediaBrowserServiceCompat() {
             broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
             broadcastState()
 
-            if (pendingPlayAfterScan) {
-                pendingPlayAfterScan = false
+            if (playRequested) {
+                playRequested = false
                 play()
             } else {
                 // Describe the restored song to the session, so a headset or head unit

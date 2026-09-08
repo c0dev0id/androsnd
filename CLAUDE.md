@@ -17,6 +17,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Run lint
 ./gradlew lint
+
+# Run the unit tests
+./gradlew testDebugUnitTest
+
+# Run one test class, or one test method (method names contain spaces)
+./gradlew testDebugUnitTest --tests "de.codevoid.androsnd.MetadataDbTest"
+./gradlew testDebugUnitTest --tests "de.codevoid.androsnd.MetadataDbTest.a stored row comes back intact"
 ```
 
 **Builds are CI's job.** The Android Gradle Plugin is not reachable from the development sandbox, so do not attempt a local build or try to work around the restriction — push and let the workflows build. The commands above document what CI runs.
@@ -25,9 +32,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Release signing reads four environment variables — `SIGNING_KEYSTORE_PATH`, `SIGNING_KEYSTORE_PASSWORD`, `SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD`. If any is missing the `release` signing config is silently not created and the build emits `app-release-unsigned.apk`; the release workflow treats that as a hard error.
 
-There are no unit or instrumentation tests in this project.
+Unit tests live in `app/src/test/kotlin` and run on the JVM under Robolectric, which supplies the Android pieces this code is built on — `SharedPreferences`, `Uri`, SQLite — so they exercise the real classes rather than mocks. They need no device and no signing config. There are no instrumentation tests.
 
-CI (`.github/workflows/build.yml`) runs `lint` and a signed release build on every push to `main`, then replaces the `dev` pre-release. `release.yml` is manual (`workflow_dispatch`) and auto-increments the patch version from the latest `v*` tag when no version is supplied.
+Robolectric downloads an `android-all` jar for the target SDK on first run, so the first test run needs network access. Like the rest of the build, the tests cannot run in the development sandbox — CI runs them.
+
+Testability is uneven, and the seams matter: `PlaylistManager`'s library can only be populated by a real SAF tree scan, so the cursor **write** path (`moveCursorTo`) is not reachable from a unit test. Its decision half, `indexOfRememberedSong`, is `internal` precisely so the restore contract can be tested against a plain `List<Song>`. Prefer extracting that kind of seam over reaching for a heavier fake.
+
+CI (`.github/workflows/build.yml`) runs `lint`, `testDebugUnitTest`, and a signed release build as three parallel jobs on every push to `main`, then replaces the `dev` pre-release once the build job succeeds. Only `draft-release` gates on another job (`build`); lint and test report independently. `release.yml` is manual (`workflow_dispatch`) and auto-increments the patch version from the latest `v*` tag when no version is supplied.
 
 ## Source Layout
 
@@ -103,7 +114,7 @@ Art is cached per **folder**, not per song, at `cacheDir/album_art/${folderPath.
 
 ### MediaPlayer preparation
 
-`MusicService` tracks `isPreparing` and `pendingPlayAfterPrepare` so a play/next issued while a track is still preparing is applied on the `OnPreparedListener` instead of touching the player in an illegal state. `OnPreparedListener` also bails out via `if (mediaPlayer !== mp) return` when a newer player has superseded it, and the error/completion callbacks make the same identity check before touching `isPreparing`.
+`MusicService` tracks `isPreparing` and `playRequested` so a play issued before playback can start is applied at the next readiness point instead of touching the player in an illegal state. `playRequested` is the single "the user wants playback" latch: it is set only while a readiness event is actually pending — the player is preparing, or the library is still being scanned — and is consumed by whichever arrives first (`OnPreparedListener`, or the end of `scanFolderAsync`). Setting it with no pending event would leave it standing to fire at an unrelated moment later. `OnPreparedListener` also bails out via `if (mediaPlayer !== mp) return` when a newer player has superseded it, and the error/completion callbacks make the same identity check before touching `isPreparing`.
 
 ### Volume is app-relative
 
