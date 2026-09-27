@@ -28,8 +28,10 @@ nothing depends on the system media index being correct or populated.
 **Volume is app-relative, not a stream change.** `MediaPlayer.setVolume()` is set
 to `app_volume / 100f`, a fraction *of* the system music volume. This is the
 point of the feature: navigation prompts stay at full system volume while music
-plays quietly underneath. Transient focus loss ducks to `0.2 ×` app volume rather
-than pausing, so a spoken instruction never stops the music.
+plays quietly underneath. A focus loss that allows ducking lowers the music
+instead of pausing it — on API 26+ the system performs that duck itself, and the
+app's own `0.2 ×` duck is the fallback — so a prompt that asks to duck never stops
+the music. Plain transient and permanent losses pause.
 
 **Finding the files is separate from shaping the library.** `SafLibraryScanner`
 walks the SAF tree and reports what is there; `Library.of()` decides the ordering
@@ -46,9 +48,9 @@ valid within one scan generation. Anything that must outlive a scan — notably 
 remembered playback position — stores the song URI instead and resolves it back
 to an index once the library is published.
 
-**The scan publishes one immutable `Snapshot`.** `songs`, `folders` and
+**The scan publishes one immutable `Library`.** `songs`, `folders` and
 `foldersByPath` swap together behind a single `@Volatile` write, so no reader can
-observe a half-updated triple. Derived collections belong inside `Snapshot`, not
+observe a half-updated triple. Derived collections belong inside `Library`, not
 beside it.
 
 **`MediaMetadataRetriever` access is serialized through one semaphore held on the
@@ -58,10 +60,12 @@ by the leaf functions that actually open a retriever, never by their callers —
 coroutines semaphore is not reentrant, so a caller holding it on a leaf's behalf
 deadlocks.
 
-**Metadata loads in two phases.** The scan publishes filenames immediately so the
-list is usable within a second; `startEnrichment()` then fills in tags and art in
-the background, doing the currently-playing song first so the visible row settles
-before the rest of the library queues up.
+**Metadata loads in two phases.** The scan publishes the library as soon as the
+walk ends; `startEnrichment()` then fills in tags and art in the background, doing
+the currently-playing song first so the now-playing panel settles before the rest
+of the library queues up. The playlist waits for the second phase: after a scan
+the UI shows a `Loading N/total` counter and loads every row at once when
+enrichment completes, which replaced streaming the rows in one by one.
 
 **Art is cached per folder, not per song.** One JPEG per folder in `cacheDir`,
 keyed by `folderPath.hashCode()`. An album's worth of songs shares one decode and
@@ -81,9 +85,10 @@ here is inseparable from `SharedPreferences`, `Uri` and SQLite semantics — a
 cached row is valid only while `last_modified` matches, a bookmark is a URI
 because indices are rebuilt every scan. Mocking those away would test the mock.
 Robolectric runs the real implementations on the JVM, so the suite stays fast and
-needs no device. Where a class cannot be driven from a test at all — populating
-`PlaylistManager` needs a real SAF tree — the decision is extracted into an
-`internal` function that takes plain data, rather than building a heavier fake.
+needs no device. Where a class cannot be driven from a test directly — populating
+`PlaylistManager` needs a real SAF tree — a seam is added instead (the
+`LibraryScanner` interface, so a stub supplies the library), rather than widening
+visibility or building a heavier fake.
 
 **No migration code before 1.0.** `MetadataDb.onUpgrade` drops and recreates the
 table; the cache is fully rebuildable from the files on disk, so a schema change
