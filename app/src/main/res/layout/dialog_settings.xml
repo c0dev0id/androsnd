@@ -218,23 +218,6 @@
         android:textStyle="bold"
         style="@style/Widget.Androsnd.Button.Outlined" />
 
-    <!-- Radio Buffer -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/settings_radio_buffer"
-        android:textColor="@color/text_primary"
-        android:textStyle="bold"
-        android:textSize="16sp"
-        android:layout_marginTop="16dp" />
-
-    <Spinner
-        android:id="@+id/spinner_radio_buffer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:entries="@array/radio_buffer_labels" />
-
     </LinearLayout>
 
 </ScrollView>

@@ -585,15 +585,12 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean("overlay_enabled", isChecked).apply()
         }
 
-        setupRadioSettings(prefs)
+        setupRadioSettings()
 
         updateFocusVisual()
     }
 
-    // The spinner rows map to these buffer lengths (radio_buffer_labels mirrors them).
-    private val radioBufferValues = intArrayOf(5, 10, 20, 30, 40, 50, 60)
-
-    private fun setupRadioSettings(prefs: android.content.SharedPreferences) {
+    private fun setupRadioSettings() {
         val nameInput = settingsPanel.findViewById<android.widget.EditText>(R.id.input_station_name)
         val urlInput = settingsPanel.findViewById<android.widget.EditText>(R.id.input_station_url)
         settingsPanel.findViewById<MaterialButton>(R.id.btn_add_stream).setOnClickListener {
@@ -607,20 +604,6 @@ class MainActivity : AppCompatActivity() {
                 nameInput.text.clear()
                 urlInput.text.clear()
             }
-        }
-
-        val spinner = settingsPanel.findViewById<android.widget.Spinner>(R.id.spinner_radio_buffer)
-        val savedBuffer = prefs.getInt(
-            RadioPlaybackController.KEY_BUFFER_SECONDS,
-            RadioPlaybackController.DEFAULT_BUFFER_SECONDS
-        )
-        val savedIdx = radioBufferValues.indexOf(savedBuffer).coerceAtLeast(0)
-        spinner.setSelection(savedIdx)
-        spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                prefs.edit().putInt(RadioPlaybackController.KEY_BUFFER_SECONDS, radioBufferValues[position]).apply()
-            }
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
     }
 
