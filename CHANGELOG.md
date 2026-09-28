@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Internet radio. A new button on the far left of the control bar switches the app
+  between the local music library and internet radio. Radio stations are grouped just
+  like music folders, with a bundled set of groups and a "User" group for your own
+  streams. The now-playing area shows a LIVE marker instead of a countdown, and the
+  station's broadcast title when the stream provides one.
+- Add your own stream in Settings: enter a name and an http(s) URL under Internet
+  Radio to add it to the User group.
+- A buffer-length setting for radio (5 to 60 seconds). A larger buffer rides through
+  longer network dropouts at the cost of a longer wait before playback starts.
+
+### Changed
+
+- The Stop button has been removed. A long press on Play now stops playback; a short
+  press still toggles play and pause. This applies to both the on-screen button and
+  the remote's confirm button.
+
 ### Fixed
 
 ## [v0.0.40]

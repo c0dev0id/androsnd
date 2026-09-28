@@ -12,7 +12,7 @@ actually does. Kept for future development context, not as user documentation �
 | UI | Android Views + XML layouts (no Compose), Material Components 1.12.0 |
 | Min / target SDK | 26 / 35 |
 | Async | kotlinx-coroutines 1.8.1 everywhere except `UpdateChecker` |
-| Playback | `MediaPlayer` + `MediaSessionCompat` (androidx.media 1.7.0) |
+| Playback | `MediaPlayer` for local files, Media3 ExoPlayer for radio streams, one shared `MediaSessionCompat` (androidx.media 1.7.0) |
 | Library access | Storage Access Framework (`DocumentsContract`) over a user-picked tree URI |
 | Persistence | `SQLiteOpenHelper` (`metadata.db`) for tags, `SharedPreferences` (`androsnd_prefs`) for settings and playback state |
 | Lists | RecyclerView 1.3.2 |
@@ -111,10 +111,45 @@ by adding `needs: test`.
 **Builds run in CI only.** The Android Gradle Plugin is not reachable from the
 development sandbox, so changes are validated by pushing, not by a local build.
 
+**Radio is a second subsystem, not a mode flag threaded through the file path.**
+Files and radio each own a player, a source and a cursor behind a common
+`PlaybackController` interface; `MusicService` holds one `active` controller and
+routes every command and state read to it. The shared surface is the button row,
+the service shell (one MediaSession, notification and audio focus), `Library.of()`
+and the two RecyclerView adapters. The alternative — a `mode` flag — would have
+scattered `if (radio)` branches through `PlaylistManager`, `MusicService` and
+`MainActivity` to gate off seek, duration, enrichment and folder-hash art, all of
+which radio simply does not have. `FilePlaybackController` is the existing
+`MediaPlayer` machinery relocated behind the interface unchanged; the delicate
+state machine was not rewritten.
+
+**Streams play through ExoPlayer, files through `MediaPlayer`.** Reconnect after a
+dropout and live ICY "now playing" titles are exactly where `MediaPlayer` is
+weakest, and they are the whole point of radio. ExoPlayer handles both natively:
+a `DefaultLoadControl` sized from the user's buffer-seconds setting delays playback
+until the buffer fills (longer ride-through for a longer wait), and a custom
+`LoadErrorHandlingPolicy` reconnects once immediately then on a calm 5 s cadence
+rather than in a tight loop. Only the `active` controller holds native decoder
+slots — the outgoing one is released, not paused, on a mode switch, and both are
+released in `onDestroy`.
+
+**User stations live in a file, not the database.** `user_stations.json` in
+`filesDir`, because `metadata.db` is dropped and recreated on any schema change
+(the pre-1.0 policy) and user-authored data must survive that. The radio cursor
+math in `RadioManager` is duplicated from `PlaylistManager` rather than extracted
+into a shared base, on the same principle as the scanner split: the file path is
+delicate and left untouched. `StationRepository.load()` is `open` so a test can
+supply a known station set without the bundled JSON or a network, matching the
+`LibraryScanner` seam philosophy.
+
 ## Core Features
 
 - Offline folder-based music library, scanned recursively from a SAF tree
   (mp3, ogg, flac, aac, m4a, opus).
+- Internet radio as a second subsystem, toggled from the leftmost control-bar
+  button: bundled station groups plus a user group fed by an add-stream field,
+  live ICY titles, a LIVE marker in place of the countdown, and a configurable
+  prebuffer with gentle reconnect.
 - Two-level browsing: a folder grid overlay and an interleaved folder/song list.
 - Full DMD Remote 2 navigation with a two-cursor focus model (song list and button
   bar move independently), plus a hardware key-repeat for the volume lever.
