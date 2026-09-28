@@ -40,6 +40,7 @@ class OverlayToastManager(private val context: Context) {
         private const val KEY_OVERLAY_SCALE = "overlay_scale"
         private const val KEY_OVERLAY_CUSTOM_POS = "overlay_custom_pos"
         private const val KEY_OVERLAY_OPACITY = "overlay_opacity"
+        private const val KEY_OVERLAY_ENABLED = "overlay_enabled"
         private const val MIN_OVERLAY_SCALE = 0.5f
         private const val MAX_OVERLAY_SCALE = 3.0f
         private const val DEFAULT_OVERLAY_OPACITY = 80
@@ -67,7 +68,10 @@ class OverlayToastManager(private val context: Context) {
 
     var onScaleChanged: ((Float) -> Unit)? = null
 
+    // The now-playing entry point, gated by the user's toggle. showDemo bypasses this so the
+    // settings preview always appears.
     fun showSong(metadata: SongMetadata, cover: Bitmap? = null) {
+        if (!prefs.getBoolean(KEY_OVERLAY_ENABLED, true)) return
         showOverlay(metadata.title, metadata.artist, metadata.album, cover)
     }
 

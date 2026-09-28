@@ -1,6 +1,5 @@
 package de.codevoid.androsnd
 
-import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -290,11 +289,7 @@ class FilePlaybackController(private val service: MusicService) : PlaybackContro
                     currentArt  = art
                     service.updateMediaSessionMetadata()
                     service.updateNotification()
-                    val overlayEnabled = service.getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-                        .getBoolean("overlay_enabled", true)
-                    if (overlayEnabled) {
-                        service.overlayToastManager.showSong(meta, art)
-                    }
+                    service.overlayToastManager.showSong(meta, art)
                     service.broadcastState()
                 }
             }

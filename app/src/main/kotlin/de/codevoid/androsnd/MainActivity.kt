@@ -1519,8 +1519,8 @@ class MainActivity : AppCompatActivity() {
         private val accentColor: Int,
         private val getArtFile: (PlaylistFolder) -> File?,
         private val onClick: (Int) -> Unit,
-        // Icon shown when a folder has no cached cover; 0 leaves the cell blank. Resolved
-        // per bind so a mode switch picks the right fallback without rebuilding the adapter.
+        // Resolved per bind (not once at construction) so a mode switch picks the right
+        // fallback icon without rebuilding the adapter. 0 leaves the cell blank.
         private val getFallbackRes: () -> Int = { 0 }
     ) : RecyclerView.Adapter<FolderGridAdapter.GridViewHolder>() {
 
@@ -1577,8 +1577,10 @@ class MainActivity : AppCompatActivity() {
             holder.cover.setImageDrawable(null)
             holder.artJob = adapterScope.launch {
                 val bmp = withContext(Dispatchers.IO) {
-                    val file = getArtFile(folder) ?: return@withContext null
-                    BitmapFactory.decodeFile(file.absolutePath)
+                    val file = getArtFile(folder)?.takeIf { it.exists() } ?: return@withContext null
+                    BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply {
+                        inSampleSize = 2
+                    })
                 }
                 if (bmp != null) {
                     holder.cover.setImageBitmap(bmp)
