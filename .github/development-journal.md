@@ -144,10 +144,21 @@ tick, which files drive only while playing, is kept running through a radio paus
 gauge moves while the buffer fills. If the offline stretch outlasts the buffer the stream
 jumps forward to live on reconnect — a jump beats silence.
 
-A custom `LoadErrorHandlingPolicy` reconnects once immediately then on a calm 5 s cadence
-rather than in a tight loop. Only the `active` controller holds native decoder
-slots — the outgoing one is released, not paused, on a mode switch, and both are
-released in `onDestroy`.
+**Reconnect is a self-healing `DataSource`, not a load-error policy.** `LiveStreamDataSource`
+sits under the extractor and reopens the URL at the live edge on any read error or EOF,
+retrying once immediately then on a calm 5 s cadence, and keeps returning bytes across the
+reconnect. Because it never throws and never signals end-of-input while open, the player's
+loader never errors, so the timeshift buffer already accumulated is kept rather than dumped.
+This replaced a `LoadErrorHandlingPolicy` plus `onPlayerError` re-prepare: on a live stream
+that resume path was fatal, because `ProgressiveMediaSource` resumes at a byte offset and a
+live server ignores the range and sends the live edge, splicing live bytes at the wrong
+offset and wedging the playhead — and a re-prepare tears down the buffer besides. The
+source also de-interleaves ICY itself: the framing is stateful (`icy-metaint`) and a
+reconnect restarts it, so a reconnecting source below the player's own de-interleaver would
+desync its counter. It strips the metadata blocks, reports `StreamTitle` through a callback,
+and hides `icy-metaint` from its response headers so the player does not de-interleave twice.
+Only the `active` controller holds native decoder slots — the outgoing one is released, not
+paused, on a mode switch, and both are released in `onDestroy`.
 
 **User stations live in a file, not the database.** `user_stations.json` in
 `filesDir`, because `metadata.db` is dropped and recreated on any schema change

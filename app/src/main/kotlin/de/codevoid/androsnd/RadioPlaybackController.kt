@@ -5,19 +5,14 @@ import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
-import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 import de.codevoid.androsnd.model.SongMetadata
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -36,12 +31,14 @@ import kotlinx.coroutines.launch
  *    ride through a tunnel. [bufferedMs] reports how far ahead the buffer currently reaches
  *    so the shell can show a fill gauge. If the offline stretch outlasts the buffer, the
  *    stream jumps forward on reconnect rather than staying silent.
- *  - **Gentle reconnect.** [GentleReconnectPolicy] retries a load once immediately, then
- *    every 5s, effectively forever, so a jittery link is not hammered. [onPlayerError]
- *    re-prepares after 5s to cover errors that bypass the load policy.
+ *  - **Self-healing source.** [LiveStreamDataSource] reconnects at the live edge inside the
+ *    data source, invisibly to the player, so a network change does not error the loader and
+ *    the timeshift buffer survives it. It replaces a load-error/re-prepare scheme that tore
+ *    the buffer down and could wedge on a live stream's non-seekable resume.
  *
- * There is no tag/art enrichment: now-playing text comes from the stream's ICY metadata
- * ([onMediaMetadataChanged]); art is a generic station icon supplied by the shell.
+ * There is no tag/art enrichment: now-playing text comes from the stream's ICY metadata,
+ * de-interleaved by [LiveStreamDataSource] and delivered through [onIcyTitle]; art is a
+ * generic station icon supplied by the shell.
  */
 @OptIn(UnstableApi::class)
 class RadioPlaybackController(private val service: MusicService) : PlaybackController {
@@ -58,9 +55,6 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     val radioManager = RadioManager(service)
 
     private var player: ExoPlayer? = null
-    // "The user wants sound." Kept across a stream error so the reconnect knows whether
-    // to resume playing once it re-prepares.
-    private var wantPlayback = false
 
     override var isPlaying: Boolean = false
         private set
@@ -91,7 +85,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
 
     override fun play() {
         val station = radioManager.getCurrentSong() ?: return
-        wantPlayback = true
+        if (currentText == null) currentText = stationText(station)
         service.requestAudioFocus()
         val p = ensurePlayer()
         if (p.currentMediaItem == null) {
@@ -107,14 +101,12 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     }
 
     override fun pause() {
-        wantPlayback = false
         // Do not clear playWhenReady's loading: ExoPlayer keeps filling the buffer while
         // paused, which is the timeshift window the user is hoarding. The tick stays running.
         player?.playWhenReady = false
     }
 
     override fun stop() {
-        wantPlayback = false
         currentText = null
         service.stopProgressUpdates()
         // Release rather than merely stop: a stopped ExoPlayer still holds a native
@@ -188,8 +180,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     }
 
     private fun switchTo(station: Song) {
-        wantPlayback = true
-        currentText = null
+        currentText = stationText(station)
         service.requestAudioFocus()
         val p = ensurePlayer()
         p.setMediaItem(MediaItem.fromUri(station.uri))
@@ -223,8 +214,10 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
-        val sourceFactory = DefaultMediaSourceFactory(service)
-            .setLoadErrorHandlingPolicy(GentleReconnectPolicy())
+        val dataSourceFactory = LiveStreamDataSource.Factory { title ->
+            service.serviceScope.launch { onIcyTitle(title) }
+        }
+        val sourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
         return ExoPlayer.Builder(service)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(sourceFactory)
@@ -247,42 +240,25 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
             if (playing) service.startForegroundNotification() else service.updateNotification()
             service.broadcastState()
         }
-
-        override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
-            val icy = mediaMetadata.title?.toString()?.trim()
-            val station = radioManager.getCurrentSong()?.displayName ?: ""
-            val next = if (!icy.isNullOrEmpty()) {
-                SongMetadata(title = icy, artist = station, album = "", duration = 0L)
-            } else {
-                SongMetadata(title = station, artist = "", album = "", duration = 0L)
-            }
-            // A live stream re-sends the same ICY title on a timer; only refresh the
-            // session, notification and UI when the text actually changes.
-            if (next == currentText) return
-            currentText = next
-            service.updateMediaSessionMetadata()
-            service.updateNotification()
-            service.broadcastState()
-        }
-
-        override fun onPlayerError(error: PlaybackException) {
-            // The load policy retries transient source errors transparently; this only
-            // fires for errors that reached the player. Re-prepare after a calm delay
-            // rather than tight-looping.
-            service.serviceScope.launch {
-                delay(5000)
-                val p = player ?: return@launch
-                p.prepare()
-                if (wantPlayback) p.playWhenReady = true
-            }
-        }
     }
 
-    @UnstableApi
-    private class GentleReconnectPolicy : DefaultLoadErrorHandlingPolicy() {
-        override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long =
-            if (loadErrorInfo.errorCount <= 1) 0L else 5000L
+    private fun stationText(station: Song): SongMetadata =
+        SongMetadata(title = station.displayName, artist = "", album = "", duration = 0L)
 
-        override fun getMinimumLoadableRetryCount(dataType: Int): Int = Int.MAX_VALUE
+    // Called on the main thread with each StreamTitle de-interleaved by LiveStreamDataSource.
+    // A live stream re-sends the same title on a timer, and an empty title falls back to the
+    // station name, so only refresh the session, notification and UI when the text changes.
+    private fun onIcyTitle(icy: String) {
+        val station = radioManager.getCurrentSong() ?: return
+        val next = if (icy.isNotEmpty()) {
+            SongMetadata(title = icy, artist = station.displayName, album = "", duration = 0L)
+        } else {
+            stationText(station)
+        }
+        if (next == currentText) return
+        currentText = next
+        service.updateMediaSessionMetadata()
+        service.updateNotification()
+        service.broadcastState()
     }
 }
