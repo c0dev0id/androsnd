@@ -26,6 +26,8 @@ interface PlaybackController {
     val positionMs: Int
     val durationMs: Int
     val canSeek: Boolean
+    /** Audio buffered ahead of the playhead, in ms. Files: 0 (nothing to gauge). */
+    val bufferedMs: Int
 
     /** This subsystem's library, bound by the right pane and folder browser. */
     val songs: List<Song>

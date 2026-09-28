@@ -1,6 +1,5 @@
 package de.codevoid.androsnd
 
-import android.content.Context
 import android.graphics.Bitmap
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
@@ -29,14 +28,14 @@ import kotlinx.coroutines.launch
  *
  * Two policies shape the streaming feel and are deliberate, not defaults:
  *
- *  - **Prebuffer.** The user's `radio_buffer_seconds` sizes only the retention window
- *    (`minBufferMs`/`maxBufferMs`) — how much audio the player holds ahead of the
- *    playhead to ride through a dropout. The playback/rebuffer gates stay at the small
- *    defaults, so start-up and post-drop resume are fast regardless of the setting. A
- *    live stream can only be fed as far ahead as the server's initial burst — after
- *    that it arrives at the encode rate — so real ride-through is capped by that burst,
- *    not by this number. The value is fixed at construction, so a change rebuilds the
- *    player.
+ *  - **Timeshift buffer.** `maxBufferMs` is fixed at [MAX_BUFFER_MS] (20 minutes) so the
+ *    player may hoard far ahead of the playhead. The playback/rebuffer gates stay at the
+ *    small defaults, so start-up and post-drop resume are fast: the server's initial burst
+ *    covers them instantly. The point is [pause] — while paused the player keeps loading
+ *    and consumes nothing, so the buffer grows in real time toward the cap and can then
+ *    ride through a tunnel. [bufferedMs] reports how far ahead the buffer currently reaches
+ *    so the shell can show a fill gauge. If the offline stretch outlasts the buffer, the
+ *    stream jumps forward on reconnect rather than staying silent.
  *  - **Gentle reconnect.** [GentleReconnectPolicy] retries a load once immediately, then
  *    every 5s, effectively forever, so a jittery link is not hammered. [onPlayerError]
  *    re-prepares after 5s to cover errors that bypass the load policy.
@@ -48,8 +47,12 @@ import kotlinx.coroutines.launch
 class RadioPlaybackController(private val service: MusicService) : PlaybackController {
 
     companion object {
-        const val KEY_BUFFER_SECONDS = "radio_buffer_seconds"
-        const val DEFAULT_BUFFER_SECONDS = 5
+        // The retention window the player is allowed to hold ahead of the playhead. It is
+        // deliberately huge: while paused the player keeps loading and consumes nothing, so
+        // the buffer grows in real time up to this cap — a client-side timeshift for riding
+        // through a tunnel. 20 minutes is a ceiling, not an expectation; a live stream only
+        // fills this fast while paused and only as long as the server keeps feeding.
+        const val MAX_BUFFER_MS = 20 * 60 * 1000
     }
 
     val radioManager = RadioManager(service)
@@ -70,6 +73,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     override val positionMs: Int = 0
     override val durationMs: Int = 0
     override val canSeek: Boolean = false
+    override val bufferedMs: Int get() = player?.totalBufferedDuration?.toInt() ?: 0
 
     override val songs: List<Song> get() = radioManager.songs
     override val folders: List<PlaylistFolder> get() = radioManager.folders
@@ -194,22 +198,21 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     private fun ensurePlayer(): ExoPlayer = player ?: buildPlayer().also { player = it }
 
     private fun buildPlayer(): ExoPlayer {
-        val bufferMs = bufferSeconds() * 1000
         val loadControl = DefaultLoadControl.Builder()
-            // min/max size the retention window: hold up to the user's buffer-seconds of
-            // audio, so a dropout rides through as long as the server actually fed us that
-            // much ahead. A live stream trickles at the encode rate after its initial
-            // burst, so occupancy is really capped by that burst, not by this number.
-            // The playback/rebuffer gates stay at the small defaults: they decide how much
-            // must be buffered before playback starts or resumes, and the burst covers them
-            // instantly — tying them to buffer-seconds is what made a large value stall on
-            // tune-in while the buffer trickled up to the gate.
+            // min/max size the retention window. max is set to MAX_BUFFER_MS so the player
+            // may hoard up to 20 minutes ahead of the playhead; while paused it keeps loading
+            // and consumes nothing, so the buffer grows in real time toward that cap. The
+            // playback/rebuffer gates stay at the small defaults, so start-up and post-drop
+            // resume are fast regardless: the server's initial burst covers them instantly.
+            // prioritizeTimeOverSizeThresholds makes the time cap govern rather than a byte
+            // estimate, which otherwise stops loading long before 20 minutes of audio.
             .setBufferDurationsMs(
-                bufferMs,
-                maxOf(bufferMs, DefaultLoadControl.DEFAULT_MAX_BUFFER_MS),
+                DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+                MAX_BUFFER_MS,
                 DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
                 DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
             )
+            .setPrioritizeTimeOverSizeThresholds(true)
             .build()
         val sourceFactory = DefaultMediaSourceFactory(service)
             .setLoadErrorHandlingPolicy(GentleReconnectPolicy())
@@ -227,10 +230,6 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
             .build()
             .apply { addListener(playerListener) }
     }
-
-    private fun bufferSeconds(): Int =
-        service.getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-            .getInt(KEY_BUFFER_SECONDS, DEFAULT_BUFFER_SECONDS)
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(playing: Boolean) {

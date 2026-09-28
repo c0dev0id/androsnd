@@ -52,6 +52,7 @@ class FilePlaybackController(private val service: MusicService) : PlaybackContro
     override val positionMs: Int get() = mediaPlayer?.currentPosition ?: 0
     override val durationMs: Int get() = mediaPlayer?.duration ?: 0
     override val canSeek: Boolean get() = true
+    override val bufferedMs: Int get() = 0
 
     override val songs: List<Song> get() = playlistManager.songs
     override val folders: List<PlaylistFolder> get() = playlistManager.folders
