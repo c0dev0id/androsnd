@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   station's broadcast title when the stream provides one.
 - Add your own stream in Settings: enter a name and an http(s) URL under Internet
   Radio to add it to the User group.
+- Radio station groups show a bundled logo where one ships with the app. The logo
+  appears on the folder grid, the now-playing panel, the media notification, and in
+  Android Auto. Groups without a bundled logo, including your own added streams, show
+  the generic station icon.
 - Radio buffers ahead for offline stretches. Pausing a station keeps the stream
   downloading instead of stopping it, so the buffer grows in real time (up to 20 minutes)
   while playback is paused. Start a station, pause it to build up a reserve, and it can

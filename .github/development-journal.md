@@ -160,6 +160,21 @@ and hides `icy-metaint` from its response headers so the player does not de-inte
 Only the `active` controller holds native decoder slots — the outgoing one is released, not
 paused, on a mode switch, and both are released in `onDestroy`.
 
+**Group logos reuse the folder-art path, not a new art channel.** A bundled per-group
+logo is a `logo_<slug>` drawable (group name lowercased, non-alphanumeric runs collapsed
+to `_`, ends trimmed — `RadioPlaybackController.logoSlug`, resolved with
+`Resources.getIdentifier`). On `RadioPlaybackController.load()` each group's logo is
+rendered once into `artFileForFolder("/radio/<group>")` — the same file every cover reader
+already decodes — so the grid, now-playing panel, notification and Auto need no
+radio-specific art code. `MetadataRepository.cacheDrawableArt` writes it, skipping a folder
+whose art already exists (matching `enrichArt`), then a `BROADCAST_ART_UPDATED` per written
+folder refreshes the UI. The notification/session large icon reads
+`RadioPlaybackController.currentArt`, backed by `publishFolderArt` — a file-only extract of
+`loadCurrentArt`'s cover branch that never opens a `MediaMetadataRetriever`, because the
+radio `Song.uri` is a live stream and a retriever on it would hit the network. A group with
+no matching drawable (including user-added streams) writes nothing and falls back to the
+generic station icon.
+
 **User stations live in a file, not the database.** `user_stations.json` in
 `filesDir`, because `metadata.db` is dropped and recreated on any schema change
 (the pre-1.0 policy) and user-authored data must survive that. The radio cursor

@@ -890,10 +890,11 @@ class MainActivity : AppCompatActivity() {
                 songArtist.text = ""
                 songAlbum.text = ""
             }
-            // Radio has no per-folder art; show the generic station icon rather than
-            // dispatching an art lookup that would never resolve.
-            if (isRadio) coverArt.setImageResource(R.drawable.ic_radio_station)
-            else updateNowPlayingArt(song.folderPath)
+            // Radio art is a bundled group logo materialised into the same folder-art file
+            // as file covers; a group without a logo falls back to the generic station icon.
+            val fallback = if (isRadio) R.drawable.ic_radio_station
+                           else android.R.drawable.ic_media_play
+            updateNowPlayingArt(song.folderPath, fallback)
         } else {
             songTitle.text = getString(R.string.no_song)
             songArtist.text = ""
@@ -925,7 +926,10 @@ class MainActivity : AppCompatActivity() {
         scrollToCurrentSongIfPending()
     }
 
-    private fun updateNowPlayingArt(folderPath: String) {
+    private fun updateNowPlayingArt(
+        folderPath: String,
+        fallbackRes: Int = android.R.drawable.ic_media_play
+    ) {
         activityScope.launch {
             val bmp = withContext(Dispatchers.IO) {
                 musicService?.metadataRepository?.artFileForFolder(folderPath)
@@ -933,7 +937,7 @@ class MainActivity : AppCompatActivity() {
                     ?.let { BitmapFactory.decodeFile(it.absolutePath) }
             }
             if (bmp != null) coverArt.setImageBitmap(bmp)
-            else coverArt.setImageResource(android.R.drawable.ic_media_play)
+            else coverArt.setImageResource(fallbackRes)
         }
     }
 

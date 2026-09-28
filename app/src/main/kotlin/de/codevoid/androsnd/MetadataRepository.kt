@@ -3,6 +3,9 @@ package de.codevoid.androsnd
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.media.MediaMetadataRetriever
 import android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM
 import android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST
@@ -51,14 +54,7 @@ class MetadataRepository(private val context: Context) {
         db.get(song.uri.toString(), song.lastModified) ?: enrichText(song)
 
     internal suspend fun loadCurrentArt(song: Song): Bitmap? {
-        val folderArtFile = artFileForFolder(song.folderPath)
-        if (folderArtFile.exists()) {
-            val bmp = BitmapFactory.decodeFile(folderArtFile.absolutePath) ?: return null
-            val scaled = scaleBitmapForSession(bmp)
-            saveToFile(scaled, currentArtFile(), notifyChange = true)
-            if (scaled !== bmp) bmp.recycle()
-            return scaled
-        }
+        publishFolderArt(song.folderPath)?.let { return it }
         return retrieverSem.withPermit {
             val retriever = MediaMetadataRetriever()
             try {
@@ -219,5 +215,40 @@ class MetadataRepository(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to save bitmap to ${file.name}", e)
         }
+    }
+
+    // File-only path to the session current-art file: decode a folder's cached cover,
+    // scale it for the session, and publish it. Unlike loadCurrentArt this never opens a
+    // retriever, so it is safe for radio, whose URI is a live stream and whose folder art
+    // is a bundled logo.
+    fun publishFolderArt(folderPath: String): Bitmap? {
+        val file = artFileForFolder(folderPath)
+        if (!file.exists()) return null
+        val bmp = BitmapFactory.decodeFile(file.absolutePath) ?: return null
+        val scaled = scaleBitmapForSession(bmp)
+        saveToFile(scaled, currentArtFile(), notifyChange = true)
+        if (scaled !== bmp) bmp.recycle()
+        return scaled
+    }
+
+    // Materialises a bundled drawable into a folder's art file so every cover reader picks
+    // it up unchanged. Skips a folder that already has art, matching enrichArt's cache-once
+    // behaviour. Returns true when it wrote the file.
+    fun cacheDrawableArt(folderPath: String, resId: Int): Boolean {
+        val file = artFileForFolder(folderPath)
+        if (file.exists()) return false
+        val drawable = context.getDrawable(resId) ?: return false
+        saveToFile(drawableToBitmap(drawable), file, notifyChange = true)
+        return true
+    }
+
+    private fun drawableToBitmap(drawable: Drawable): Bitmap {
+        if (drawable is BitmapDrawable) drawable.bitmap?.let { return it }
+        val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 512
+        val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 512
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        drawable.setBounds(0, 0, width, height)
+        drawable.draw(Canvas(bitmap))
+        return bitmap
     }
 }

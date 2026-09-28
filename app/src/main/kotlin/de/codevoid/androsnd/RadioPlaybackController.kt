@@ -1,5 +1,6 @@
 package de.codevoid.androsnd
 
+import android.content.Intent
 import android.graphics.Bitmap
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
@@ -13,7 +14,9 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 import de.codevoid.androsnd.model.SongMetadata
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The internet-radio subsystem: an [ExoPlayer] streaming the station whose [Song.uri]
@@ -50,11 +53,22 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
         // through a tunnel. 20 minutes is a ceiling, not an expectation; a live stream only
         // fills this fast while paused and only as long as the server keeps feeding.
         const val MAX_BUFFER_MS = 20 * 60 * 1000
+
+        // A group's bundled logo drawable is named `logo_<slug>`: the group name lowercased,
+        // every run of non-alphanumeric characters collapsed to one underscore, ends trimmed.
+        // "Radio RPR1" -> "radio_rpr1", "SomaFM" -> "somafm".
+        fun logoSlug(groupName: String): String =
+            groupName.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
     }
 
     val radioManager = RadioManager(service)
 
     private var player: ExoPlayer? = null
+
+    // The current station's bundled group logo, materialised into the folder-art cache and
+    // decoded here for the notification/session large icon. null falls back to the shell's
+    // generic station icon (and for a user group with no bundled logo).
+    private var currentArtBitmap: Bitmap? = null
 
     override var isPlaying: Boolean = false
         private set
@@ -63,7 +77,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     override val isScanning: Boolean = false
     override var currentText: SongMetadata? = null
         private set
-    override val currentArt: Bitmap? get() = null
+    override val currentArt: Bitmap? get() = currentArtBitmap
     override val positionMs: Int = 0
     override val durationMs: Int = 0
     override val canSeek: Boolean = false
@@ -81,11 +95,58 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     /** Rebuilds the station library. Call when this controller becomes active. */
     fun load() {
         radioManager.load()
+        materializeLogos()
+    }
+
+    // Renders each group's bundled logo (a `logo_<slug>` drawable, keyed by group name)
+    // into the folder-art cache so the grid, now-playing panel, notification and Auto pick
+    // it up through the same artFileForFolder path as file covers. Runs off the main thread
+    // because load() is called on it; a group with no matching drawable is left to the
+    // generic icon fallback.
+    private fun materializeLogos() {
+        val folders = radioManager.folders.toList()
+        service.serviceScope.launch {
+            val written = withContext(Dispatchers.IO) {
+                folders.mapNotNull { folder ->
+                    val resId = logoResId(folder.name)
+                    if (resId != 0 && service.metadataRepository.cacheDrawableArt(folder.path, resId))
+                        folder.path
+                    else null
+                }
+            }
+            for (path in written) {
+                service.broadcastManager.sendBroadcast(
+                    Intent(MusicService.BROADCAST_ART_UPDATED)
+                        .putExtra(MusicService.EXTRA_ART_FOLDER_PATH, path))
+            }
+            refreshCurrentArt()
+        }
+    }
+
+    private fun logoResId(groupName: String): Int {
+        val slug = logoSlug(groupName)
+        if (slug.isEmpty()) return 0
+        return service.resources.getIdentifier("logo_$slug", "drawable", service.packageName)
+    }
+
+    // Decodes the current station's cached logo for the notification/session large icon and
+    // publishes it as the current-art file. File-only (publishFolderArt opens no retriever),
+    // so it never touches the live stream URI.
+    private fun refreshCurrentArt() {
+        val station = radioManager.getCurrentSong() ?: return
+        service.serviceScope.launch {
+            currentArtBitmap = withContext(Dispatchers.IO) {
+                service.metadataRepository.publishFolderArt(station.folderPath)
+            }
+            service.updateMediaSessionMetadata()
+            service.updateNotification()
+        }
     }
 
     override fun play() {
         val station = radioManager.getCurrentSong() ?: return
         if (currentText == null) currentText = stationText(station)
+        if (currentArtBitmap == null) refreshCurrentArt()
         service.requestAudioFocus()
         val p = ensurePlayer()
         if (p.currentMediaItem == null) {
@@ -108,6 +169,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
 
     override fun stop() {
         currentText = null
+        currentArtBitmap = null
         service.stopProgressUpdates()
         // Release rather than merely stop: a stopped ExoPlayer still holds a native
         // decoder slot, and stop() is also how a mode switch frees this subsystem so the
@@ -171,6 +233,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
         player?.release()
         player = null
         currentText = null
+        currentArtBitmap = null
         isPlaying = false
     }
 
@@ -181,6 +244,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
 
     private fun switchTo(station: Song) {
         currentText = stationText(station)
+        refreshCurrentArt()
         service.requestAudioFocus()
         val p = ensurePlayer()
         p.setMediaItem(MediaItem.fromUri(station.uri))
