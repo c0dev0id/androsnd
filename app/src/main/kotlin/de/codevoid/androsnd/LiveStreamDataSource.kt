@@ -50,10 +50,12 @@ class LiveStreamDataSource(
     @Volatile private var closed = false
     private var uri: Uri? = null
 
-    // ICY de-interleave state. metaint is the audio-byte interval between metadata blocks
-    // (0 = the server sent none); bytesUntilMeta counts down to the next block.
+    // ICY de-interleave state, touched only on the loader thread (in read()). metaint is the
+    // audio-byte interval between metadata blocks (0 = the server sent none); bytesUntilMeta
+    // counts down to the next block. metaLenByte is the reusable 1-byte block-length scratch.
     private var metaint = 0
     private var bytesUntilMeta = 0
+    private val metaLenByte = ByteArray(1)
 
     override fun addTransferListener(transferListener: TransferListener) {
         transferListeners.add(transferListener)
@@ -85,37 +87,50 @@ class LiveStreamDataSource(
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (length == 0) return 0
-        if (closed) return C.RESULT_END_OF_INPUT
-        while (true) {
+        var reconnectAttempts = 0
+        while (!closed) {
             try {
-                val src = inner ?: throw IOException("stream closed")
-                if (metaint <= 0) {
-                    val n = src.read(buffer, offset, length)
-                    if (n != C.RESULT_END_OF_INPUT) return n
-                } else {
-                    if (bytesUntilMeta == 0) readMetadataBlock()
-                    val n = src.read(buffer, offset, minOf(length, bytesUntilMeta))
-                    if (n != C.RESULT_END_OF_INPUT) {
-                        bytesUntilMeta -= n
-                        return n
+                val src = inner
+                if (src != null) {
+                    if (metaint <= 0) {
+                        val n = src.read(buffer, offset, length)
+                        if (n != C.RESULT_END_OF_INPUT) return n
+                    } else {
+                        if (bytesUntilMeta == 0) readMetadataBlock()
+                        val n = src.read(buffer, offset, minOf(length, bytesUntilMeta))
+                        if (n != C.RESULT_END_OF_INPUT) {
+                            bytesUntilMeta -= n
+                            return n
+                        }
                     }
                 }
             } catch (e: IOException) {
-                if (closed) return C.RESULT_END_OF_INPUT
+                // A dropout, or a close racing this read; fall through to back off and reopen.
             }
-            reconnect()
-            if (closed) return C.RESULT_END_OF_INPUT
+            // The source errored, ended, or is not open. A live drop is not a track end, so
+            // reopen at the live edge. Back off first — one quick retry, then a calm cadence —
+            // so neither a failing reopen nor a server that accepts a connection and instantly
+            // closes it can spin this loop hot.
+            sleepInterruptible(if (reconnectAttempts == 0) IMMEDIATE_RETRY_MS else RETRY_CADENCE_MS)
+            reconnectAttempts++
+            if (closed) break
+            closeInnerQuietly()
+            try {
+                openInner()
+            } catch (e: IOException) {
+                // Reopen failed; the loop backs off and tries again.
+            }
         }
+        return C.RESULT_END_OF_INPUT
     }
 
     private fun readMetadataBlock() {
-        val lenByte = ByteArray(1)
-        readFully(lenByte, 1)
+        readFully(metaLenByte, 1)
         // Reset the counter before reading the block: if the block read fails mid-way the
         // reconnect resets it again anyway, and this keeps the audio path aligned when the
         // block is empty (the common case).
         bytesUntilMeta = metaint
-        val size = (lenByte[0].toInt() and 0xFF) * 16
+        val size = (metaLenByte[0].toInt() and 0xFF) * 16
         if (size == 0) return
         val block = ByteArray(size)
         readFully(block, size)
@@ -133,28 +148,13 @@ class LiveStreamDataSource(
         }
     }
 
-    // Retries forever until it reconnects or the source is closed: one quick retry, then a
-    // calm cadence so a dead link is not hammered.
-    private fun reconnect() {
-        closeInnerQuietly()
-        var attempt = 0
-        while (!closed) {
-            try {
-                openInner()
-                return
-            } catch (e: IOException) {
-                attempt++
-                sleepInterruptible(if (attempt <= 1) IMMEDIATE_RETRY_MS else RETRY_CADENCE_MS)
-            }
-        }
-    }
-
     private fun sleepInterruptible(ms: Long) {
         val end = System.currentTimeMillis() + ms
         while (!closed && System.currentTimeMillis() < end) {
             try {
                 Thread.sleep(100)
             } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
                 return
             }
         }
@@ -162,7 +162,10 @@ class LiveStreamDataSource(
 
     override fun getUri(): Uri? = uri
 
-    // Hide icy-metaint so ExoPlayer does not de-interleave a stream this source already has.
+    // Report no headers so the player's ICY path stays out entirely: without icy-metaint it
+    // does not de-interleave a stream this source already de-interleaves, and without the
+    // other icy-* headers it does not publish its own station-name metadata that would fight
+    // the titles delivered through onStreamTitle.
     override fun getResponseHeaders(): Map<String, List<String>> = emptyMap()
 
     override fun close() {
