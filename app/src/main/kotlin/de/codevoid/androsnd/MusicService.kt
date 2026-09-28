@@ -28,6 +28,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media.app.NotificationCompat.MediaStyle
+import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 import de.codevoid.androsnd.model.SongMetadata
 import kotlinx.coroutines.CoroutineScope
@@ -82,6 +83,9 @@ class MusicService : MediaBrowserServiceCompat() {
 
         private const val PREFS_NAME = "androsnd_prefs"
         private const val KEY_APP_VOLUME = "app_volume"
+        private const val KEY_PLAYER_MODE = "player_mode"
+        const val MODE_FILE = "file"
+        const val MODE_RADIO = "radio"
         private const val SKIP_DURATION_MS = 10000
 
         private const val MEDIA_ROOT_ID = "androsnd_root"
@@ -100,12 +104,40 @@ class MusicService : MediaBrowserServiceCompat() {
     private val binder = MusicBinder()
 
     private lateinit var fileController: FilePlaybackController
+    private lateinit var radioController: RadioPlaybackController
     private lateinit var active: PlaybackController
+
+    // The file library scan is kicked off lazily — at startup if that is the saved mode,
+    // otherwise the first time the user toggles into file mode.
+    private var fileLibraryLoaded = false
 
     // File-specific reach kept for MainActivity and the adapters. Both come from the
     // file controller; the radio subsystem does not use them.
     val playlistManager: PlaylistManager get() = fileController.playlistManager
     val metadataRepository: MetadataRepository get() = fileController.metadataRepository
+
+    fun isRadioMode(): Boolean = active === radioController
+
+    // The right pane and folder browser bind whichever library is active. The cursor
+    // reads route through the active controller so remote focus follows what plays.
+    val activeSongs: List<Song>
+        get() = if (isRadioMode()) radioController.radioManager.songs else playlistManager.songs
+    val activeFolders: List<PlaylistFolder>
+        get() = if (isRadioMode()) radioController.radioManager.folders else playlistManager.folders
+    val activeCurrentIndex: Int get() = active.currentIndex
+    fun activeCurrentSong(): Song? = active.currentSong
+    fun activeFolderIndexForSong(songIndex: Int): Int =
+        if (isRadioMode()) radioController.radioManager.getFolderIndexForSong(songIndex)
+        else playlistManager.getFolderIndexForSong(songIndex)
+
+    /** Adds a user radio stream to the station library and rebinds if radio is active. */
+    fun addRadioStation(name: String, url: String) {
+        radioController.radioManager.addStation(name, url)
+        if (isRadioMode()) {
+            updateMediaSessionMetadata()
+            broadcastState()
+        }
+    }
 
     internal val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -164,15 +196,47 @@ class MusicService : MediaBrowserServiceCompat() {
         broadcastManager = LocalBroadcastManager.getInstance(this)
         overlayToastManager = OverlayToastManager(this)
         fileController = FilePlaybackController(this)
-        active = fileController
+        radioController = RadioPlaybackController(this)
+        val savedMode = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_PLAYER_MODE, MODE_FILE)
+        active = if (savedMode == MODE_RADIO) radioController else fileController
 
         createNotificationChannel()
         initMediaSession()
 
-        val savedUri = playlistManager.loadSavedFolder()
-        if (savedUri != null) {
-            scanFolderAsync(savedUri)
+        // Populate only the active subsystem at startup; the other library loads lazily
+        // the first time the user toggles into it (see setPlayerMode).
+        if (active === radioController) {
+            radioController.load()
+        } else {
+            val savedUri = playlistManager.loadSavedFolder()
+            if (savedUri != null) scanFolderAsync(savedUri)
         }
+    }
+
+    /**
+     * Swaps the active subsystem. The outgoing one is stopped (which releases its player,
+     * freeing native decoder slots so the two do not compete) and the incoming one's
+     * library is loaded on first use. Does not autoplay — the user tunes in explicitly.
+     */
+    fun setPlayerMode(radio: Boolean) {
+        val target: PlaybackController = if (radio) radioController else fileController
+        if (target === active) return
+        active.stop()
+        active = target
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(KEY_PLAYER_MODE, if (radio) MODE_RADIO else MODE_FILE)
+            .apply()
+        if (radio) {
+            radioController.load()
+        } else if (!fileLibraryLoaded) {
+            playlistManager.loadSavedFolder()?.let { scanFolderAsync(it) }
+        }
+        publishShuffleMode()
+        updateMediaSessionMetadata()
+        updatePlaybackState()
+        updateNotification()
+        broadcastState()
     }
 
     private fun createNotificationChannel() {
@@ -207,17 +271,11 @@ class MusicService : MediaBrowserServiceCompat() {
                 override fun onRewind() { seekTo(maxOf(0, getPosition() - SKIP_DURATION_MS)) }
                 override fun onSetShuffleMode(shuffleMode: Int) {
                     val shouldShuffle = shuffleMode != PlaybackStateCompat.SHUFFLE_MODE_NONE
-                    if (playlistManager.isShuffleOn != shouldShuffle) {
-                        playlistManager.toggleShuffle()
-                    }
+                    // toggleShuffle() on the active controller republishes shuffle mode,
+                    // reselects the next queue song and (for files) rebuilds the queue.
+                    if (active.isShuffleOn != shouldShuffle) active.toggleShuffle()
                     this@MusicService.mediaSession.setShuffleMode(shuffleMode)
-                    playlistManager.selectNextQueueSong()
-                    serviceScope.launch {
-                        try { updateMediaSessionQueue() }
-                        catch (e: Exception) { Log.w(TAG, "Failed to update media session queue", e) }
-                    }
                     updatePlaybackState()
-                    broadcastState()
                 }
                 override fun onSkipToQueueItem(id: Long) { playSongAtIndex(id.toInt()) }
                 override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
@@ -253,7 +311,7 @@ class MusicService : MediaBrowserServiceCompat() {
     /** Mirrors the restored/toggled shuffle state onto the session. */
     internal fun publishShuffleMode() {
         mediaSession.setShuffleMode(
-            if (playlistManager.isShuffleOn) PlaybackStateCompat.SHUFFLE_MODE_ALL
+            if (active.isShuffleOn) PlaybackStateCompat.SHUFFLE_MODE_ALL
             else PlaybackStateCompat.SHUFFLE_MODE_NONE
         )
     }
@@ -410,7 +468,10 @@ class MusicService : MediaBrowserServiceCompat() {
 
     fun playSongAtIndex(index: Int) = active.playAt(index)
 
-    fun scanFolderAsync(uri: Uri) = fileController.scan(uri)
+    fun scanFolderAsync(uri: Uri) {
+        fileLibraryLoaded = true
+        fileController.scan(uri)
+    }
 
     internal fun requestAudioFocus() {
         audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
@@ -445,7 +506,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     internal fun updateMediaSessionMetadata() {
-        val song = playlistManager.getCurrentSong() ?: return
+        val song = active.currentSong ?: return
         val meta = active.currentText
         val title    = meta?.title    ?: song.displayName
         val artist   = meta?.artist   ?: ""
@@ -453,12 +514,12 @@ class MusicService : MediaBrowserServiceCompat() {
         val duration = meta?.duration ?: 0L
 
         val builder = MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, playlistManager.currentIndex.toString())
+            .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, active.currentIndex.toString())
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, album)
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-            .putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, playlistManager.songs.size.toLong())
+            .putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, active.songCount.toLong())
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, artist)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, album)
@@ -513,7 +574,7 @@ class MusicService : MediaBrowserServiceCompat() {
         }
         val playbackState = PlaybackStateCompat.Builder()
             .setState(state, position, speed)
-            .setActiveQueueItemId(playlistManager.currentIndex.toLong())
+            .setActiveQueueItemId(active.currentIndex.toLong())
             .setActions(actions)
             .build()
         mediaSession.setPlaybackState(playbackState)
@@ -605,7 +666,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     private fun buildNotification(): Notification {
-        val song = playlistManager.getCurrentSong()
+        val song = active.currentSong
         val contentTitle = active.currentText?.title ?: song?.displayName ?: getString(R.string.app_name)
 
         val playPauseAction = if (active.isPlaying) {
@@ -696,7 +757,8 @@ class MusicService : MediaBrowserServiceCompat() {
     override fun onDestroy() {
         super.onDestroy()
         stopProgressUpdates()
-        active.release()
+        fileController.release()
+        radioController.release()
         mediaSession.release()
         overlayToastManager.dismiss()
         audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }

@@ -61,6 +61,11 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     override val durationMs: Int = 0
     override val canSeek: Boolean = false
 
+    override val currentSong: Song? get() = radioManager.getCurrentSong()
+    override val currentIndex: Int get() = radioManager.currentIndex
+    override val songCount: Int get() = radioManager.songs.size
+    override val isShuffleOn: Boolean get() = radioManager.isShuffleOn
+
     /** Rebuilds the station library. Call when this controller becomes active. */
     fun load() {
         radioManager.load()
@@ -87,10 +92,11 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     override fun stop() {
         wantPlayback = false
         currentText = null
-        player?.let {
-            it.stop()
-            it.clearMediaItems()
-        }
+        // Release rather than merely stop: a stopped ExoPlayer still holds a native
+        // decoder slot, and stop() is also how a mode switch frees this subsystem so the
+        // other player is not competing for slots. play()/switchTo() rebuild on demand.
+        player?.release()
+        player = null
         isPlaying = false
         service.publishStoppedState()
         service.broadcastState()
@@ -112,6 +118,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
 
     override fun toggleShuffle() {
         radioManager.toggleShuffle()
+        service.publishShuffleMode()
         radioManager.selectNextQueueSong()
         service.broadcastState()
     }

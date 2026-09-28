@@ -54,6 +54,11 @@ class FilePlaybackController(private val service: MusicService) : PlaybackContro
     override val durationMs: Int get() = mediaPlayer?.duration ?: 0
     override val canSeek: Boolean get() = true
 
+    override val currentSong: Song? get() = playlistManager.getCurrentSong()
+    override val currentIndex: Int get() = playlistManager.currentIndex
+    override val songCount: Int get() = playlistManager.songs.size
+    override val isShuffleOn: Boolean get() = playlistManager.isShuffleOn
+
     // "The user asked for playback but it could not start yet." Only ever set while a
     // readiness event is pending, so it cannot be left standing with nothing to consume
     // it; whichever readiness point arrives first consumes it.

@@ -26,6 +26,14 @@ interface PlaybackController {
     val durationMs: Int
     val canSeek: Boolean
 
+    /** The entry the cursor sits on, for the session/notification fallback text. */
+    val currentSong: Song?
+    /** Cursor position, used as the MediaSession media id / active queue item. */
+    val currentIndex: Int
+    /** Size of this subsystem's library, for the session's track count. */
+    val songCount: Int
+    val isShuffleOn: Boolean
+
     fun play()
     fun pause()
     fun stop()
