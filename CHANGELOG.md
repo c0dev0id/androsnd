@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The update dialog shows the release notes of the version it found, so the changelog
+  from the GitHub release page is readable before choosing to download and install.
 - Internet radio. A new button on the far left of the control bar switches the app
   between the local music library and internet radio. Radio stations are grouped just
   like music folders, with a bundled set of groups and a "My Streams" group for your

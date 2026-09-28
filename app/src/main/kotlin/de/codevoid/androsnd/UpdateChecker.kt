@@ -17,7 +17,8 @@ class UpdateChecker(private val context: Context) {
         val tagName: String,
         val isPrerelease: Boolean,
         val apkDownloadUrl: String?,
-        val apkVersion: String?
+        val apkVersion: String?,
+        val body: String?
     )
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -90,8 +91,9 @@ class UpdateChecker(private val context: Context) {
 
                 val tagName = json.optString("tag_name", "")
                 val prerelease = json.optBoolean("prerelease", false)
+                val body = json.optString("body", "").trim().takeIf { it.isNotEmpty() }
                 val (apkUrl, apkVersion) = findApkAsset(json)
-                mainHandler.post { onResult(ReleaseInfo(tagName, prerelease, apkUrl, apkVersion)) }
+                mainHandler.post { onResult(ReleaseInfo(tagName, prerelease, apkUrl, apkVersion, body)) }
             } catch (e: Exception) {
                 mainHandler.post { onError(e.message ?: "Unknown error") }
             }

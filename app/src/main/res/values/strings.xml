@@ -41,6 +41,7 @@
     <string name="update_available_version">Available: %1$s</string>
     <string name="update_no_update">You are up to date.</string>
     <string name="update_available">A new version is available.</string>
+    <string name="update_release_notes">Release notes:</string>
     <string name="update_btn_update">Update</string>
     <string name="update_btn_cancel">Cancel</string>
     <string name="update_btn_close">Close</string>

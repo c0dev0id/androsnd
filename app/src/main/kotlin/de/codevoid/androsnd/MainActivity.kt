@@ -52,6 +52,7 @@ import com.google.android.material.slider.Slider
 import android.graphics.drawable.GradientDrawable
 import android.view.KeyEvent
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.view.Gravity
 import android.app.AlertDialog
 import android.app.DownloadManager
@@ -672,6 +673,35 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.update_available_version, availableVersion)
             textSize = 14f
         })
+
+        // The release description doubles as the changelog the user reads before updating.
+        // Height is capped at AT_MOST so a long changelog scrolls rather than pushing the
+        // dialog buttons off a short landscape screen; a short one still wraps to its size.
+        release.body?.let { notes ->
+            layout.addView(TextView(this).apply {
+                text = getString(R.string.update_release_notes)
+                textSize = 14f
+                val topPad = (12 * resources.displayMetrics.density).toInt()
+                setPadding(0, topPad, 0, 0)
+            })
+            val maxNotesHeight = (resources.displayMetrics.heightPixels * 0.4).toInt()
+            val scroll = object : ScrollView(this) {
+                override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+                    super.onMeasure(
+                        widthSpec,
+                        MeasureSpec.makeMeasureSpec(maxNotesHeight, MeasureSpec.AT_MOST)
+                    )
+                }
+            }
+            scroll.addView(TextView(this).apply {
+                text = notes
+                textSize = 13f
+                setTextColor(currentTextColor())
+                val topPad = (4 * resources.displayMetrics.density).toInt()
+                setPadding(0, topPad, 0, 0)
+            })
+            layout.addView(scroll)
+        }
 
         val builder = AlertDialog.Builder(this)
             .setTitle(R.string.update_dialog_title)
