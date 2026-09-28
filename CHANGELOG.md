@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The radio timeshift buffer can now hoard up to one hour of audio while paused,
+  up from 20 minutes. Ride to a break, hit pause to let the buffer fill during it,
+  and resume — a break that runs longer than 20 minutes but under an hour is covered.
+
 ### Fixed
 
 ## [0.1.0]

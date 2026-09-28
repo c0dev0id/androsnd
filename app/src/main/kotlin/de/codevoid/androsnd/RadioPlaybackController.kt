@@ -26,7 +26,7 @@ import kotlinx.coroutines.withContext
  *
  * Two policies shape the streaming feel and are deliberate, not defaults:
  *
- *  - **Timeshift buffer.** `maxBufferMs` is fixed at [MAX_BUFFER_MS] (20 minutes) so the
+ *  - **Timeshift buffer.** `maxBufferMs` is fixed at [MAX_BUFFER_MS] (one hour) so the
  *    player may hoard far ahead of the playhead. The playback/rebuffer gates stay at the
  *    small defaults, so start-up and post-drop resume are fast: the server's initial burst
  *    covers them instantly. The point is [pause] — while paused the player keeps loading
@@ -50,9 +50,10 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
         // The retention window the player is allowed to hold ahead of the playhead. It is
         // deliberately huge: while paused the player keeps loading and consumes nothing, so
         // the buffer grows in real time up to this cap — a client-side timeshift for riding
-        // through a tunnel. 20 minutes is a ceiling, not an expectation; a live stream only
-        // fills this fast while paused and only as long as the server keeps feeding.
-        const val MAX_BUFFER_MS = 20 * 60 * 1000
+        // through a break. One hour is a ceiling, not an expectation; a live stream only
+        // fills this fast while paused and only as long as the server keeps feeding. At a
+        // typical 128 kbps this caps the in-memory audio at roughly 55 MB.
+        const val MAX_BUFFER_MS = 60 * 60 * 1000
 
         // A group's bundled logo drawable is named `logo_<slug>`: the group name lowercased,
         // every run of non-alphanumeric characters collapsed to one underscore, ends trimmed.
@@ -277,12 +278,12 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     private fun buildPlayer(): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             // min/max size the retention window. max is set to MAX_BUFFER_MS so the player
-            // may hoard up to 20 minutes ahead of the playhead; while paused it keeps loading
+            // may hoard up to an hour ahead of the playhead; while paused it keeps loading
             // and consumes nothing, so the buffer grows in real time toward that cap. The
             // playback/rebuffer gates stay at the small defaults, so start-up and post-drop
             // resume are fast regardless: the server's initial burst covers them instantly.
             // prioritizeTimeOverSizeThresholds makes the time cap govern rather than a byte
-            // estimate, which otherwise stops loading long before 20 minutes of audio.
+            // estimate, which otherwise stops loading long before an hour of audio.
             .setBufferDurationsMs(
                 DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
                 MAX_BUFFER_MS,
