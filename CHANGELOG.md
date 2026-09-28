@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Fixed
+
+## [v0.0.40]
+
+### Added
+
 - The library remembers which song was selected and restores it on the next start,
   scrolling straight to it instead of jumping back to the first track. The song
   starts from the beginning when you press Play — playback is not auto-resumed.
