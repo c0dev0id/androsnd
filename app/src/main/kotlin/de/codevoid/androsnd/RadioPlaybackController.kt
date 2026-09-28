@@ -67,8 +67,11 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
 
     // The current station's bundled group logo, materialised into the folder-art cache and
     // decoded here for the notification/session large icon. null falls back to the shell's
-    // generic station icon (and for a user group with no bundled logo).
+    // generic station icon (and for a user group with no bundled logo). currentArtFolderPath
+    // is the folder the bitmap was decoded for, so a refresh can skip re-decoding when the
+    // logo has not changed — stations in one group share a folder and thus a logo.
     private var currentArtBitmap: Bitmap? = null
+    private var currentArtFolderPath: String? = null
 
     override var isPlaying: Boolean = false
         private set
@@ -131,13 +134,19 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
 
     // Decodes the current station's cached logo for the notification/session large icon and
     // publishes it as the current-art file. File-only (publishFolderArt opens no retriever),
-    // so it never touches the live stream URI.
+    // so it never touches the live stream URI. Skips the decode when the logo is already
+    // loaded, and — because the decode is async — drops its result if the station changed
+    // while it ran, so a slow load cannot overwrite a newer station's art.
     private fun refreshCurrentArt() {
-        val station = radioManager.getCurrentSong() ?: return
+        val folderPath = radioManager.getCurrentSong()?.folderPath ?: return
+        if (folderPath == currentArtFolderPath && currentArtBitmap != null) return
         service.serviceScope.launch {
-            currentArtBitmap = withContext(Dispatchers.IO) {
-                service.metadataRepository.publishFolderArt(station.folderPath)
+            val bmp = withContext(Dispatchers.IO) {
+                service.metadataRepository.publishFolderArt(folderPath)
             }
+            if (radioManager.getCurrentSong()?.folderPath != folderPath) return@launch
+            currentArtBitmap = bmp
+            currentArtFolderPath = if (bmp != null) folderPath else null
             service.updateMediaSessionMetadata()
             service.updateNotification()
         }
@@ -146,7 +155,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     override fun play() {
         val station = radioManager.getCurrentSong() ?: return
         if (currentText == null) currentText = stationText(station)
-        if (currentArtBitmap == null) refreshCurrentArt()
+        refreshCurrentArt()
         service.requestAudioFocus()
         val p = ensurePlayer()
         if (p.currentMediaItem == null) {
@@ -170,6 +179,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     override fun stop() {
         currentText = null
         currentArtBitmap = null
+        currentArtFolderPath = null
         service.stopProgressUpdates()
         // Release rather than merely stop: a stopped ExoPlayer still holds a native
         // decoder slot, and stop() is also how a mode switch frees this subsystem so the
@@ -234,6 +244,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
         player = null
         currentText = null
         currentArtBitmap = null
+        currentArtFolderPath = null
         isPlaying = false
     }
 

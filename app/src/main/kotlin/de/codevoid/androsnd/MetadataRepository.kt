@@ -54,7 +54,9 @@ class MetadataRepository(private val context: Context) {
         db.get(song.uri.toString(), song.lastModified) ?: enrichText(song)
 
     internal suspend fun loadCurrentArt(song: Song): Bitmap? {
-        publishFolderArt(song.folderPath)?.let { return it }
+        // A present cover file is terminal — a decode failure returns null rather than
+        // falling through to open a retriever on a file that already exists.
+        if (artFileForFolder(song.folderPath).exists()) return publishFolderArt(song.folderPath)
         return retrieverSem.withPermit {
             val retriever = MediaMetadataRetriever()
             try {
@@ -221,7 +223,7 @@ class MetadataRepository(private val context: Context) {
     // scale it for the session, and publish it. Unlike loadCurrentArt this never opens a
     // retriever, so it is safe for radio, whose URI is a live stream and whose folder art
     // is a bundled logo.
-    fun publishFolderArt(folderPath: String): Bitmap? {
+    internal fun publishFolderArt(folderPath: String): Bitmap? {
         val file = artFileForFolder(folderPath)
         if (!file.exists()) return null
         val bmp = BitmapFactory.decodeFile(file.absolutePath) ?: return null
@@ -234,7 +236,7 @@ class MetadataRepository(private val context: Context) {
     // Materialises a bundled drawable into a folder's art file so every cover reader picks
     // it up unchanged. Skips a folder that already has art, matching enrichArt's cache-once
     // behaviour. Returns true when it wrote the file.
-    fun cacheDrawableArt(folderPath: String, resId: Int): Boolean {
+    internal fun cacheDrawableArt(folderPath: String, resId: Int): Boolean {
         val file = artFileForFolder(folderPath)
         if (file.exists()) return false
         val drawable = context.getDrawable(resId) ?: return false
@@ -243,6 +245,8 @@ class MetadataRepository(private val context: Context) {
     }
 
     private fun drawableToBitmap(drawable: Drawable): Bitmap {
+        // Returns the Resources-owned bitmap directly: the caller only compresses it and
+        // must not recycle it, since Resources caches and reuses this instance.
         if (drawable is BitmapDrawable) drawable.bitmap?.let { return it }
         val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 512
         val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 512
