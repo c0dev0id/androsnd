@@ -902,8 +902,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Radio is a live stream: no position or duration, so a countdown is meaningless.
+        // Show how much audio is buffered ahead instead — the timeshift reserve the user
+        // is building up while paused to ride through a tunnel.
         if (isRadio) {
-            timeRemainingView.text = getString(R.string.live_label)
+            val buffered = svc.getBufferedMs()
+            timeRemainingView.text = if (buffered >= 1000)
+                getString(R.string.live_buffered, formatTime(buffered))
+            else getString(R.string.live_label)
         } else {
             val pos = svc.getPosition()
             val dur = svc.getDuration()

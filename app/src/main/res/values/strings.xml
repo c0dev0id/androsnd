@@ -51,6 +51,7 @@
     <!-- Internet radio -->
     <string name="mode_toggle">Switch music / radio</string>
     <string name="live_label">LIVE</string>
+    <string name="live_buffered">LIVE · %1$s buffered</string>
     <string name="settings_radio_header">Internet Radio</string>
     <string name="settings_add_stream">Add web stream</string>
     <string name="hint_station_name">Station name</string>

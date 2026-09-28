@@ -100,16 +100,23 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
         }
         p.volume = service.getAppVolumeFloat()
         p.playWhenReady = true
+        // The buffer keeps filling while paused, so the fill gauge must keep ticking then
+        // too. Radio has no other periodic pulse, so drive the tick from here and leave it
+        // running through pause; only stop()/release() halt it.
+        service.startProgressUpdates()
     }
 
     override fun pause() {
         wantPlayback = false
+        // Do not clear playWhenReady's loading: ExoPlayer keeps filling the buffer while
+        // paused, which is the timeshift window the user is hoarding. The tick stays running.
         player?.playWhenReady = false
     }
 
     override fun stop() {
         wantPlayback = false
         currentText = null
+        service.stopProgressUpdates()
         // Release rather than merely stop: a stopped ExoPlayer still holds a native
         // decoder slot, and stop() is also how a mode switch frees this subsystem so the
         // other player is not competing for slots. play()/switchTo() rebuild on demand.
@@ -168,6 +175,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     }
 
     override fun release() {
+        service.stopProgressUpdates()
         player?.release()
         player = null
         currentText = null
@@ -188,6 +196,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
         p.prepare()
         p.volume = service.getAppVolumeFloat()
         p.playWhenReady = true
+        service.startProgressUpdates()
         radioManager.selectNextQueueSong()
         service.updateMediaSessionMetadata()
         service.updatePlaybackState()

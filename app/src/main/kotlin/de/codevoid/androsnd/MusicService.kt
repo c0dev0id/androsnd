@@ -750,6 +750,7 @@ class MusicService : MediaBrowserServiceCompat() {
 
     fun getPosition(): Int = active.positionMs
     fun getDuration(): Int = active.durationMs
+    fun getBufferedMs(): Int = active.bufferedMs
 
     override fun onDestroy() {
         super.onDestroy()
