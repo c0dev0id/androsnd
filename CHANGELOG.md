@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   started once from inside the app.
 - A media button pressed while the library is still being scanned is honoured
   once the scan finishes, instead of being ignored.
+- The folder browser could open without any folders although the library was
+  loaded: after the app screen had been rebuilt while music kept playing (for
+  example after closing the app from the recent-apps list and opening it again),
+  and after a start until all song details had loaded. It now lists the folders as
+  soon as the scan has found them.
 
 ### Notes
 

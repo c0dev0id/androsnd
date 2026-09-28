@@ -234,7 +234,6 @@ class MainActivity : AppCompatActivity() {
             lastKnownSongCount = pm.songs.size
             lastKnownPlaylistIndex = pm.currentIndex
             playlistAdapter.submitData(pm.folders, pm.songs, pm.currentIndex)
-            folderGridAdapter.submitData(pm.folders)
             updateUI()
         }
     }
@@ -840,6 +839,11 @@ class MainActivity : AppCompatActivity() {
         timeRemainingView.text = if (dur > 0) "-${formatTime(remaining)}" else ""
 
         updatePlaylist()
+        // Refreshed here, not only on BROADCAST_ENRICHMENT_COMPLETE: an Activity created
+        // after that broadcast (recreated, or reopened while the service kept playing)
+        // never receives it and would open an empty folder browser. Unlike the playlist,
+        // the grid does not wait for enrichment; covers arrive via BROADCAST_ART_UPDATED.
+        folderGridAdapter.submitData(pm.folders)
         scrollToCurrentSongIfPending()
     }
 
@@ -1419,11 +1423,17 @@ class MainActivity : AppCompatActivity() {
                 if (newPos >= 0 && newPos < itemCount) notifyItemChanged(newPos)
             }
 
+        /**
+         * Called on every UI refresh, so handing over the list it already holds must be
+         * a no-op — a rebind blanks every visible cover and decodes it again. That is
+         * why the published list is kept as is: it never changes once published, and a
+         * defensive copy would defeat the identity check.
+         */
         fun submitData(folders: List<PlaylistFolder>) {
             if (this.folders === folders) return
             adapterScope.cancel()
             adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-            this.folders = folders.toList()
+            this.folders = folders
             notifyDataSetChanged()
         }
 
