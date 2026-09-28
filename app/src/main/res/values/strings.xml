@@ -47,4 +47,25 @@
 <string name="update_downloading">Downloading update&#8230;</string>
     <string name="update_error">Could not check for updates: %1$s</string>
     <string name="update_install_unavailable">Please enable \"Install unknown apps\" for this app in Settings.</string>
+
+    <!-- Internet radio -->
+    <string name="mode_toggle">Switch music / radio</string>
+    <string name="live_label">LIVE</string>
+    <string name="settings_radio_header">Internet Radio</string>
+    <string name="settings_add_stream">Add web stream</string>
+    <string name="hint_station_name">Station name</string>
+    <string name="hint_station_url">Stream URL (http://&#8230;)</string>
+    <string name="settings_radio_buffer">Buffer before playback</string>
+    <string name="toast_stream_added">Station added</string>
+    <string name="toast_stream_invalid">Enter a name and a valid http(s) URL</string>
+
+    <string-array name="radio_buffer_labels">
+        <item>5 seconds</item>
+        <item>10 seconds</item>
+        <item>20 seconds</item>
+        <item>30 seconds</item>
+        <item>40 seconds</item>
+        <item>50 seconds</item>
+        <item>60 seconds</item>
+    </string-array>
 </resources>

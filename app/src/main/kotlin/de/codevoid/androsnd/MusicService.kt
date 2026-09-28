@@ -151,6 +151,7 @@ class MusicService : MediaBrowserServiceCompat() {
     val isPlaying: Boolean get() = active.isPlaying
     val isPreparing: Boolean get() = active.isPreparing
     val isScanning: Boolean get() = active.isScanning
+    val isShuffleOn: Boolean get() = active.isShuffleOn
     val currentTextMetadata: SongMetadata? get() = active.currentText
 
     private var isDucking = false

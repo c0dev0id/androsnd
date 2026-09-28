@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
+    android:fillViewport="true"
     android:background="@color/surface_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
 
     <!-- Load Music Folder / Check for Updates -->
     <LinearLayout
@@ -171,4 +176,65 @@
 
     </LinearLayout>
 
-</LinearLayout>
+    <!-- Internet Radio -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/settings_radio_header"
+        android:textColor="@color/text_primary"
+        android:textStyle="bold"
+        android:textSize="16sp"
+        android:layout_marginTop="24dp" />
+
+    <EditText
+        android:id="@+id/input_station_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="@string/hint_station_name"
+        android:inputType="text"
+        android:maxLines="1"
+        android:textColor="@color/text_primary"
+        android:textColorHint="@color/text_tertiary" />
+
+    <EditText
+        android:id="@+id/input_station_url"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="@string/hint_station_url"
+        android:inputType="textUri"
+        android:maxLines="1"
+        android:textColor="@color/text_primary"
+        android:textColorHint="@color/text_tertiary" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_add_stream"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="8dp"
+        android:text="@string/settings_add_stream"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        style="@style/Widget.Androsnd.Button.Outlined" />
+
+    <!-- Radio Buffer -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/settings_radio_buffer"
+        android:textColor="@color/text_primary"
+        android:textStyle="bold"
+        android:textSize="16sp"
+        android:layout_marginTop="16dp" />
+
+    <Spinner
+        android:id="@+id/spinner_radio_buffer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:entries="@array/radio_buffer_labels" />
+
+    </LinearLayout>
+
+</ScrollView>

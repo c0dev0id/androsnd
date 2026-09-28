@@ -243,6 +243,19 @@
         app:layout_constraintEnd_toEndOf="parent">
 
         <de.codevoid.androsnd.GradientButton
+            android:id="@+id/btn_mode"
+            android:layout_width="0dp"
+            android:layout_height="@dimen/button_bar_height"
+            android:layout_weight="1"
+            android:layout_margin="@dimen/button_bar_margin"
+            android:contentDescription="@string/mode_toggle"
+            app:icon="@drawable/ic_radio_station"
+            app:iconGravity="textStart"
+            app:iconSize="@dimen/button_bar_icon_size"
+            app:iconTint="@color/text_primary"
+            style="@style/Widget.Androsnd.Button.Dark" />
+
+        <de.codevoid.androsnd.GradientButton
             android:id="@+id/btn_prev"
             android:layout_width="0dp"
             android:layout_height="@dimen/button_bar_height"
@@ -276,19 +289,6 @@
             android:layout_margin="@dimen/button_bar_margin"
             android:contentDescription="Next"
             app:icon="@drawable/ic_next"
-            app:iconGravity="textStart"
-            app:iconSize="@dimen/button_bar_icon_size"
-            app:iconTint="@color/text_primary"
-            style="@style/Widget.Androsnd.Button.Dark" />
-
-        <de.codevoid.androsnd.GradientButton
-            android:id="@+id/btn_stop"
-            android:layout_width="0dp"
-            android:layout_height="@dimen/button_bar_height"
-            android:layout_weight="1"
-            android:layout_margin="@dimen/button_bar_margin"
-            android:contentDescription="Stop"
-            app:icon="@drawable/ic_stop"
             app:iconGravity="textStart"
             app:iconSize="@dimen/button_bar_icon_size"
             app:iconTint="@color/text_primary"

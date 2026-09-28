@@ -57,6 +57,10 @@ import android.app.AlertDialog
 import android.app.DownloadManager
 import android.widget.ProgressBar
 
+/** A press is "long" once held for at least [thresholdMs]. Pure, so it is unit-tested. */
+internal fun isLongPress(downAtMs: Long, upAtMs: Long, thresholdMs: Long = 500L): Boolean =
+    upAtMs - downAtMs >= thresholdMs
+
 private fun focusRing(density: Float, accentColor: Int): GradientDrawable =
     GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
@@ -79,10 +83,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var volLabel: TextView
     private lateinit var playlistRecycler: RecyclerView
     private lateinit var loadingIndicator: View
+    private lateinit var btnMode: MaterialButton
     private lateinit var btnPlay: MaterialButton
     private lateinit var btnPrev: MaterialButton
     private lateinit var btnNext: MaterialButton
-    private lateinit var btnStop: MaterialButton
     private lateinit var btnShuffle: MaterialButton
     private lateinit var btnFolder: MaterialButton
 
@@ -102,7 +106,7 @@ class MainActivity : AppCompatActivity() {
 
     // Remote control navigation state
     private var playlistFocusPos: Int = 0
-    private var buttonBarFocusIdx: Int = 1   // 1 = Play button
+    private var buttonBarFocusIdx: Int = 2   // 2 = Play button (after Mode, Prev)
 
     // Focus frame is hidden until the first remote key is pressed
     private var hasReceivedRemoteKey = false
@@ -136,7 +140,7 @@ class MainActivity : AppCompatActivity() {
     private var fixedRepeatRunnable: Runnable? = null
 
     private val navButtons: List<MaterialButton>
-        get() = listOf(btnPrev, btnPlay, btnNext, btnStop, btnShuffle, btnFolder)
+        get() = listOf(btnMode, btnPrev, btnPlay, btnNext, btnShuffle, btnFolder)
 
     private lateinit var playlistAdapter: PlaylistAdapter
     private lateinit var folderGridAdapter: FolderGridAdapter
@@ -369,10 +373,10 @@ class MainActivity : AppCompatActivity() {
         playlistRecycler = findViewById(R.id.playlist_recycler)
         loadingIndicator = findViewById(R.id.loading_indicator)
         loadingText = loadingIndicator.findViewById(R.id.loading_text)
+        btnMode = findViewById(R.id.btn_mode)
         btnPlay = findViewById(R.id.btn_play)
         btnPrev = findViewById(R.id.btn_prev)
         btnNext = findViewById(R.id.btn_next)
-        btnStop = findViewById(R.id.btn_stop)
         btnShuffle = findViewById(R.id.btn_shuffle)
         btnFolder = findViewById(R.id.btn_folders)
         btnSettings = findViewById(R.id.btn_settings)
@@ -425,15 +429,40 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupButtons() {
+        btnMode.setOnClickListener { toggleMode() }
         btnPlay.setOnClickListener {
             musicService?.handlePlayPause()
         }
+        // Stop no longer has its own button: a long press on Play stops playback.
+        btnPlay.setOnLongClickListener {
+            musicService?.handleStop()
+            true
+        }
         btnPrev.setOnClickListener { musicService?.handlePrevious() }
         btnNext.setOnClickListener { musicService?.handleNext() }
-        btnStop.setOnClickListener { musicService?.handleStop() }
         btnShuffle.setOnClickListener { musicService?.handleShuffleButton() }
         btnFolder.setOnClickListener { toggleFolderBrowser() }
         btnSettings.setOnClickListener { toggleSettings() }
+    }
+
+    /** Switches between the file and radio subsystems and rebinds the right pane. */
+    private fun toggleMode() {
+        val svc = musicService ?: return
+        svc.setPlayerMode(!svc.isRadioMode())
+        if (folderBrowserVisible) closeFolderBrowser()
+        // Force updatePlaylist() to rebind: the other subsystem's library has a
+        // different size/cursor, so the cached bookkeeping no longer applies.
+        lastKnownSongCount = -1
+        lastKnownPlaylistIndex = -1
+        pendingScrollToCurrent = true
+        updateModeButton()
+        updateUI()
+    }
+
+    /** The mode button shows the icon of the subsystem a press would switch to. */
+    private fun updateModeButton() {
+        val radio = musicService?.isRadioMode() == true
+        btnMode.setIconResource(if (radio) R.drawable.ic_music_note else R.drawable.ic_radio_station)
     }
 
     private fun applyAccentColor() {
@@ -459,8 +488,11 @@ class MainActivity : AppCompatActivity() {
     private fun updateButtonStates() {
         val svc = musicService
         val isPlaying = svc?.isPlaying == true
-        val isShuffleOn = svc?.playlistManager?.isShuffleOn == true
+        val isShuffleOn = svc?.isShuffleOn == true
+        val isRadio = svc?.isRadioMode() == true
 
+        btnMode.backgroundTintList = ColorStateList.valueOf(if (isRadio) accentColor else inactiveColor)
+        btnMode.iconTint = ColorStateList.valueOf(if (isRadio) onAccentColor else Color.WHITE)
         btnPlay.backgroundTintList = ColorStateList.valueOf(if (isPlaying) accentColor else inactiveColor)
         btnShuffle.backgroundTintList = ColorStateList.valueOf(if (isShuffleOn) accentColor else inactiveColor)
         btnShuffle.iconTint = ColorStateList.valueOf(if (isShuffleOn) onAccentColor else Color.WHITE)
@@ -552,7 +584,40 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean("overlay_enabled", isChecked).apply()
         }
 
+        setupRadioSettings(prefs)
+
         updateFocusVisual()
+    }
+
+    // The spinner rows map to these buffer lengths (radio_buffer_labels mirrors them).
+    private val radioBufferValues = intArrayOf(5, 10, 20, 30, 40, 50, 60)
+
+    private fun setupRadioSettings(prefs: android.content.SharedPreferences) {
+        val nameInput = settingsPanel.findViewById<android.widget.EditText>(R.id.input_station_name)
+        val urlInput = settingsPanel.findViewById<android.widget.EditText>(R.id.input_station_url)
+        settingsPanel.findViewById<MaterialButton>(R.id.btn_add_stream).setOnClickListener {
+            val name = nameInput.text.toString().trim()
+            val url = urlInput.text.toString().trim()
+            if (name.isEmpty() || !(url.startsWith("http://") || url.startsWith("https://"))) {
+                android.widget.Toast.makeText(this, R.string.toast_stream_invalid, android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                musicService?.addRadioStation(name, url)
+                android.widget.Toast.makeText(this, R.string.toast_stream_added, android.widget.Toast.LENGTH_SHORT).show()
+                nameInput.text.clear()
+                urlInput.text.clear()
+            }
+        }
+
+        val spinner = settingsPanel.findViewById<android.widget.Spinner>(R.id.spinner_radio_buffer)
+        val savedBuffer = prefs.getInt("radio_buffer_seconds", 5)
+        val savedIdx = radioBufferValues.indexOf(savedBuffer).let { if (it < 0) 0 else it }
+        spinner.setSelection(savedIdx)
+        spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                prefs.edit().putInt("radio_buffer_seconds", radioBufferValues[position]).apply()
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
     }
 
     // ── Update checker ────────────────────────────────────────────────────────
@@ -745,7 +810,7 @@ class MainActivity : AppCompatActivity() {
                 musicService?.dismissOverlayDemo()
                 toggleDemo.isChecked = false
             }
-            buttonBarFocusIdx = 1
+            buttonBarFocusIdx = navButtons.indexOf(btnPlay)
         }
         updateButtonStates()
         updateFocusVisual()
@@ -764,7 +829,7 @@ class MainActivity : AppCompatActivity() {
             .forEach { label ->
                 label.setTextColor(accentColor)
             }
-        listOf(R.id.btn_folder, R.id.btn_check_update)
+        listOf(R.id.btn_folder, R.id.btn_check_update, R.id.btn_add_stream)
             .mapNotNull { settingsPanel.findViewById<MaterialButton>(it) }
             .forEach { btn ->
                 btn.strokeColor = accentCSL
@@ -821,9 +886,10 @@ class MainActivity : AppCompatActivity() {
     private fun updateUI() {
         val svc = musicService ?: return
         if (svc.isScanning) return
-        val pm = svc.playlistManager
-        val song = pm.getCurrentSong()
+        val isRadio = svc.isRadioMode()
+        val song = svc.activeCurrentSong()
 
+        updateModeButton()
         btnPlay.setIconResource(resolvePlayPauseIcon())
         updateButtonStates()
 
@@ -833,6 +899,10 @@ class MainActivity : AppCompatActivity() {
                 songTitle.text = metadata.title
                 songArtist.text = metadata.artist
                 songAlbum.text = metadata.album
+            } else {
+                songTitle.text = song.title
+                songArtist.text = ""
+                songAlbum.text = ""
             }
             updateNowPlayingArt(song.folderPath)
         } else {
@@ -842,17 +912,22 @@ class MainActivity : AppCompatActivity() {
             coverArt.setImageResource(android.R.drawable.ic_media_play)
         }
 
-        val pos = svc.getPosition()
-        val dur = svc.getDuration()
-        val remaining = if (dur > 0) (dur - pos).coerceAtLeast(0) else 0
-        timeRemainingView.text = if (dur > 0) "-${formatTime(remaining)}" else ""
+        // Radio is a live stream: no position or duration, so a countdown is meaningless.
+        if (isRadio) {
+            timeRemainingView.text = getString(R.string.live_label)
+        } else {
+            val pos = svc.getPosition()
+            val dur = svc.getDuration()
+            val remaining = if (dur > 0) (dur - pos).coerceAtLeast(0) else 0
+            timeRemainingView.text = if (dur > 0) "-${formatTime(remaining)}" else ""
+        }
 
         updatePlaylist()
         // Refreshed here, not only on BROADCAST_ENRICHMENT_COMPLETE: an Activity created
         // after that broadcast (recreated, or reopened while the service kept playing)
         // never receives it and would open an empty folder browser. Unlike the playlist,
         // the grid does not wait for enrichment; covers arrive via BROADCAST_ART_UPDATED.
-        folderGridAdapter.submitData(pm.folders)
+        folderGridAdapter.submitData(svc.activeFolders)
         scrollToCurrentSongIfPending()
     }
 
@@ -870,21 +945,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun updatePlaylist() {
         val svc = musicService ?: return
-        val pm = svc.playlistManager
-        if (pm.currentIndex == lastKnownPlaylistIndex && pm.songs.size == lastKnownSongCount) return
+        val songs = svc.activeSongs
+        val folders = svc.activeFolders
+        val currentIndex = svc.activeCurrentIndex
+        if (currentIndex == lastKnownPlaylistIndex && songs.size == lastKnownSongCount) return
         // The playing song moved — follow it in the list, whether that came from the
         // track advancing, next/previous, a row being picked, or a media-session
         // client. updateUI() consumes the request immediately after this call; going
         // through the pending flag means a song change that lands while the playlist
         // is still empty (mid-scan) is honoured once the rows arrive.
-        if (pm.currentIndex != lastKnownPlaylistIndex) pendingScrollToCurrent = true
-        if (pm.songs.size == lastKnownSongCount && pm.currentIndex != lastKnownPlaylistIndex) {
-            lastKnownPlaylistIndex = pm.currentIndex
-            playlistAdapter.updateCurrentIndex(pm.currentIndex)
+        if (currentIndex != lastKnownPlaylistIndex) pendingScrollToCurrent = true
+        if (songs.size == lastKnownSongCount && currentIndex != lastKnownPlaylistIndex) {
+            lastKnownPlaylistIndex = currentIndex
+            playlistAdapter.updateCurrentIndex(currentIndex)
         } else {
-            lastKnownPlaylistIndex = pm.currentIndex
-            lastKnownSongCount = pm.songs.size
-            playlistAdapter.submitData(pm.folders, pm.songs, pm.currentIndex)
+            lastKnownPlaylistIndex = currentIndex
+            lastKnownSongCount = songs.size
+            playlistAdapter.submitData(folders, songs, currentIndex)
             val maxPos = (playlistAdapter.itemCount - 1).coerceAtLeast(0)
             if (playlistFocusPos > maxPos) playlistFocusPos = maxPos
         }
@@ -897,9 +974,9 @@ class MainActivity : AppCompatActivity() {
      */
     private fun scrollToCurrentSongIfPending() {
         if (!pendingScrollToCurrent) return
-        val pm = musicService?.playlistManager ?: return
+        val svc = musicService ?: return
         if (playlistAdapter.itemCount == 0) return
-        val pos = playlistAdapter.getItemPosForSong(pm.currentIndex) ?: return
+        val pos = playlistAdapter.getItemPosForSong(svc.activeCurrentIndex) ?: return
         pendingScrollToCurrent = false
         playlistFocusPos = pos
         updateFocusVisual()
@@ -978,7 +1055,11 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_DPAD_RIGHT -> handleRight()
             KeyEvent.KEYCODE_ENTER,
             KeyEvent.KEYCODE_DPAD_CENTER,
-            KeyEvent.KEYCODE_BUTTON_A   -> handleConfirm()
+            KeyEvent.KEYCODE_BUTTON_A   -> {
+                // Play is decided on key-up so a hold can mean stop; the other buttons
+                // still act immediately on press.
+                if (navButtons[buttonBarFocusIdx] != btnPlay) handleConfirm()
+            }
         }
     }
 
@@ -994,6 +1075,20 @@ class MainActivity : AppCompatActivity() {
                     folderBrowserVisible -> closeFolderBrowser()
                     settingsVisible -> toggleSettings()
                     else -> moveTaskToBack(true)
+                }
+            }
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_BUTTON_A -> {
+                // Confirm on Play is deferred from key-down to here: a held press stops,
+                // a tap toggles play/pause. Every other button already fired on key-down.
+                if (!folderBrowserVisible && navButtons[buttonBarFocusIdx] == btnPlay) {
+                    val downAt = lastRemoteDownAtMs[keyCode]
+                    if (downAt != null && isLongPress(downAt, now)) {
+                        musicService?.handleStop()
+                    } else {
+                        handleConfirm()
+                    }
                 }
             }
         }
@@ -1070,7 +1165,7 @@ class MainActivity : AppCompatActivity() {
         if (btn == btnPlay) {
             val focusedSongIdx = playlistAdapter.getSongIndexAt(playlistFocusPos)
             if (focusedSongIdx != null &&
-                    focusedSongIdx != musicService?.playlistManager?.currentIndex) {
+                    focusedSongIdx != musicService?.activeCurrentIndex) {
                 musicService?.playSongAtIndex(focusedSongIdx)
                 return true
             }
@@ -1086,9 +1181,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openFolderBrowser() {
-        val pm = musicService?.playlistManager
-        val folderCount = pm?.folders?.size ?: 0
-        val initial = pm?.let { it.getFolderIndexForSong(it.currentIndex) }?.takeIf { it >= 0 } ?: 0
+        val svc = musicService
+        val folderCount = svc?.activeFolders?.size ?: 0
+        val initial = svc?.activeFolderIndexForSong(svc.activeCurrentIndex)?.takeIf { it >= 0 } ?: 0
         val focus = if (folderCount > 0) initial.coerceIn(0, folderCount - 1) else 0
         folderGridAdapter.focusedPos = focus
         (folderGridRecycler.layoutManager as? GridLayoutManager)
@@ -1107,7 +1202,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun playFirstSongInFolder(folderIndex: Int) {
         val svc = musicService ?: return
-        val firstSong = svc.playlistManager.folders.getOrNull(folderIndex)?.songs?.firstOrNull() ?: return
+        val firstSong = svc.activeFolders.getOrNull(folderIndex)?.songs?.firstOrNull() ?: return
         svc.playSongAtIndex(firstSong)
     }
 
@@ -1175,7 +1270,7 @@ class MainActivity : AppCompatActivity() {
         val svc = musicService ?: return R.drawable.ic_play
         val focusedSongIdx = playlistAdapter.getSongIndexAt(playlistFocusPos)
         val onCurrentSong = focusedSongIdx != null &&
-                focusedSongIdx == svc.playlistManager.currentIndex
+                focusedSongIdx == svc.activeCurrentIndex
         return if (svc.isPlaying && onCurrentSong) R.drawable.ic_pause else R.drawable.ic_play
     }
 
