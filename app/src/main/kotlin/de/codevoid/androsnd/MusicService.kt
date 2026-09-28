@@ -7,21 +7,16 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.media.MediaMetadataRetriever
-import android.media.MediaPlayer
 import android.os.Binder
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.PowerManager
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
@@ -42,6 +37,18 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * The playback shell. Owns the single [MediaSessionCompat], the foreground
+ * notification and audio focus/ducking, and holds one active [PlaybackController]
+ * ([FilePlaybackController] for local files today; the radio subsystem is a second
+ * controller). Every command — binder, MediaSession callback, media button — is routed
+ * to [active], and every state view (session metadata, notification, queue) is rebuilt
+ * from [active] rather than from fields of its own.
+ *
+ * The file-specific getters ([playlistManager], [isPlaying], [getPosition]…) delegate
+ * to the controller so [MainActivity] and the adapters keep their existing reach into
+ * the service.
+ */
 class MusicService : MediaBrowserServiceCompat() {
 
     companion object {
@@ -91,14 +98,17 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     private val binder = MusicBinder()
-    lateinit var playlistManager: PlaylistManager
-        private set
-    lateinit var metadataRepository: MetadataRepository
-        private set
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private lateinit var fileController: FilePlaybackController
+    private lateinit var active: PlaybackController
 
-    private var mediaPlayer: MediaPlayer? = null
+    // File-specific reach kept for MainActivity and the adapters. Both come from the
+    // file controller; the radio subsystem does not use them.
+    val playlistManager: PlaylistManager get() = fileController.playlistManager
+    val metadataRepository: MetadataRepository get() = fileController.metadataRepository
+
+    internal val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     private lateinit var mediaSession: MediaSessionCompat
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -106,34 +116,26 @@ class MusicService : MediaBrowserServiceCompat() {
     private val handler = Handler(Looper.getMainLooper())
     private var progressRunnable: Runnable? = null
 
-    var isPlaying: Boolean = false
-        private set
-    var isPreparing: Boolean = false
-        private set
-    var isScanning: Boolean = false
-        private set
-    var currentTextMetadata: SongMetadata? = null
-        private set
-    private var currentArtBitmap: Bitmap? = null
-    // "The user asked for playback but it could not start yet." Only ever set while
-    // a readiness event is pending, so it cannot be left standing with nothing to
-    // consume it; whichever readiness point arrives first consumes it.
-    private var playRequested = false
+    val isPlaying: Boolean get() = active.isPlaying
+    val isPreparing: Boolean get() = active.isPreparing
+    val isScanning: Boolean get() = active.isScanning
+    val currentTextMetadata: SongMetadata? get() = active.currentText
+
     private var isDucking = false
-    private var lastErrorTimeMs = 0L
 
-    private lateinit var overlayToastManager: OverlayToastManager
-    private lateinit var broadcastManager: LocalBroadcastManager
+    internal lateinit var overlayToastManager: OverlayToastManager
+        private set
+    internal lateinit var broadcastManager: LocalBroadcastManager
+        private set
 
-    private fun getAppVolumeFloat(): Float {
+    internal fun getAppVolumeFloat(): Float {
         val pct = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getInt(KEY_APP_VOLUME, 100)
         return pct / 100f
     }
 
     fun applyAppVolume() {
-        val vol = getAppVolumeFloat()
-        mediaPlayer?.setVolume(vol, vol)
+        active.setVolume(getAppVolumeFloat())
     }
 
     fun updateOverlayScale(scale: Float) {
@@ -158,11 +160,11 @@ class MusicService : MediaBrowserServiceCompat() {
 
     override fun onCreate() {
         super.onCreate()
-        playlistManager = PlaylistManager(this)
-        metadataRepository = MetadataRepository(this)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         broadcastManager = LocalBroadcastManager.getInstance(this)
         overlayToastManager = OverlayToastManager(this)
+        fileController = FilePlaybackController(this)
+        active = fileController
 
         createNotificationChannel()
         initMediaSession()
@@ -234,14 +236,7 @@ class MusicService : MediaBrowserServiceCompat() {
                     play()
                 }
                 override fun onPrepare() {
-                    if (playlistManager.songs.isEmpty()) return
-                    val song = playlistManager.getCurrentSong() ?: return
-                    if (mediaPlayer == null) {
-                        startPlayingSong(song, autoStart = false)
-                    } else if (!isPreparing) {
-                        // Already loaded — confirm current state so the system doesn't wait
-                        updatePlaybackState()
-                    }
+                    active.prepare()
                 }
             })
             isActive = true
@@ -256,7 +251,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     /** Mirrors the restored/toggled shuffle state onto the session. */
-    private fun publishShuffleMode() {
+    internal fun publishShuffleMode() {
         mediaSession.setShuffleMode(
             if (playlistManager.isShuffleOn) PlaybackStateCompat.SHUFFLE_MODE_ALL
             else PlaybackStateCompat.SHUFFLE_MODE_NONE
@@ -271,12 +266,20 @@ class MusicService : MediaBrowserServiceCompat() {
         }
     }
 
+    internal fun startForegroundNotification() {
+        startForegroundCompat(buildNotification())
+    }
+
+    internal fun stopForegroundNotification() {
+        stopForeground(STOP_FOREGROUND_REMOVE)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Delivered by MediaButtonReceiver for the manifest's MEDIA_BUTTON filter:
         // unpacks the KeyEvent and dispatches it to the session callback. Dispatched
         // before startForeground() so a headset press is not held up by building a
-        // notification; the service may still be background here (stopPlayback drops
-        // it), so startForeground has to follow either way.
+        // notification; the service may still be background here (stop() drops it),
+        // so startForeground has to follow either way.
         if (intent != null && intent.action == Intent.ACTION_MEDIA_BUTTON) {
             MediaButtonReceiver.handleIntent(mediaSession, intent)
             startForegroundCompat(buildNotification())
@@ -383,237 +386,33 @@ class MusicService : MediaBrowserServiceCompat() {
         }
     }
 
-    fun play() {
-        if (playlistManager.songs.isEmpty()) {
-            // A media button pressed during the startup scan would otherwise be
-            // dropped: the library is still empty for the first seconds after launch.
-            if (isScanning) playRequested = true
-            return
-        }
+    // --- Commands: every one routes to the active controller. ---
 
-        if (mediaPlayer == null) {
-            val song = playlistManager.getCurrentSong() ?: return
-            val msSinceError = System.currentTimeMillis() - lastErrorTimeMs
-            if (msSinceError < 1500L) {
-                Log.d(TAG, "play(): suppressing auto-retry ${msSinceError}ms after last error")
-                return
-            }
-            startPlayingSong(song)
-        } else if (isPreparing) {
-            playRequested = true
-        } else if (!isPlaying) {
-            requestAudioFocus()
-            mediaPlayer?.start()
-            applyAppVolume()
-            isPlaying = true
-            startProgressUpdates()
-            updateMediaSessionMetadata()
-            updatePlaybackState()
-            startForegroundCompat(buildNotification())
-            broadcastState()
-        }
-    }
+    fun play() = active.play()
 
-    fun pause() {
-        mediaPlayer?.let {
-            if (isPlaying) {
-                it.pause()
-                isPlaying = false
-                stopProgressUpdates()
-                updatePlaybackState()
-                updateNotification()
-                broadcastState()
-            }
-        }
-    }
+    fun pause() = active.pause()
 
-    fun handleStop() {
-        stopPlayback()
-    }
+    fun handleStop() = active.stop()
 
     fun handlePlayPause() {
-        if (isPlaying) pause() else play()
+        if (active.isPlaying) active.pause() else active.play()
     }
 
-    private fun stopPlayback() {
-        mediaPlayer?.let { releasePlayer(it) }
-        mediaPlayer = null
-        isPlaying = false
-        isPreparing = false
-        // Stop means stop: a play request still waiting on a readiness event would
-        // otherwise survive the teardown and start the next prepared song.
-        playRequested = false
-        currentTextMetadata = null
-        currentArtBitmap = null
-        stopProgressUpdates()
-        updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
-        broadcastState()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-    }
+    fun handleNext() = active.next()
 
-    fun handleNext() {
-        playNextQueueSong()
-    }
+    fun handlePrevious() = active.previous()
 
-    private fun playNextQueueSong() {
-        val nextIdx = playlistManager.nextQueueIndex
-        if (nextIdx < 0) return
-        playlistManager.setCurrentIndex(nextIdx)
-        val song = playlistManager.getCurrentSong() ?: return
-        playSong(song)
-    }
+    fun handleShuffleButton() = active.toggleShuffle()
 
-    fun handlePrevious() {
-        if (playlistManager.isShuffleOn) {
-            val song = playlistManager.shuffleSong()
-            if (song != null) playSong(song)
-            return
-        }
-        val song = playlistManager.prevSong()
-        if (song != null) playSong(song)
-    }
+    fun seekTo(positionMs: Int) = active.seekTo(positionMs)
 
-    fun handleShuffleButton() {
-        playlistManager.toggleShuffle()
-        publishShuffleMode()
-        playlistManager.selectNextQueueSong()
-        serviceScope.launch {
-            try { updateMediaSessionQueue() }
-            catch (e: Exception) { Log.w(TAG, "Failed to update media session queue", e) }
-        }
-        broadcastState()
-    }
+    fun playSong(song: Song) = active.playSong(song)
 
-    fun seekTo(positionMs: Int) {
-        val duration = mediaPlayer?.duration ?: 0
-        val clamped = positionMs.coerceIn(0, if (duration > 0) duration else 0)
-        mediaPlayer?.seekTo(clamped)
-        updatePlaybackState()
-        broadcastState()
-    }
+    fun playSongAtIndex(index: Int) = active.playAt(index)
 
-    fun playSong(song: Song) {
-        mediaPlayer?.let { releasePlayer(it) }
-        mediaPlayer = null
-        isPlaying = false
-        isPreparing = false
-        stopProgressUpdates()
-        startPlayingSong(song)
-    }
+    fun scanFolderAsync(uri: Uri) = fileController.scan(uri)
 
-    fun playSongAtIndex(index: Int) {
-        playlistManager.setCurrentIndex(index)
-        val song = playlistManager.getCurrentSong() ?: return
-        playSong(song)
-    }
-
-    /**
-     * Tear down a player from any state. `stop()` is only legal once the player is
-     * prepared — calling it during `prepareAsync()` throws, and since `release()`
-     * used to follow it as a separate statement, the native player leaked. Swallow
-     * the illegal-state case so `release()` always runs.
-     */
-    private fun releasePlayer(player: MediaPlayer) {
-        try {
-            player.stop()
-        } catch (e: IllegalStateException) {
-            Log.w(TAG, "stop() on a player that was not in a stoppable state", e)
-        }
-        player.release()
-    }
-
-    private fun startPlayingSong(song: Song, autoStart: Boolean = true) {
-        val player = MediaPlayer()
-        mediaPlayer = player
-        isPreparing = true
-        try {
-            if (autoStart) requestAudioFocus()
-            player.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .build()
-            )
-            player.setDataSource(applicationContext, song.uri)
-            player.setOnCompletionListener { mp ->
-                if (mediaPlayer !== mp) return@setOnCompletionListener
-                onTrackComplete()
-            }
-            player.setOnErrorListener { mp, what, extra ->
-                Log.e(TAG, "MediaPlayer error: what=$what extra=$extra")
-                // A superseded player must not touch isPreparing — the player that
-                // replaced it may still be preparing, and clearing the flag here
-                // would let play() call start() on it in an illegal state.
-                if (mediaPlayer !== mp) return@setOnErrorListener true
-                isPreparing = false
-                playRequested = false
-                lastErrorTimeMs = System.currentTimeMillis()
-                mp.release()
-                mediaPlayer = null
-                isPlaying = false
-                stopProgressUpdates()
-                updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
-                updateNotification()
-                broadcastState()
-                true
-            }
-            player.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
-            player.setOnPreparedListener { mp ->
-                // Guard before clearing the flag: a late callback from a discarded
-                // player must not report that the current one is done preparing.
-                if (mediaPlayer !== mp) return@setOnPreparedListener
-                isPreparing = false
-                val vol = getAppVolumeFloat()
-                mp.setVolume(vol, vol)
-                val shouldPlay = autoStart || playRequested
-                playRequested = false
-                if (shouldPlay) {
-                    if (!autoStart) requestAudioFocus()
-                    mp.start()
-                    isPlaying = true
-                    startProgressUpdates()
-                    updatePlaybackState()
-                    startForegroundCompat(buildNotification())
-                    broadcastState()
-                    playlistManager.selectNextQueueSong()
-                } else {
-                    updatePlaybackState()
-                    broadcastState()
-                }
-                serviceScope.launch {
-                    // Both fetches suspend, and the user may skip to another song
-                    // meanwhile. Re-check ownership after each one, or this song's
-                    // title and cover overwrite whatever is actually playing now.
-                    val meta = withContext(Dispatchers.IO) { metadataRepository.fetchText(song) }
-                    if (mediaPlayer !== mp) return@launch
-                    val art  = withContext(Dispatchers.IO) { metadataRepository.loadCurrentArt(song) }
-                    if (mediaPlayer !== mp) return@launch
-                    currentTextMetadata = meta
-                    currentArtBitmap    = art
-                    updateMediaSessionMetadata()
-                    updateNotification()
-                    val overlayEnabled = getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-                        .getBoolean("overlay_enabled", true)
-                    if (overlayEnabled) {
-                        overlayToastManager.showSong(meta, art)
-                    }
-                    broadcastState()
-                }
-            }
-            player.prepareAsync()
-        } catch (e: Exception) {
-            isPreparing = false
-            playRequested = false
-            lastErrorTimeMs = System.currentTimeMillis()
-            Log.e(TAG, "Failed to start playing ${song.displayName}", e)
-        }
-    }
-
-    private fun onTrackComplete() {
-        playNextQueueSong()
-    }
-
-    private fun requestAudioFocus() {
+    internal fun requestAudioFocus() {
         audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(
@@ -624,19 +423,18 @@ class MusicService : MediaBrowserServiceCompat() {
             )
             .setOnAudioFocusChangeListener { focusChange ->
                 when (focusChange) {
-                    AudioManager.AUDIOFOCUS_LOSS -> pause()
-                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> pause()
+                    AudioManager.AUDIOFOCUS_LOSS -> active.pause()
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> active.pause()
                     AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                         isDucking = true
-                        val duckedVol = getAppVolumeFloat() * 0.2f
-                        mediaPlayer?.setVolume(duckedVol, duckedVol)
+                        active.setVolume(getAppVolumeFloat() * 0.2f)
                     }
                     AudioManager.AUDIOFOCUS_GAIN -> {
                         if (isDucking) {
                             isDucking = false
                             applyAppVolume()
                         } else {
-                            play()
+                            active.play()
                         }
                     }
                 }
@@ -646,9 +444,9 @@ class MusicService : MediaBrowserServiceCompat() {
         audioManager.requestAudioFocus(focusRequest)
     }
 
-    private fun updateMediaSessionMetadata() {
+    internal fun updateMediaSessionMetadata() {
         val song = playlistManager.getCurrentSong() ?: return
-        val meta = currentTextMetadata
+        val meta = active.currentText
         val title    = meta?.title    ?: song.displayName
         val artist   = meta?.artist   ?: ""
         val album    = meta?.album    ?: ""
@@ -664,7 +462,7 @@ class MusicService : MediaBrowserServiceCompat() {
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, artist)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, album)
-        val art = currentArtBitmap
+        val art = active.currentArt
         if (art != null) {
             val uriStr = "content://de.codevoid.androsnd.albumart/current_art.jpg"
             builder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, uriStr)
@@ -676,39 +474,47 @@ class MusicService : MediaBrowserServiceCompat() {
         mediaSession.setMetadata(builder.build())
     }
 
+    internal fun publishStoppedState() = updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
+
     /**
-     * Pass a state only for STOPPED, which the fields cannot express — everything
-     * else is implied by isPlaying.
+     * Pass a state only for STOPPED, which the fields cannot express — everything else
+     * is implied by isPlaying.
      *
-     * Not wired into broadcastState(), tempting as that is: broadcastState() doubles
-     * as the 1 s progress tick, so publishing the whole session view from there would
+     * Not wired into broadcastState(), tempting as that is: broadcastState() doubles as
+     * the 1 s progress tick, so publishing the whole session view from there would
      * re-send the metadata — album-art bitmap included — every second.
+     *
+     * Seek/fast-forward/rewind are advertised only when the active controller can
+     * seek, so the radio subsystem does not offer scrubbing on a live stream.
      */
-    private fun updatePlaybackState(
-        state: Int = if (isPlaying) PlaybackStateCompat.STATE_PLAYING
+    internal fun updatePlaybackState(
+        state: Int = if (active.isPlaying) PlaybackStateCompat.STATE_PLAYING
                      else PlaybackStateCompat.STATE_PAUSED
     ) {
-        val position = mediaPlayer?.currentPosition?.toLong() ?: 0L
-        val speed = if (isPlaying) 1f else 0f
+        val position = active.positionMs.toLong()
+        val speed = if (active.isPlaying) 1f else 0f
+        var actions =
+            PlaybackStateCompat.ACTION_PLAY or
+            PlaybackStateCompat.ACTION_PAUSE or
+            PlaybackStateCompat.ACTION_PLAY_PAUSE or
+            PlaybackStateCompat.ACTION_STOP or
+            PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+            PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or
+            PlaybackStateCompat.ACTION_PREPARE or
+            PlaybackStateCompat.ACTION_SKIP_TO_QUEUE_ITEM or
+            PlaybackStateCompat.ACTION_PLAY_FROM_URI or
+            PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID
+        if (active.canSeek) {
+            actions = actions or
+                PlaybackStateCompat.ACTION_SEEK_TO or
+                PlaybackStateCompat.ACTION_FAST_FORWARD or
+                PlaybackStateCompat.ACTION_REWIND
+        }
         val playbackState = PlaybackStateCompat.Builder()
             .setState(state, position, speed)
             .setActiveQueueItemId(playlistManager.currentIndex.toLong())
-            .setActions(
-                PlaybackStateCompat.ACTION_PLAY or
-                PlaybackStateCompat.ACTION_PAUSE or
-                PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                PlaybackStateCompat.ACTION_STOP or
-                PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-                PlaybackStateCompat.ACTION_SEEK_TO or
-                PlaybackStateCompat.ACTION_FAST_FORWARD or
-                PlaybackStateCompat.ACTION_REWIND or
-                PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or
-                PlaybackStateCompat.ACTION_PREPARE or
-                PlaybackStateCompat.ACTION_SKIP_TO_QUEUE_ITEM or
-                PlaybackStateCompat.ACTION_PLAY_FROM_URI or
-                PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID
-            )
+            .setActions(actions)
             .build()
         mediaSession.setPlaybackState(playbackState)
     }
@@ -734,7 +540,7 @@ class MusicService : MediaBrowserServiceCompat() {
         )
     }
 
-    private suspend fun updateMediaSessionQueue() {
+    internal suspend fun updateMediaSessionQueue() {
         val songs = playlistManager.songs
         if (songs.isEmpty()) return
         val curIdx = playlistManager.currentIndex
@@ -756,9 +562,9 @@ class MusicService : MediaBrowserServiceCompat() {
 
         val curDesc = MediaDescriptionCompat.Builder()
             .setMediaId(curIdx.toString())
-            .setTitle(currentTextMetadata?.title ?: curSong.displayName)
-            .setSubtitle(currentTextMetadata?.artist ?: "")
-            .setDescription(currentTextMetadata?.album ?: "")
+            .setTitle(active.currentText?.title ?: curSong.displayName)
+            .setSubtitle(active.currentText?.artist ?: "")
+            .setDescription(active.currentText?.album ?: "")
             .setMediaUri(curSong.uri)
             .apply { if (io.curArtUri != null) setIconUri(io.curArtUri) }
             .build()
@@ -800,9 +606,9 @@ class MusicService : MediaBrowserServiceCompat() {
 
     private fun buildNotification(): Notification {
         val song = playlistManager.getCurrentSong()
-        val contentTitle = currentTextMetadata?.title ?: song?.displayName ?: getString(R.string.app_name)
+        val contentTitle = active.currentText?.title ?: song?.displayName ?: getString(R.string.app_name)
 
-        val playPauseAction = if (isPlaying) {
+        val playPauseAction = if (active.isPlaying) {
             NotificationCompat.Action(
                 android.R.drawable.ic_media_pause,
                 getString(R.string.notification_action_pause),
@@ -830,7 +636,7 @@ class MusicService : MediaBrowserServiceCompat() {
             .setContentTitle(contentTitle)
             .setContentText(getString(R.string.app_name))
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setLargeIcon(currentArtBitmap)
+            .setLargeIcon(active.currentArt)
             .setContentIntent(mainIntent)
             .addAction(
                 android.R.drawable.ic_media_previous, getString(R.string.notification_action_previous),
@@ -846,7 +652,7 @@ class MusicService : MediaBrowserServiceCompat() {
             .build()
     }
 
-    private fun updateNotification() {
+    internal fun updateNotification() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
                 android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -863,7 +669,7 @@ class MusicService : MediaBrowserServiceCompat() {
         )
     }
 
-    private fun startProgressUpdates() {
+    internal fun startProgressUpdates() {
         stopProgressUpdates()
         val runnable = object : Runnable {
             override fun run() {
@@ -875,109 +681,25 @@ class MusicService : MediaBrowserServiceCompat() {
         handler.post(runnable)
     }
 
-    private fun stopProgressUpdates() {
+    internal fun stopProgressUpdates() {
         progressRunnable?.let { handler.removeCallbacks(it) }
         progressRunnable = null
     }
 
-    fun broadcastState() {
+    internal fun broadcastState() {
         broadcastManager.sendBroadcast(Intent(BROADCAST_STATE_CHANGED))
     }
 
-    fun scanFolderAsync(uri: Uri) {
-        playRequested = false
-        mediaPlayer?.let { releasePlayer(it) }
-        mediaPlayer = null
-        isPlaying = false
-        stopProgressUpdates()
-        metadataRepository.cancelEnrichment()
-        playlistManager.clear()
-        currentTextMetadata = null
-        currentArtBitmap = null
-
-        isScanning = true
-        broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_STARTED))
-
-        serviceScope.launch {
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    playlistManager.scanFolder(uri) { count ->
-                        broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_PROGRESS).apply {
-                            putExtra(EXTRA_SCAN_SONG_COUNT, count)
-                        })
-                    }
-                }.onFailure { Log.e(TAG, "Scan failed", it) }
-            }
-            isScanning = false
-            playlistManager.selectNextQueueSong()
-            broadcastManager.sendBroadcast(Intent(BROADCAST_SCAN_COMPLETED))
-            broadcastState()
-
-            if (playRequested) {
-                playRequested = false
-                play()
-            } else {
-                // Describe the restored song to the session, so a headset or head unit
-                // has something to show and act on before anything plays.
-                updateMediaSessionMetadata()
-                updatePlaybackState()
-            }
-
-            metadataRepository.startEnrichment(
-                scope         = serviceScope,
-                songs         = playlistManager.songs,
-                foldersByPath = playlistManager.foldersByPath,
-                currentIdx    = playlistManager.currentIndex,
-                onTextReady   = { idx, meta ->
-                    if (idx == playlistManager.currentIndex && currentTextMetadata == null) {
-                        currentTextMetadata = meta
-                        updateMediaSessionMetadata()
-                        broadcastState()
-                    }
-                    broadcastManager.sendBroadcast(Intent(BROADCAST_METADATA_UPDATED).apply {
-                        putExtra(EXTRA_METADATA_SONG_INDEX, idx)
-                        putExtra(EXTRA_METADATA_TITLE,    meta.title)
-                        putExtra(EXTRA_METADATA_ARTIST,   meta.artist)
-                        putExtra(EXTRA_METADATA_ALBUM,    meta.album)
-                        putExtra(EXTRA_METADATA_DURATION, meta.duration)
-                    })
-                },
-                onArtReady = { folderPath ->
-                    if (playlistManager.getCurrentSong()?.folderPath == folderPath) {
-                        serviceScope.launch {
-                            currentArtBitmap = withContext(Dispatchers.IO) {
-                                BitmapFactory.decodeFile(
-                                    metadataRepository.artFileForFolder(folderPath).absolutePath)
-                            }
-                            updateNotification()
-                            updateMediaSessionMetadata()
-                        }
-                    }
-                    broadcastManager.sendBroadcast(Intent(BROADCAST_ART_UPDATED).apply {
-                        putExtra(EXTRA_ART_FOLDER_PATH, folderPath)
-                    })
-                },
-            onComplete = {
-                broadcastManager.sendBroadcast(Intent(BROADCAST_ENRICHMENT_COMPLETE))
-            }
-            )
-        }
-    }
-
-    fun getPosition(): Int = mediaPlayer?.currentPosition ?: 0
-    fun getDuration(): Int = mediaPlayer?.duration ?: 0
+    fun getPosition(): Int = active.positionMs
+    fun getDuration(): Int = active.durationMs
 
     override fun onDestroy() {
         super.onDestroy()
         stopProgressUpdates()
-        mediaPlayer?.release()
-        mediaPlayer = null
-        currentTextMetadata = null
-        currentArtBitmap = null
+        active.release()
         mediaSession.release()
         overlayToastManager.dismiss()
         audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         serviceScope.cancel()
-        metadataRepository.close()
     }
 }
