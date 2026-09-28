@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scrolling straight to it instead of jumping back to the first track. The song
   starts from the beginning when you press Play — playback is not auto-resumed.
 - Shuffle stays on across restarts.
+- While a music folder is being scanned, the folder browser shows the scan
+  progress instead of an empty panel or the folders of the previous scan.
 
 ### Fixed
 

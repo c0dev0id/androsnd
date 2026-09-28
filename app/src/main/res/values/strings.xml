@@ -9,6 +9,11 @@
     <string name="prev_song">Previous Song</string>
     <string name="prev_folder">Previous Folder</string>
     <string name="select_folder">Load Music Folder</string>
+    <string name="scanning">Scanning…</string>
+    <plurals name="scanning_songs_found">
+        <item quantity="one">Scanning: %d song found</item>
+        <item quantity="other">Scanning: %d songs found</item>
+    </plurals>
     <string name="notification_channel_name">Music Playback</string>
     <string name="notification_channel_description">Music playback controls</string>
     <string name="notification_action_pause">Pause</string>

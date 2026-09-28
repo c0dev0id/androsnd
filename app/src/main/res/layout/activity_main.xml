@@ -215,6 +215,17 @@
 
         <include layout="@layout/dialog_folder_browser" />
 
+        <!-- Stands in for the grid while a scan runs: there is no library until it ends -->
+        <TextView
+            android:id="@+id/folder_browser_hint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="@string/scanning"
+            android:textSize="22sp"
+            android:textColor="@color/text_secondary"
+            android:visibility="gone" />
+
     </FrameLayout>
 
     <!-- Bottom button bar -->

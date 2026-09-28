@@ -91,6 +91,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var settingsPanel: View
     private lateinit var folderBrowserPanel: View
     private lateinit var folderGridRecycler: RecyclerView
+    private lateinit var folderBrowserHint: TextView
     private val prefs by lazy { getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE) }
     private var settingsVisible = false
     private var folderBrowserVisible = false
@@ -159,6 +160,7 @@ class MainActivity : AppCompatActivity() {
                 showLoading()
             } else if (musicService?.isScanning == true) {
                 showLoading()
+                folderBrowserHint.visibility = View.VISIBLE
             } else {
                 updateUI()
             }
@@ -190,14 +192,20 @@ class MainActivity : AppCompatActivity() {
             when (intent.action) {
                 MusicService.BROADCAST_SCAN_STARTED -> {
                     playlistAdapter.submitData(emptyList(), emptyList(), -1)
+                    // The previous library's folders would stay on screen, but tapping one
+                    // plays nothing: the library is empty until the scan ends.
+                    folderGridAdapter.submitData(emptyList())
+                    folderBrowserHint.visibility = View.VISIBLE
                     showLoading()
-                    loadingText.text = "Scanning..."
+                    showScanStatus(getString(R.string.scanning))
                 }
                 MusicService.BROADCAST_SCAN_PROGRESS -> {
                     val count = intent.getIntExtra(MusicService.EXTRA_SCAN_SONG_COUNT, 0)
-                    loadingText.text = "Scanning: $count songs found"
+                    showScanStatus(resources.getQuantityString(R.plurals.scanning_songs_found, count, count))
                 }
                 MusicService.BROADCAST_SCAN_COMPLETED -> {
+                    // Ahead of the null check; the grid itself is refilled by updateUI().
+                    folderBrowserHint.visibility = View.GONE
                     val svc = musicService ?: return
                     val pm = svc.playlistManager
                     loadingTotal = pm.songs.size
@@ -372,6 +380,7 @@ class MainActivity : AppCompatActivity() {
         settingsPanel = findViewById(R.id.settings_panel)
         folderBrowserPanel = findViewById(R.id.folder_browser_panel)
         folderGridRecycler = folderBrowserPanel.findViewById(R.id.folder_grid_recycler)
+        folderBrowserHint = folderBrowserPanel.findViewById(R.id.folder_browser_hint)
         settingsButtonStrokeWidth = btnSettings.strokeWidth
 
         // Size the rotated volume slider to span the container's full height
@@ -906,6 +915,12 @@ class MainActivity : AppCompatActivity() {
     private fun hideLoading() {
         loadingIndicator.visibility = View.GONE
         playlistRecycler.visibility = View.VISIBLE
+    }
+
+    /** The folder browser covers the playlist's loading indicator, so it repeats the scan status. */
+    private fun showScanStatus(text: String) {
+        loadingText.text = text
+        folderBrowserHint.text = text
     }
 
     private fun formatTime(ms: Int): String {
