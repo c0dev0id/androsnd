@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Switching between music and radio while something is playing now keeps playing:
+  it stops the current source and immediately starts the other one — the last radio
+  station, or the remembered song. Switching while paused or stopped stays quiet.
 - The Stop button has been removed. A long press on Play now stops playback; a short
   press still toggles play and pause. This applies to both the on-screen button and
   the remote's confirm button.

@@ -214,11 +214,15 @@ class MusicService : MediaBrowserServiceCompat() {
     /**
      * Swaps the active subsystem. The outgoing one is stopped (which releases its player,
      * freeing native decoder slots so the two do not compete) and the incoming one's
-     * library is loaded on first use. Does not autoplay — the user tunes in explicitly.
+     * library is loaded on first use. Playback carries across the switch: if the outgoing
+     * subsystem was playing, the incoming one starts at once — the last station, or the
+     * remembered song. When file mode still has to scan, play() latches the request and the
+     * scan's completion consumes it, so the first track starts as soon as the library lands.
      */
     fun setPlayerMode(radio: Boolean) {
         val target: PlaybackController = if (radio) radioController else fileController
         if (target === active) return
+        val wasPlaying = active.isPlaying
         active.stop()
         active = target
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
@@ -229,6 +233,7 @@ class MusicService : MediaBrowserServiceCompat() {
         } else if (!fileLibraryLoaded) {
             playlistManager.loadSavedFolder()?.let { scanFolderAsync(it) }
         }
+        if (wasPlaying) active.play()
         publishShuffleMode()
         updateMediaSessionMetadata()
         updatePlaybackState()
