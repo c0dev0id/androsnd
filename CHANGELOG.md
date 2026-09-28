@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   appears on the folder grid, the now-playing panel, the media notification, and in
   Android Auto. Groups without a bundled logo, including your own added streams, show
   the generic station icon.
+- The floating "Now Playing" overlay appears for radio too, showing the station name
+  and its group. It pops when a station is tuned, not when resuming from pause, and
+  shows the group logo where one is bundled.
 - Radio buffers ahead for offline stretches. Pausing a station keeps the stream
   downloading instead of stopping it, so the buffer grows in real time (up to 20 minutes)
   while playback is paused. Start a station, pause it to build up a reserve, and it can

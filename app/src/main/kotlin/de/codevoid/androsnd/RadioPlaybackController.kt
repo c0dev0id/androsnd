@@ -1,5 +1,6 @@
 package de.codevoid.androsnd
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import androidx.annotation.OptIn
@@ -161,6 +162,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
         if (p.currentMediaItem == null) {
             p.setMediaItem(MediaItem.fromUri(station.uri))
             p.prepare()
+            showStationOverlay()
         }
         p.volume = service.getAppVolumeFloat()
         p.playWhenReady = true
@@ -262,6 +264,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
         p.prepare()
         p.volume = service.getAppVolumeFloat()
         p.playWhenReady = true
+        showStationOverlay()
         service.startProgressUpdates()
         radioManager.selectNextQueueSong()
         service.updateMediaSessionMetadata()
@@ -319,6 +322,23 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
 
     private fun stationText(station: Song): SongMetadata =
         SongMetadata(title = station.displayName, artist = "", album = "", duration = 0L)
+
+    // Pops the floating "Now Playing" overlay for a station change: station name on the
+    // title line, group name below it. Mirrors the file path, which shows it once per fresh
+    // song rather than on resume, and honours the same overlay_enabled pref. The cover is the
+    // group logo only when it has already been decoded for this station's folder — otherwise
+    // null, so the overlay shows its generic icon rather than a previous group's logo.
+    private fun showStationOverlay() {
+        val station = radioManager.getCurrentSong() ?: return
+        val overlayEnabled = service.getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
+            .getBoolean("overlay_enabled", true)
+        if (!overlayEnabled) return
+        val cover = if (station.folderPath == currentArtFolderPath) currentArtBitmap else null
+        service.overlayToastManager.showSong(
+            SongMetadata(title = station.displayName, artist = station.folderName, album = "", duration = 0L),
+            cover
+        )
+    }
 
     // Called on the main thread with each StreamTitle de-interleaved by LiveStreamDataSource.
     // A live stream re-sends the same title on a timer, and an empty title falls back to the
