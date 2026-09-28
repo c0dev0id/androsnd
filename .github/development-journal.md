@@ -126,8 +126,13 @@ state machine was not rewritten.
 **Streams play through ExoPlayer, files through `MediaPlayer`.** Reconnect after a
 dropout and live ICY "now playing" titles are exactly where `MediaPlayer` is
 weakest, and they are the whole point of radio. ExoPlayer handles both natively:
-a `DefaultLoadControl` sized from the user's buffer-seconds setting delays playback
-until the buffer fills (longer ride-through for a longer wait), and a custom
+a `DefaultLoadControl` whose retention window is sized from the user's buffer-seconds
+setting holds that much audio ahead of the playhead for ride-through, while the
+playback/rebuffer gates stay at the small defaults so start-up and resume are fast
+regardless of the setting. A live stream can only be fed as far ahead as the server's
+initial burst — it arrives at the encode rate afterwards — so ride-through is capped by
+that burst, not by the setting; the knob only decides how much of the burst is kept. A
+custom
 `LoadErrorHandlingPolicy` reconnects once immediately then on a calm 5 s cadence
 rather than in a tight loop. Only the `active` controller holds native decoder
 slots — the outgoing one is released, not paused, on a mode switch, and both are

@@ -29,11 +29,14 @@ import kotlinx.coroutines.launch
  *
  * Two policies shape the streaming feel and are deliberate, not defaults:
  *
- *  - **Prebuffer.** The [DefaultLoadControl] is built so `bufferForPlaybackMs` and
- *    `bufferForPlaybackAfterRebufferMs` both equal the user's `radio_buffer_seconds`.
- *    A larger value rides through longer dropouts but delays start-up and post-drop
- *    resume by that many seconds — the accepted trade. The value is fixed at
- *    construction, so a change rebuilds the player.
+ *  - **Prebuffer.** The user's `radio_buffer_seconds` sizes only the retention window
+ *    (`minBufferMs`/`maxBufferMs`) — how much audio the player holds ahead of the
+ *    playhead to ride through a dropout. The playback/rebuffer gates stay at the small
+ *    defaults, so start-up and post-drop resume are fast regardless of the setting. A
+ *    live stream can only be fed as far ahead as the server's initial burst — after
+ *    that it arrives at the encode rate — so real ride-through is capped by that burst,
+ *    not by this number. The value is fixed at construction, so a change rebuilds the
+ *    player.
  *  - **Gentle reconnect.** [GentleReconnectPolicy] retries a load once immediately, then
  *    every 5s, effectively forever, so a jittery link is not hammered. [onPlayerError]
  *    re-prepares after 5s to cover errors that bypass the load policy.
@@ -193,11 +196,19 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     private fun buildPlayer(): ExoPlayer {
         val bufferMs = bufferSeconds() * 1000
         val loadControl = DefaultLoadControl.Builder()
+            // min/max size the retention window: hold up to the user's buffer-seconds of
+            // audio, so a dropout rides through as long as the server actually fed us that
+            // much ahead. A live stream trickles at the encode rate after its initial
+            // burst, so occupancy is really capped by that burst, not by this number.
+            // The playback/rebuffer gates stay at the small defaults: they decide how much
+            // must be buffered before playback starts or resumes, and the burst covers them
+            // instantly — tying them to buffer-seconds is what made a large value stall on
+            // tune-in while the buffer trickled up to the gate.
             .setBufferDurationsMs(
                 bufferMs,
                 maxOf(bufferMs, DefaultLoadControl.DEFAULT_MAX_BUFFER_MS),
-                bufferMs,
-                bufferMs
+                DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
+                DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
             )
             .build()
         val sourceFactory = DefaultMediaSourceFactory(service)
