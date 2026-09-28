@@ -23,7 +23,7 @@ open class StationRepository(private val context: Context) {
 
     companion object {
         private const val USER_FILE = "user_stations.json"
-        const val USER_GROUP = "User"
+        const val USER_GROUP = "My Streams"
 
         /**
          * Turns the JSON document into groups. Malformed or incomplete entries (missing

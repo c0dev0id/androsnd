@@ -46,7 +46,7 @@ class RadioManager(
         selectNextQueueSong()
     }
 
-    /** Adds a user stream and reloads so it shows up under the "User" group at once. */
+    /** Adds a user stream and reloads so it shows up under the "My Streams" group at once. */
     fun addStation(name: String, url: String) {
         repository.addUserStation(name, url)
         load()

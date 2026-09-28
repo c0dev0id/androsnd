@@ -11,11 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Internet radio. A new button on the far left of the control bar switches the app
   between the local music library and internet radio. Radio stations are grouped just
-  like music folders, with a bundled set of groups and a "User" group for your own
-  streams. The now-playing area shows a LIVE marker instead of a countdown, and the
+  like music folders, with a bundled set of groups and a "My Streams" group for your
+  own streams. The now-playing area shows a LIVE marker instead of a countdown, and the
   station's broadcast title when the stream provides one.
 - Add your own stream in Settings: enter a name and an http(s) URL under Internet
-  Radio to add it to the User group.
+  Radio to add it to the My Streams group.
 - Radio station groups show a bundled logo where one ships with the app. The logo
   appears on the folder grid, the now-playing panel, the media notification, and in
   Android Auto. Groups without a bundled logo, including your own added streams, show
