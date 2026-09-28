@@ -9,31 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The update dialog shows the release notes of the version it found, so the changelog
-  from the GitHub release page is readable before choosing to download and install.
-- Internet radio. A new button on the far left of the control bar switches the app
-  between the local music library and internet radio. Radio stations are grouped just
-  like music folders, with a bundled set of groups and a "My Streams" group for your
-  own streams. The now-playing area shows a LIVE marker instead of a countdown, and the
-  station's broadcast title when the stream provides one.
+### Changed
+
+### Fixed
+
+## [0.1.0]
+
+### Added
+
+- Release notes on update dialog (visible next update)
+- Internet radio. A new button on the far left switches music files and internet radio.
 - Add your own stream in Settings: enter a name and an http(s) URL under Internet
-  Radio to add it to the My Streams group.
-- Radio groups without a bundled logo, including your own added streams, show the
-  generic station icon on the folder grid instead of an empty cover.
-- Radio station groups show a bundled logo where one ships with the app. The logo
-  appears on the folder grid, the now-playing panel, the media notification, and in
-  Android Auto. Groups without a bundled logo, including your own added streams, show
-  the generic station icon.
-- The floating "Now Playing" overlay appears for radio too, showing the station name
-  and its group. It pops when a station is tuned, not when resuming from pause, and
-  shows the group logo where one is bundled.
+  Radio to add it. It will be grouped under "My Streams".
 - Radio buffers ahead for offline stretches. Pausing a station keeps the stream
   downloading instead of stopping it, so the buffer grows in real time (up to 20 minutes)
   while playback is paused. Start a station, pause it to build up a reserve, and it can
-  then ride through a tunnel or dead spot without a dropout. The now-playing area shows
-  how much audio is buffered ahead. Playback always starts and resumes quickly regardless
-  of how full the buffer is. If the offline stretch outlasts the buffer, the stream jumps
-  forward to live on reconnect rather than staying silent.
+  then ride through a tunnel or dead spot without a dropout. If the offline stretch outlasts the buffer,
+  the stream jumps forward to live on reconnect rather than staying silent.
 
 ### Changed
 
