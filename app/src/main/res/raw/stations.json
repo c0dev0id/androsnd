@@ -1,19 +1,241 @@
 {
   "groups": [
     {
-      "name": "Ambient",
+      "name": "SomaFM",
       "stations": [
-        { "name": "SomaFM Groove Salad", "url": "https://ice1.somafm.com/groovesalad-128-mp3" },
-        { "name": "SomaFM Drone Zone", "url": "https://ice1.somafm.com/dronezone-128-mp3" },
-        { "name": "SomaFM Lush", "url": "https://ice1.somafm.com/lush-128-mp3" }
+        {
+          "name": "DEF CON Radio",
+          "url": "https://ice1.somafm.com/defcon-128-mp3"
+        },
+        {
+          "name": "Pop Rocks",
+          "url": "https://ice1.somafm.com/indiepop-128-mp3"
+        },
+        {
+          "name": "Underground 80s",
+          "url": "https://ice1.somafm.com/u80s-128-mp3"
+        },
+        {
+          "name": "Drone Zone",
+          "url": "https://ice1.somafm.com/dronezone-128-mp3"
+        },
+        {
+          "name": "Groove Salad",
+          "url": "https://ice1.somafm.com/groovesalad-128-mp3"
+        },
+        {
+          "name": "Lush",
+          "url": "https://ice1.somafm.com/lush-128-mp3"
+        }
       ]
     },
     {
-      "name": "Eclectic",
+      "name": "RPR1",
       "stations": [
-        { "name": "SomaFM Indie Pop Rocks", "url": "https://ice1.somafm.com/indiepop-128-mp3" },
-        { "name": "SomaFM DEF CON Radio", "url": "https://ice1.somafm.com/defcon-128-mp3" },
-        { "name": "SomaFM Underground 80s", "url": "https://ice1.somafm.com/u80s-128-mp3" }
+        {
+          "name": "2000er",
+          "url": "https://stream.rpr1.de/2000erpop/aac-128/homepage/"
+        },
+        {
+          "name": "2000er Black",
+          "url": "https://stream.rpr1.de/2000erblack/aac-128/homepage/"
+        },
+        {
+          "name": "2000er Dance",
+          "url": "https://stream.rpr1.de/2000erdance/aac-128/homepage/"
+        },
+        {
+          "name": "2000er Rock",
+          "url": "https://stream.rpr1.de/2000errock/aac-128/homepage/"
+        },
+        {
+          "name": "70er",
+          "url": "https://stream.rpr1.de/70er/aac-128/homepage/"
+        },
+        {
+          "name": "70er Rock",
+          "url": "https://stream.rpr1.de/70errock/aac-128/homepage/"
+        },
+        {
+          "name": "80er",
+          "url": "https://stream.rpr1.de/80er/aac-128/homepage/"
+        },
+        {
+          "name": "80er Pop-Rock",
+          "url": "https://stream.rpr1.de/80errock/aac-128/homepage/"
+        },
+        {
+          "name": "90er",
+          "url": "https://stream.rpr1.de/90erpop/aac-128/homepage/"
+        },
+        {
+          "name": "90er Black",
+          "url": "https://stream.rpr1.de/90erblack/aac-128/homepage/"
+        },
+        {
+          "name": "90er Dance",
+          "url": "https://stream.rpr1.de/90erdance/aac-128/homepage/"
+        },
+        {
+          "name": "90er Rock",
+          "url": "https://stream.rpr1.de/90errock/aac-128/homepage/"
+        },
+        {
+          "name": "90er Trash",
+          "url": "https://stream.rpr1.de/90ertrash/aac-128/homepage/"
+        },
+        {
+          "name": "Akustisch",
+          "url": "https://stream.rpr1.de/acoustic/aac-128/homepage/"
+        },
+        {
+          "name": "Chilloutzone",
+          "url": "https://stream.rpr1.de/chillout/aac-128/homepage/"
+        },
+        {
+          "name": "Country",
+          "url": "https://stream.rpr1.de/country/aac-128/homepage/"
+        },
+        {
+          "name": "Deutschpop",
+          "url": "https://stream.rpr1.de/deutschpop/aac-128/homepage/"
+        },
+        {
+          "name": "Evergreens",
+          "url": "https://stream.rpr1.de/evergreens/aac-128/homepage/"
+        },
+        {
+          "name": "Hardrock",
+          "url": "https://stream.rpr1.de/hardrock/aac-128/homepage/"
+        },
+        {
+          "name": "Heavy Metal",
+          "url": "https://stream.rpr1.de/metal/aac-128/homepage/"
+        },
+        {
+          "name": "Kinderlieder",
+          "url": "https://stream.rpr1.de/kidshits/aac-128/homepage/"
+        },
+        {
+          "name": "Kölner Karneval",
+          "url": "https://stream.rpr1.de/karneval/aac-128/homepage/"
+        },
+        {
+          "name": "Maximal",
+          "url": "https://stream.rpr1.de/maximal/aac-128/homepage/"
+        },
+        {
+          "name": "Music Made in Germany",
+          "url": "https://stream.rpr1.de/liedergut/aac-128/homepage/"
+        },
+        {
+          "name": "Musikbar",
+          "url": "https://stream.rpr1.de/musikbar/aac-128/homepage/"
+        },
+        {
+          "name": "Neue Deutsche Welle",
+          "url": "https://stream.rpr1.de/ndw/aac-128/homepage/"
+        },
+        {
+          "name": "Oldies",
+          "url": "https://stream.rpr1.de/oldies/aac-128/homepage/"
+        },
+        {
+          "name": "Oldschool Hip-Hop",
+          "url": "https://stream.rpr1.de/hiphop/aac-128/homepage/"
+        },
+        {
+          "name": "Pappnasen",
+          "url": "https://stream.rpr1.de/pappnasen/aac-128/homepage/"
+        },
+        {
+          "name": "Radio Nürburgring @ RPR1.",
+          "url": "https://stream.rpr1.de/nbr/aac-128/homepage/"
+        },
+        {
+          "name": "Radio Schinkenstrasse",
+          "url": "https://stream.rpr1.de/apresski/aac-128/homepage/"
+        },
+        {
+          "name": "Radio Weinstrasse",
+          "url": "https://stream.rpr1.de/wstr/aac-128/homepage/"
+        },
+        {
+          "name": "Rock",
+          "url": "https://stream.rpr1.de/rock/aac-128/homepage/"
+        },
+        {
+          "name": "RPR1. Koblenz",
+          "url": "https://stream.rpr1.de/koblenz/aac-128/homepage/"
+        },
+        {
+          "name": "RPR1. Köln",
+          "url": "https://stream.rpr1.de/koeln/aac-128/homepage/"
+        },
+        {
+          "name": "RPR1. Mainz",
+          "url": "https://stream.rpr1.de/mainz/aac-128/homepage/"
+        },
+        {
+          "name": "RPR1. Pfalz",
+          "url": "https://stream.rpr1.de/kaiserslautern/aac-128/homepage/"
+        },
+        {
+          "name": "RPR1. Rhein-Neckar",
+          "url": "https://stream.rpr1.de/ludwigshafen/aac-128/homepage/"
+        },
+        {
+          "name": "RPR1. Trier",
+          "url": "https://stream.rpr1.de/trier/aac-128/homepage/"
+        },
+        {
+          "name": "RPR1. – der beste Musikmix für Rheinland-Pfalz",
+          "url": "https://stream.rpr1.de/webradio/aac-128/homepage/"
+        },
+        {
+          "name": "Schlager",
+          "url": "https://stream.rpr1.de/schlagerhits/aac-128/homepage/"
+        },
+        {
+          "name": "Schlagerklassiker",
+          "url": "https://stream.rpr1.de/schlagerklassiker/aac-128/homepage/"
+        },
+        {
+          "name": "Sommerhits",
+          "url": "https://stream.rpr1.de/sommerhits/aac-128/homepage/"
+        },
+        {
+          "name": "Sport Radio",
+          "url": "https://stream.rpr1.de/fitness/aac-128/homepage/"
+        },
+        {
+          "name": "Tanzbar",
+          "url": "https://stream.rpr1.de/tanzbar/aac-128/homepage/"
+        },
+        {
+          "name": "Teen Beatz Radio",
+          "url": "https://stream.rpr1.de/tbr/aac-128/homepage/"
+        },
+        {
+          "name": "Top50",
+          "url": "https://stream.rpr1.de/top50/aac-128/homepage/"
+        },
+        {
+          "name": "Traumfabrik",
+          "url": "https://stream.rpr1.de/traumfabrik/aac-128/homepage/"
+        },
+        {
+          "name": "Volksmusik",
+          "url": "https://stream.rpr1.de/volksmusik/aac-128/homepage/"
+        },
+        {
+          "name": "Weihnachtsradio",
+          "url": "https://stream.rpr1.de/weihnachten/aac-128/homepage/"
+        },
+        {
+          "name": "Yoga Sounds",
+          "url": "https://stream.rpr1.de/yogasounds/aac-128/homepage/"
+        }
       ]
     }
   ]
