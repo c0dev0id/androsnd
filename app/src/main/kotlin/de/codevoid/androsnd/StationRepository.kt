@@ -19,7 +19,7 @@ import java.io.File
  * and recreated on any schema change (pre-1.0 policy) — user-authored stations must
  * survive such a reset.
  */
-class StationRepository(private val context: Context) {
+open class StationRepository(private val context: Context) {
 
     companion object {
         private const val USER_FILE = "user_stations.json"
@@ -85,7 +85,7 @@ class StationRepository(private val context: Context) {
         }
     }
 
-    fun load(): List<StationGroup> = merge(loadBundled(), loadUserGroups())
+    open fun load(): List<StationGroup> = merge(loadBundled(), loadUserGroups())
 
     /** Groups shaped as the same input [Library.of] takes for the file library. */
     fun toScannedFolders(groups: List<StationGroup>): List<ScannedFolder> =

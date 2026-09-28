@@ -1,8 +1,11 @@
 package de.codevoid.androsnd
 
 import android.net.Uri
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import de.codevoid.androsnd.model.RadioStation
 import de.codevoid.androsnd.model.Song
+import de.codevoid.androsnd.model.StationGroup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -102,5 +105,28 @@ class LibraryTest {
 
         assertEquals(1, library.songs.size)
         assertEquals(emptyList<Int>(), library.foldersByPath["/music/Empty"]?.songs)
+    }
+
+    /**
+     * Radio reuses this same builder — a station group is a folder, a station is a Song
+     * with a stream URI. This walks the actual adapter (toScannedFolders) into the builder
+     * to prove groups become ordered folders and stations get contiguous indices.
+     */
+    @Test
+    fun `station groups flow through the builder as folders and indexed stations`() {
+        val repo = StationRepository(ApplicationProvider.getApplicationContext())
+        val library = Library.of(repo.toScannedFolders(listOf(
+            StationGroup("Beta", listOf(RadioStation("B", "http://b"))),
+            StationGroup("Alpha", listOf(
+                RadioStation("A1", "http://a1"),
+                RadioStation("A2", "http://a2")
+            ))
+        )))
+
+        assertEquals(listOf("Alpha", "Beta"), library.folders.map { it.name })
+        assertEquals(listOf("A1", "A2", "B"), library.songs.map { it.displayName })
+        assertEquals(listOf(0, 1), library.folders[0].songs)
+        assertEquals(listOf(2), library.folders[1].songs)
+        assertEquals("http://a1", library.songs[0].uri.toString())
     }
 }
