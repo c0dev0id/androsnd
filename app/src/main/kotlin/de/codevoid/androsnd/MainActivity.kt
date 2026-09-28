@@ -900,7 +900,7 @@ class MainActivity : AppCompatActivity() {
                 songArtist.text = metadata.artist
                 songAlbum.text = metadata.album
             } else {
-                songTitle.text = song.title
+                songTitle.text = song.displayName
                 songArtist.text = ""
                 songAlbum.text = ""
             }
