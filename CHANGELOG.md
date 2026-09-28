@@ -16,10 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   station's broadcast title when the stream provides one.
 - Add your own stream in Settings: enter a name and an http(s) URL under Internet
   Radio to add it to the User group.
-- A buffer-length setting for radio (5 to 60 seconds). A larger buffer holds more audio
-  in reserve to ride through network dropouts; playback still starts and resumes quickly
-  regardless of the value. How far a live stream can actually buffer ahead is limited by
-  the station's server, so the practical ride-through may be shorter than the setting.
+- Radio buffers ahead for offline stretches. Pausing a station keeps the stream
+  downloading instead of stopping it, so the buffer grows in real time (up to 20 minutes)
+  while playback is paused. Start a station, pause it to build up a reserve, and it can
+  then ride through a tunnel or dead spot without a dropout. The now-playing area shows
+  how much audio is buffered ahead. Playback always starts and resumes quickly regardless
+  of how full the buffer is. If the offline stretch outlasts the buffer, the stream jumps
+  forward to live on reconnect rather than staying silent.
 
 ### Changed
 

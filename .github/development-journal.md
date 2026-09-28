@@ -125,15 +125,26 @@ state machine was not rewritten.
 
 **Streams play through ExoPlayer, files through `MediaPlayer`.** Reconnect after a
 dropout and live ICY "now playing" titles are exactly where `MediaPlayer` is
-weakest, and they are the whole point of radio. ExoPlayer handles both natively:
-a `DefaultLoadControl` whose retention window is sized from the user's buffer-seconds
-setting holds that much audio ahead of the playhead for ride-through, while the
-playback/rebuffer gates stay at the small defaults so start-up and resume are fast
-regardless of the setting. A live stream can only be fed as far ahead as the server's
-initial burst — it arrives at the encode rate afterwards — so ride-through is capped by
-that burst, not by the setting; the knob only decides how much of the burst is kept. A
-custom
-`LoadErrorHandlingPolicy` reconnects once immediately then on a calm 5 s cadence
+weakest, and they are the whole point of radio. ExoPlayer handles both natively.
+
+**Radio pause is a timeshift, not a stop.** The `DefaultLoadControl` fixes `maxBufferMs`
+at 20 minutes with `setPrioritizeTimeOverSizeThresholds(true)` so the time cap governs
+rather than a byte estimate. ExoPlayer's loading loop is driven by `maxBufferMs`
+independently of `playWhenReady`, so a paused player keeps downloading while consuming
+nothing — the buffer grows in real time toward the cap. That is the feature: pause a
+station to hoard a reserve, then ride through a tunnel without a dropout. While *playing*
+the buffer stays flat at whatever the server fed, because a live stream trickles at the
+encode rate after its initial burst (in equals out); the reserve only accumulates while
+paused. The playback/rebuffer gates stay at the small defaults, so start-up and post-drop
+resume are fast regardless of how full the buffer is — the burst covers them instantly.
+This replaced a user-facing buffer-seconds setting, which coupled the retention window to
+the start-up gate and made a large value stall on tune-in. `bufferedMs`
+(`totalBufferedDuration`) surfaces the reserve so the shell can gauge it; the 1 s state
+tick, which files drive only while playing, is kept running through a radio pause so the
+gauge moves while the buffer fills. If the offline stretch outlasts the buffer the stream
+jumps forward to live on reconnect — a jump beats silence.
+
+A custom `LoadErrorHandlingPolicy` reconnects once immediately then on a calm 5 s cadence
 rather than in a tight loop. Only the `active` controller holds native decoder
 slots — the outgoing one is released, not paused, on a mode switch, and both are
 released in `onDestroy`.
@@ -153,8 +164,8 @@ supply a known station set without the bundled JSON or a network, matching the
   (mp3, ogg, flac, aac, m4a, opus).
 - Internet radio as a second subsystem, toggled from the leftmost control-bar
   button: bundled station groups plus a user group fed by an add-stream field,
-  live ICY titles, a LIVE marker in place of the countdown, and a configurable
-  prebuffer with gentle reconnect.
+  live ICY titles, a buffered-ahead gauge in place of the countdown, a timeshift
+  buffer that fills while paused for offline ride-through, and gentle reconnect.
 - Two-level browsing: a folder grid overlay and an interleaved folder/song list.
 - Full DMD Remote 2 navigation with a two-cursor focus model (song list and button
   bar move independently), plus a hardware key-repeat for the volume lever.
