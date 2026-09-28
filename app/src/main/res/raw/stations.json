@@ -1,36 +1,7 @@
 {
   "groups": [
     {
-      "name": "SomaFM",
-      "stations": [
-        {
-          "name": "DEF CON Radio",
-          "url": "https://ice1.somafm.com/defcon-128-mp3"
-        },
-        {
-          "name": "Pop Rocks",
-          "url": "https://ice1.somafm.com/indiepop-128-mp3"
-        },
-        {
-          "name": "Underground 80s",
-          "url": "https://ice1.somafm.com/u80s-128-mp3"
-        },
-        {
-          "name": "Drone Zone",
-          "url": "https://ice1.somafm.com/dronezone-128-mp3"
-        },
-        {
-          "name": "Groove Salad",
-          "url": "https://ice1.somafm.com/groovesalad-128-mp3"
-        },
-        {
-          "name": "Lush",
-          "url": "https://ice1.somafm.com/lush-128-mp3"
-        }
-      ]
-    },
-    {
-      "name": "RPR1",
+      "name": "Radio RPR1",
       "stations": [
         {
           "name": "2000er",
@@ -189,10 +160,6 @@
           "url": "https://stream.rpr1.de/trier/aac-128/homepage/"
         },
         {
-          "name": "RPR1. – der beste Musikmix für Rheinland-Pfalz",
-          "url": "https://stream.rpr1.de/webradio/aac-128/homepage/"
-        },
-        {
           "name": "Schlager",
           "url": "https://stream.rpr1.de/schlagerhits/aac-128/homepage/"
         },
@@ -235,6 +202,35 @@
         {
           "name": "Yoga Sounds",
           "url": "https://stream.rpr1.de/yogasounds/aac-128/homepage/"
+        }
+      ]
+    },
+    {
+      "name": "SomaFM",
+      "stations": [
+        {
+          "name": "DEF CON Radio",
+          "url": "https://ice1.somafm.com/defcon-128-mp3"
+        },
+        {
+          "name": "Pop Rocks",
+          "url": "https://ice1.somafm.com/indiepop-128-mp3"
+        },
+        {
+          "name": "Underground 80s",
+          "url": "https://ice1.somafm.com/u80s-128-mp3"
+        },
+        {
+          "name": "Drone Zone",
+          "url": "https://ice1.somafm.com/dronezone-128-mp3"
+        },
+        {
+          "name": "Groove Salad",
+          "url": "https://ice1.somafm.com/groovesalad-128-mp3"
+        },
+        {
+          "name": "Lush",
+          "url": "https://ice1.somafm.com/lush-128-mp3"
         }
       ]
     }
