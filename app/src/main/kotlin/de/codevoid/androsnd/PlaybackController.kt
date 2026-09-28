@@ -1,6 +1,7 @@
 package de.codevoid.androsnd
 
 import android.graphics.Bitmap
+import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 import de.codevoid.androsnd.model.SongMetadata
 
@@ -26,6 +27,9 @@ interface PlaybackController {
     val durationMs: Int
     val canSeek: Boolean
 
+    /** This subsystem's library, bound by the right pane and folder browser. */
+    val songs: List<Song>
+    val folders: List<PlaylistFolder>
     /** The entry the cursor sits on, for the session/notification fallback text. */
     val currentSong: Song?
     /** Cursor position, used as the MediaSession media id / active queue item. */
@@ -33,6 +37,8 @@ interface PlaybackController {
     /** Size of this subsystem's library, for the session's track count. */
     val songCount: Int
     val isShuffleOn: Boolean
+    /** The folder holding [songIndex], for scrolling the list to the playing song. */
+    fun folderIndexForSong(songIndex: Int): Int
 
     fun play()
     fun pause()

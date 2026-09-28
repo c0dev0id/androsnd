@@ -157,6 +157,7 @@ class MainActivity : AppCompatActivity() {
             val musicBinder = binder as? MusicService.MusicBinder ?: return
             musicService = musicBinder.getService()
             isBound = true
+            updateModeButton()
             val pending = pendingFolderUri
             if (pending != null) {
                 pendingFolderUri = null
@@ -598,7 +599,7 @@ class MainActivity : AppCompatActivity() {
         settingsPanel.findViewById<MaterialButton>(R.id.btn_add_stream).setOnClickListener {
             val name = nameInput.text.toString().trim()
             val url = urlInput.text.toString().trim()
-            if (name.isEmpty() || !(url.startsWith("http://") || url.startsWith("https://"))) {
+            if (name.isEmpty() || !android.webkit.URLUtil.isNetworkUrl(url)) {
                 android.widget.Toast.makeText(this, R.string.toast_stream_invalid, android.widget.Toast.LENGTH_SHORT).show()
             } else {
                 musicService?.addRadioStation(name, url)
@@ -609,12 +610,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         val spinner = settingsPanel.findViewById<android.widget.Spinner>(R.id.spinner_radio_buffer)
-        val savedBuffer = prefs.getInt("radio_buffer_seconds", 5)
-        val savedIdx = radioBufferValues.indexOf(savedBuffer).let { if (it < 0) 0 else it }
+        val savedBuffer = prefs.getInt(
+            RadioPlaybackController.KEY_BUFFER_SECONDS,
+            RadioPlaybackController.DEFAULT_BUFFER_SECONDS
+        )
+        val savedIdx = radioBufferValues.indexOf(savedBuffer).coerceAtLeast(0)
         spinner.setSelection(savedIdx)
         spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                prefs.edit().putInt("radio_buffer_seconds", radioBufferValues[position]).apply()
+                prefs.edit().putInt(RadioPlaybackController.KEY_BUFFER_SECONDS, radioBufferValues[position]).apply()
             }
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
@@ -889,7 +893,6 @@ class MainActivity : AppCompatActivity() {
         val isRadio = svc.isRadioMode()
         val song = svc.activeCurrentSong()
 
-        updateModeButton()
         btnPlay.setIconResource(resolvePlayPauseIcon())
         updateButtonStates()
 
@@ -904,7 +907,10 @@ class MainActivity : AppCompatActivity() {
                 songArtist.text = ""
                 songAlbum.text = ""
             }
-            updateNowPlayingArt(song.folderPath)
+            // Radio has no per-folder art; show the generic station icon rather than
+            // dispatching an art lookup that would never resolve.
+            if (isRadio) coverArt.setImageResource(R.drawable.ic_radio_station)
+            else updateNowPlayingArt(song.folderPath)
         } else {
             songTitle.text = getString(R.string.no_song)
             songArtist.text = ""

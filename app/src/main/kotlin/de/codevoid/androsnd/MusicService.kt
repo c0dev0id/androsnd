@@ -118,17 +118,13 @@ class MusicService : MediaBrowserServiceCompat() {
 
     fun isRadioMode(): Boolean = active === radioController
 
-    // The right pane and folder browser bind whichever library is active. The cursor
-    // reads route through the active controller so remote focus follows what plays.
-    val activeSongs: List<Song>
-        get() = if (isRadioMode()) radioController.radioManager.songs else playlistManager.songs
-    val activeFolders: List<PlaylistFolder>
-        get() = if (isRadioMode()) radioController.radioManager.folders else playlistManager.folders
+    // The right pane and folder browser bind whichever library is active. All of these
+    // route through the active controller so remote focus follows what actually plays.
+    val activeSongs: List<Song> get() = active.songs
+    val activeFolders: List<PlaylistFolder> get() = active.folders
     val activeCurrentIndex: Int get() = active.currentIndex
     fun activeCurrentSong(): Song? = active.currentSong
-    fun activeFolderIndexForSong(songIndex: Int): Int =
-        if (isRadioMode()) radioController.radioManager.getFolderIndexForSong(songIndex)
-        else playlistManager.getFolderIndexForSong(songIndex)
+    fun activeFolderIndexForSong(songIndex: Int): Int = active.folderIndexForSong(songIndex)
 
     /** Adds a user radio stream to the station library and rebinds if radio is active. */
     fun addRadioStation(name: String, url: String) {

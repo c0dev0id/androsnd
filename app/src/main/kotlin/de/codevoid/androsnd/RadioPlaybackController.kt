@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 import de.codevoid.androsnd.model.SongMetadata
 import kotlinx.coroutines.delay
@@ -43,6 +44,11 @@ import kotlinx.coroutines.launch
 @OptIn(UnstableApi::class)
 class RadioPlaybackController(private val service: MusicService) : PlaybackController {
 
+    companion object {
+        const val KEY_BUFFER_SECONDS = "radio_buffer_seconds"
+        const val DEFAULT_BUFFER_SECONDS = 5
+    }
+
     val radioManager = RadioManager(service)
 
     private var player: ExoPlayer? = null
@@ -62,10 +68,14 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
     override val durationMs: Int = 0
     override val canSeek: Boolean = false
 
+    override val songs: List<Song> get() = radioManager.songs
+    override val folders: List<PlaylistFolder> get() = radioManager.folders
     override val currentSong: Song? get() = radioManager.getCurrentSong()
     override val currentIndex: Int get() = radioManager.currentIndex
     override val songCount: Int get() = radioManager.songs.size
     override val isShuffleOn: Boolean get() = radioManager.isShuffleOn
+    override fun folderIndexForSong(songIndex: Int): Int =
+        radioManager.getFolderIndexForSong(songIndex)
 
     /** Rebuilds the station library. Call when this controller becomes active. */
     fun load() {
@@ -209,7 +219,7 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
 
     private fun bufferSeconds(): Int =
         service.getSharedPreferences("androsnd_prefs", Context.MODE_PRIVATE)
-            .getInt("radio_buffer_seconds", 5)
+            .getInt(KEY_BUFFER_SECONDS, DEFAULT_BUFFER_SECONDS)
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(playing: Boolean) {
@@ -222,11 +232,15 @@ class RadioPlaybackController(private val service: MusicService) : PlaybackContr
         override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
             val icy = mediaMetadata.title?.toString()?.trim()
             val station = radioManager.getCurrentSong()?.displayName ?: ""
-            currentText = if (!icy.isNullOrEmpty()) {
+            val next = if (!icy.isNullOrEmpty()) {
                 SongMetadata(title = icy, artist = station, album = "", duration = 0L)
             } else {
                 SongMetadata(title = station, artist = "", album = "", duration = 0L)
             }
+            // A live stream re-sends the same ICY title on a timer; only refresh the
+            // session, notification and UI when the text actually changes.
+            if (next == currentText) return
+            currentText = next
             service.updateMediaSessionMetadata()
             service.updateNotification()
             service.broadcastState()

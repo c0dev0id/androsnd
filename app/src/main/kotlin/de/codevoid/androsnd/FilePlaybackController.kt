@@ -9,6 +9,7 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.PowerManager
 import android.util.Log
+import de.codevoid.androsnd.model.PlaylistFolder
 import de.codevoid.androsnd.model.Song
 import de.codevoid.androsnd.model.SongMetadata
 import kotlinx.coroutines.Dispatchers
@@ -18,10 +19,8 @@ import kotlinx.coroutines.withContext
 /**
  * The local-file playback subsystem: a [MediaPlayer] over SAF files, backed by
  * [PlaylistManager] for the library and cursor and [MetadataRepository] for tag/art
- * enrichment. This is the app's original playback path, relocated behind
- * [PlaybackController] with no logic change — [MusicService] still owns the shared
- * shell (MediaSession, notification, audio focus) and this controller calls back into
- * it for those.
+ * enrichment. [MusicService] owns the shared shell (MediaSession, notification, audio
+ * focus) and this controller calls back into it for those.
  *
  * The MediaPlayer state machine is delicate on purpose: `isPreparing`/`playRequested`
  * latch a play issued before the player is ready, the `mediaPlayer !== mp` guards drop
@@ -54,10 +53,14 @@ class FilePlaybackController(private val service: MusicService) : PlaybackContro
     override val durationMs: Int get() = mediaPlayer?.duration ?: 0
     override val canSeek: Boolean get() = true
 
+    override val songs: List<Song> get() = playlistManager.songs
+    override val folders: List<PlaylistFolder> get() = playlistManager.folders
     override val currentSong: Song? get() = playlistManager.getCurrentSong()
     override val currentIndex: Int get() = playlistManager.currentIndex
     override val songCount: Int get() = playlistManager.songs.size
     override val isShuffleOn: Boolean get() = playlistManager.isShuffleOn
+    override fun folderIndexForSong(songIndex: Int): Int =
+        playlistManager.getFolderIndexForSong(songIndex)
 
     // "The user asked for playback but it could not start yet." Only ever set while a
     // readiness event is pending, so it cannot be left standing with nothing to consume
