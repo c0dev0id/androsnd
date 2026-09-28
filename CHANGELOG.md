@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   station's broadcast title when the stream provides one.
 - Add your own stream in Settings: enter a name and an http(s) URL under Internet
   Radio to add it to the My Streams group.
+- Radio groups without a bundled logo, including your own added streams, show the
+  generic station icon on the folder grid instead of an empty cover.
 - Radio station groups show a bundled logo where one ships with the app. The logo
   appears on the folder grid, the now-playing panel, the media notification, and in
   Android Auto. Groups without a bundled logo, including your own added streams, show

@@ -423,7 +423,8 @@ class MainActivity : AppCompatActivity() {
         folderGridAdapter = FolderGridAdapter(
             accentColor = accentColor,
             getArtFile = { folder -> musicService?.metadataRepository?.artFileForFolder(folder.path) },
-            onClick = { folderIndex -> playFolderAndClose(folderIndex) }
+            onClick = { folderIndex -> playFolderAndClose(folderIndex) },
+            getFallbackRes = { if (musicService?.isRadioMode() == true) R.drawable.ic_radio_station else 0 }
         )
         folderGridRecycler.layoutManager = GridLayoutManager(this, 4)
         folderGridRecycler.adapter = folderGridAdapter
@@ -1517,7 +1518,10 @@ class MainActivity : AppCompatActivity() {
     class FolderGridAdapter(
         private val accentColor: Int,
         private val getArtFile: (PlaylistFolder) -> File?,
-        private val onClick: (Int) -> Unit
+        private val onClick: (Int) -> Unit,
+        // Icon shown when a folder has no cached cover; 0 leaves the cell blank. Resolved
+        // per bind so a mode switch picks the right fallback without rebuilding the adapter.
+        private val getFallbackRes: () -> Int = { 0 }
     ) : RecyclerView.Adapter<FolderGridAdapter.GridViewHolder>() {
 
         private var folders: List<PlaylistFolder> = emptyList()
@@ -1576,7 +1580,13 @@ class MainActivity : AppCompatActivity() {
                     val file = getArtFile(folder) ?: return@withContext null
                     BitmapFactory.decodeFile(file.absolutePath)
                 }
-                holder.cover.setImageBitmap(bmp)
+                if (bmp != null) {
+                    holder.cover.setImageBitmap(bmp)
+                } else {
+                    val fallback = getFallbackRes()
+                    if (fallback != 0) holder.cover.setImageResource(fallback)
+                    else holder.cover.setImageDrawable(null)
+                }
             }
         }
 
