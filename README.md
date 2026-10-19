@@ -1,4 +1,6 @@
-# Androsnd
+<p align="center">
+  <img src="docs/banner.svg" alt="Androsnd" width="100%"/>
+</p>
 
 An offline music and internet-radio player for motorcycle riders. Built for [DMD](https://www.dmdnavigation.com) navigation units and the DMD Remote2 controller: landscape-only, no accounts, no streaming services, driven entirely by the remote.
 
